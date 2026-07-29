@@ -7,7 +7,7 @@
     "predev": "node scripts/prepare-public.mjs",
     "dev": "vite",
     "prebuild": "node scripts/prepare-public.mjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/prepare-spa-routes.mjs",
     "preview": "vite preview",
     "start": "vite preview"
   },
