@@ -54,6 +54,47 @@ const faqs = [
   ["Where is the Pax Logistics desk?", "House No. 3-6-105, Flat No. 105, Himayat Nagar, Hyderabad, Telangana 500029."],
 ];
 
+const ecosystemItems = [
+  ["SD", "Same-day"],
+  ["EX", "Express parcel"],
+  ["AC", "Air cargo"],
+  ["RF", "Road freight"],
+  ["WH", "Warehousing"],
+  ["LM", "Last mile"],
+  ["RT", "Returns"],
+  ["TR", "Live tracking"],
+  ["COD", "Cash on delivery"],
+  ["B2B", "Business shipping"],
+  ["D2C", "E-commerce"],
+  ["DOC", "Documents"],
+  ["BLK", "Bulk dispatch"],
+  ["DOM", "Domestic"],
+  ["PKG", "Secure packing"],
+  ["INS", "Shipment cover"],
+  ["RTO", "Return to origin"],
+  ["POD", "Proof of delivery"],
+  ["WMS", "Warehouse flow"],
+  ["OMS", "Order flow"],
+  ["GPS", "Route visibility"],
+  ["HUB", "Hub movement"],
+  ["PU", "Doorstep pickup"],
+  ["FRG", "Fragile care"],
+  ["HYD", "Hyderabad"],
+  ["AIR", "Airport desk"],
+  ["ECO", "Economy"],
+  ["PRI", "Priority"],
+  ["INT", "Intercity"],
+  ["SLA", "Timed delivery"],
+];
+
+const ecosystemRows = Array.from({ length: 6 }, (_, rowIndex) =>
+  Array.from({ length: 12 }, (_, columnIndex) =>
+    ecosystemItems[(rowIndex * 7 + columnIndex) % ecosystemItems.length]
+  )
+);
+
+const ecosystemAccents = ["#ffca3a", "#ff5964", "#6758e8", "#80aec7", "#77bda6", "#ed8b4b"];
+
 function ServiceVisual({ service }) {
   if (service.visual === "photo") {
     return (
@@ -284,6 +325,51 @@ export default function PaxLogisticsHome() {
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="shipping-ecosystem" aria-labelledby="ecosystem-title">
+        <div className="ecosystem-wall" aria-hidden="true">
+          {ecosystemRows.map((row, rowIndex) => (
+            <div className="ecosystem-row" key={`ecosystem-row-${rowIndex}`}>
+              <div className="ecosystem-row-track">
+                {[0, 1].map((setIndex) => (
+                  <div className="ecosystem-row-set" key={`ecosystem-set-${rowIndex}-${setIndex}`}>
+                    {row.map(([code, label], tileIndex) => {
+                      const accent = ecosystemAccents[(rowIndex * 3 + tileIndex) % ecosystemAccents.length];
+                      const isAccent = (rowIndex + tileIndex) % 9 === 4;
+                      return (
+                        <div
+                          className={`ecosystem-tile${isAccent ? " ecosystem-tile--accent" : ""}`}
+                          style={{ "--tile-accent": accent }}
+                          key={`${setIndex}-${code}-${tileIndex}`}
+                        >
+                          <span>{code}</span>
+                          <strong>{label}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="ecosystem-shade" aria-hidden="true"></div>
+        <div className="shell ecosystem-content">
+          <p className="eyebrow light">One coordinated network</p>
+          <h2 id="ecosystem-title">
+            Your entire shipping journey.
+            <span>All in one place.</span>
+          </h2>
+          <p>
+            From booking and doorstep pickup to hub movement, delivery and returns,
+            Pax keeps every important stage connected through one local logistics team.
+          </p>
+          <a className="ecosystem-cta" href="/services">
+            <span>Explore shipping services</span>
+            <i aria-hidden="true">→</i>
+          </a>
         </div>
       </section>
 
