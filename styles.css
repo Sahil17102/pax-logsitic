@@ -1987,7 +1987,9 @@ h3 {
 .estimate-band {
   position: relative;
   overflow: hidden;
-  background: var(--purple);
+  background:
+    radial-gradient(circle at 84% 10%, rgba(255, 200, 61, 0.14), transparent 32%),
+    linear-gradient(135deg, #5b352f 0%, #352523 100%);
   color: #fff;
 }
 
@@ -2035,7 +2037,7 @@ h3 {
 .quick-rate-card {
   border-radius: 25px;
   background: #fff;
-  box-shadow: 0 30px 70px rgba(33, 24, 124, 0.32);
+  box-shadow: 0 30px 70px rgba(48, 27, 23, 0.3);
   color: #171717;
   padding: 31px;
 }
@@ -2051,7 +2053,7 @@ h3 {
   display: grid;
   height: 52px;
   place-items: center;
-  color: var(--purple);
+  color: #c76657;
   font-weight: 800;
 }
 
@@ -2075,8 +2077,8 @@ h3 {
 }
 
 .quick-rate-card input:focus {
-  border-color: var(--purple);
-  box-shadow: 0 0 0 4px rgba(80, 65, 223, 0.09);
+  border-color: #c76657;
+  box-shadow: 0 0 0 4px rgba(199, 102, 87, 0.12);
 }
 
 .quick-rate-footer {
