@@ -2609,8 +2609,8 @@ h3 {
   width: 45%;
   height: calc(100% - 70px);
   background:
-    radial-gradient(circle at 82% 14%, rgba(255, 255, 255, 0.38), transparent 30%),
-    linear-gradient(145deg, #f2dfd5 0%, #e8c5b5 52%, #d9aa98 100%);
+    radial-gradient(circle at 82% 14%, rgba(255, 200, 61, 0.15), transparent 30%),
+    linear-gradient(145deg, var(--navy) 0%, var(--navy-dark) 100%);
   content: "";
 }
 
