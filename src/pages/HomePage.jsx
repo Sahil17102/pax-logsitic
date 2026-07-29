@@ -47,6 +47,54 @@ const values = [
   ["value-orange", "04", "growth", "Scale the support", "Move from one parcel to recurring business dispatch assistance."],
 ];
 
+const platformCapabilities = [
+  {
+    label: "Convert",
+    title: "Turn enquiries into confident bookings",
+    copy: "Show useful service choices, delivery speeds and an indicative price before the sender commits. Clear information makes the next step easier.",
+    link: "/rate-calculator",
+    linkText: "Explore delivery estimates",
+    visual: "options",
+    tone: "platform-lilac",
+  },
+  {
+    label: "Deliver",
+    title: "Move parcels with less friction",
+    copy: "Coordinate pickup, service selection and dispatch through one practical workflow built for documents, parcels and recurring business shipments.",
+    link: "/services",
+    linkText: "Discover delivery services",
+    visual: "dispatch",
+    tone: "platform-mint",
+  },
+  {
+    label: "Track",
+    title: "Cut queries, keep senders informed",
+    copy: "Give every shipment a clear reference and an understandable journey. Useful milestone updates reduce uncertainty from pickup to delivery.",
+    link: "/track",
+    linkText: "Open shipment tracking",
+    visual: "tracking",
+    tone: "platform-sky",
+  },
+  {
+    label: "Return",
+    title: "Make the reverse journey simple",
+    copy: "Plan returns with the same clarity as outbound shipping. Capture the reason, confirm the handover and keep the shipment reference connected.",
+    link: "/contact",
+    linkText: "Plan a return",
+    visual: "returns",
+    tone: "platform-peach",
+  },
+  {
+    label: "Analyse",
+    title: "Turn movement into useful decisions",
+    copy: "Review shipment mix, route activity and delivery stages in one readable view. Use the pattern to plan future dispatches with more confidence.",
+    link: "/contact",
+    linkText: "Discuss business shipping",
+    visual: "insights",
+    tone: "platform-yellow",
+  },
+];
+
 const faqs = [
   ["How do I get a final shipping price?", "Use the indicative estimator, then share parcel dimensions and exact route with our team for confirmation."],
   ["Can Pax help with recurring business pickups?", "Yes. Share your usual shipment count, routes and pickup schedule so the team can suggest a workable dispatch flow."],
@@ -134,6 +182,90 @@ function ValueIcon({ type }) {
       <path d="m8 11 6-5 5 3 7-6"></path>
       <path d="M21 3h5v5"></path>
     </svg>
+  );
+}
+
+function PlatformVisual({ type }) {
+  if (type === "options") {
+    return (
+      <div className="platform-ui platform-options-ui" aria-hidden="true">
+        <div className="platform-window-head"><span>Delivery options</span><i>500029 → 400001</i></div>
+        <div className="platform-option active"><span><b>Express</b><small>Priority movement</small></span><strong>1–2 days</strong></div>
+        <div className="platform-option"><span><b>Standard</b><small>Balanced service</small></span><strong>3–5 days</strong></div>
+        <div className="platform-option"><span><b>Economy</b><small>Budget first</small></span><strong>5–7 days</strong></div>
+        <div className="platform-floating-card">
+          <small>INDICATIVE RANGE</small>
+          <strong>₹180 – ₹230</strong>
+          <span>2 kg · Domestic</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === "dispatch") {
+    return (
+      <div className="platform-ui platform-dispatch-ui" aria-hidden="true">
+        <div className="platform-window-head"><span>Dispatch board</span><i>Today</i></div>
+        <div className="dispatch-summary">
+          <div><small>READY</small><strong>08</strong></div>
+          <div><small>IN TRANSIT</small><strong>12</strong></div>
+          <div><small>DELIVERED</small><strong>26</strong></div>
+        </div>
+        <div className="dispatch-table">
+          <div><span>PAX-260731</span><b>Express</b><i>Ready</i></div>
+          <div><span>PAX-260728</span><b>Standard</b><i>Moving</i></div>
+          <div><span>PAX-260724</span><b>Business</b><i>Collected</i></div>
+        </div>
+        <div className="dispatch-rule">✓ Route and weight checked</div>
+      </div>
+    );
+  }
+
+  if (type === "tracking") {
+    return (
+      <div className="platform-ui platform-tracking-ui" aria-hidden="true">
+        <div className="platform-window-head"><span>PAX / TRACK</span><i>Live</i></div>
+        <small>SHIPMENT PAX-260729</small>
+        <h4>Moving to destination hub</h4>
+        <div className="platform-track-line">
+          <i className="done">✓</i><span></span><i className="done">✓</i><span></span><i className="active"></i><span></span><i></i>
+        </div>
+        <div className="platform-track-labels"><span>Booked</span><span>Pickup</span><span>Transit</span><span>Delivery</span></div>
+        <div className="tracking-update-card"><small>LATEST UPDATE</small><strong>Shipment scanned at movement hub</strong><span>Today · 6:40 PM</span></div>
+      </div>
+    );
+  }
+
+  if (type === "returns") {
+    return (
+      <div className="platform-ui platform-returns-ui" aria-hidden="true">
+        <div className="platform-window-head"><span>Return request</span><i>PAX-260712</i></div>
+        <div className="return-product"><span>PX</span><div><small>PARCEL</small><strong>Business shipment</strong></div><b>2.4 kg</b></div>
+        <div className="return-reasons">
+          <span className="active">Address update</span><span>Sender recall</span><span>Other reason</span>
+        </div>
+        <div className="return-confirm">
+          <div className="return-qr"><i></i><i></i><i></i><i></i><i></i></div>
+          <div><small>RETURN HANDOVER</small><strong>Reference ready</strong><span>Keep this code with the parcel</span></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="platform-ui platform-insights-ui" aria-hidden="true">
+      <div className="platform-window-head"><span>Shipment overview</span><i>30 days</i></div>
+      <div className="insight-kpis">
+        <div><small>TOTAL</small><strong>148</strong><span>shipments</span></div>
+        <div><small>MOVING</small><strong>22</strong><span>in progress</span></div>
+      </div>
+      <div className="insight-chart">
+        {[48, 68, 54, 82, 72, 91, 76, 88].map((height, index) => (
+          <i style={{ "--bar-height": `${height}%` }} key={`${height}-${index}`}></i>
+        ))}
+      </div>
+      <div className="insight-legend"><span><i></i>Parcel volume</span><b>Hyderabad dispatch view</b></div>
+    </div>
   );
 }
 
@@ -308,6 +440,72 @@ export default function PaxLogisticsHome() {
               <div><small>02</small><strong>Four movement types</strong><span>Matched to the job</span></div>
               <div><small>03</small><strong>Clear handoffs</strong><span>Useful updates</span></div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="delivery-platform-section">
+        <div className="shell platform-intro reveal">
+          <p className="eyebrow">Pax delivery coordination</p>
+          <h2>One connected workflow for every parcel decision.</h2>
+          <p>
+            Bring estimates, pickup planning, movement updates, returns and shipment insight
+            into one clear experience—so each delivery decision is faster and easier to understand.
+          </p>
+          <a className="button platform-primary-button" href="/services">Explore the platform <span>→</span></a>
+        </div>
+
+        <div className="platform-audience">
+          <div className="shell">
+            <p>Designed for the teams that keep Hyderabad moving</p>
+            <div className="platform-audience-list" aria-label="Teams served by Pax Logistics">
+              {["Local sellers", "E-commerce teams", "Retail stores", "Growing offices", "D2C businesses", "Marketplace dispatch"].map((item, index) => (
+                <span key={item}><i>{String(index + 1).padStart(2, "0")}</i>{item}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="shell platform-section-heading reveal">
+          <p className="eyebrow">Connected courier capabilities</p>
+          <h2>Elevate every stage of the delivery experience.</h2>
+          <p>
+            Use clear choices, coordinated workflows and practical shipment views to improve
+            every touchpoint—from the first estimate to the final handover.
+          </p>
+        </div>
+
+        <div className="platform-capability-list">
+          {platformCapabilities.map((capability, index) => (
+            <article className={`platform-capability ${capability.tone}${index % 2 ? " platform-capability-reverse" : ""}`} key={capability.label}>
+              <div className="shell platform-capability-grid">
+                <div className="platform-capability-copy reveal">
+                  <p className="platform-label">{capability.label}</p>
+                  <h3>{capability.title}</h3>
+                  <p>{capability.copy}</p>
+                  <a href={capability.link}>{capability.linkText} <span>→</span></a>
+                </div>
+                <div className="platform-visual-shell reveal">
+                  <PlatformVisual type={capability.visual} />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="shell delivery-trust">
+          <div className="delivery-trust-copy reveal">
+            <p className="eyebrow">Clear delivery, lasting trust</p>
+            <h2>A better parcel experience keeps people informed.</h2>
+            <p>
+              Useful options before booking, visible handoffs during movement and direct support
+              when plans change help every shipment feel more dependable.
+            </p>
+          </div>
+          <div className="delivery-trust-metrics">
+            <div className="reveal"><strong>04</strong><span>clear journey stages from booking to delivery</span></div>
+            <div className="reveal"><strong>01</strong><span>local Hyderabad desk for direct assistance</span></div>
+            <div className="reveal"><strong>05</strong><span>connected workflows across the shipping journey</span></div>
           </div>
         </div>
       </section>
