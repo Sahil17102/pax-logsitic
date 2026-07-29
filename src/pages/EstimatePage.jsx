@@ -25,15 +25,17 @@ export default function EstimatePage() {
             </div>
           </div>
           <div className="tool-hero-visual rate-hero-visual" aria-hidden="true">
-            <div className="tool-window">
-              <div className="tool-window-head"><span>PAX / ESTIMATE</span><b>Indicative</b></div>
-              <div className="rate-route-preview">
-                <div><small>PICKUP</small><strong>500029</strong><span>Hyderabad</span></div>
-                <i>→</i>
-                <div><small>DELIVERY</small><strong>400001</strong><span>Mumbai</span></div>
+            <img className="rate-hero-photo" src="/assets/pax-courier-hero.png" alt="" />
+            <div className="rate-photo-shade"></div>
+            <div className="rate-photo-status"><i></i><span>Route ready for pickup</span></div>
+            <div className="rate-photo-caption">
+              <small>PAX / DOMESTIC MOVEMENT</small>
+              <div className="rate-photo-route">
+                <span><b>500029</b> Hyderabad</span>
+                <i>TO</i>
+                <span><b>400001</b> Mumbai</span>
               </div>
-              <div className="rate-preview-meta"><span>2 kg</span><span>Standard</span><span>Domestic</span></div>
-              <div className="rate-preview-total"><small>ESTIMATED RANGE</small><strong>₹180 – ₹230</strong></div>
+              <div className="rate-photo-tags"><span>STANDARD</span><span>DOORSTEP</span><span>TRACKED</span></div>
             </div>
           </div>
         </div>
