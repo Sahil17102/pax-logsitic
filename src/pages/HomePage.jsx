@@ -463,6 +463,28 @@ export default function PaxLogisticsHome() {
         </div>
       </section>
 
+      <section className="section estimate-band">
+        <div className="shell estimate-band-grid">
+          <div className="band-copy reveal">
+            <p className="eyebrow light">Quick estimate</p>
+            <h2>Price the route before you book.</h2>
+            <p>Enter two PIN codes and a few parcel details. Get an indicative range in under a minute.</p>
+          </div>
+          <form className="quick-rate-card reveal" id="home-rate-form" noValidate>
+            <div className="quick-rate-row">
+              <label>Pickup PIN<input id="home-pickup-pin" inputMode="numeric" maxLength="6" placeholder="500029" /></label>
+              <span>→</span>
+              <label>Delivery PIN<input id="home-delivery-pin" inputMode="numeric" maxLength="6" placeholder="400001" /></label>
+            </div>
+            <div className="quick-rate-footer">
+              <p><small>Need full details?</small><strong>Use our estimate calculator</strong></p>
+              <button className="button button-coral" type="submit">Continue <span>→</span></button>
+            </div>
+            <p className="form-error" id="home-rate-error" role="alert"></p>
+          </form>
+        </div>
+      </section>
+
       <section className="journey-section section">
         <div className="wide-shell">
           <div className="big-heading centre reveal">
@@ -582,28 +604,6 @@ export default function PaxLogisticsHome() {
               </article>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="section estimate-band">
-        <div className="shell estimate-band-grid">
-          <div className="band-copy reveal">
-            <p className="eyebrow light">Quick estimate</p>
-            <h2>Price the route before you book.</h2>
-            <p>Enter two PIN codes and a few parcel details. Get an indicative range in under a minute.</p>
-          </div>
-          <form className="quick-rate-card reveal" id="home-rate-form" noValidate>
-            <div className="quick-rate-row">
-              <label>Pickup PIN<input id="home-pickup-pin" inputMode="numeric" maxLength="6" placeholder="500029" /></label>
-              <span>→</span>
-              <label>Delivery PIN<input id="home-delivery-pin" inputMode="numeric" maxLength="6" placeholder="400001" /></label>
-            </div>
-            <div className="quick-rate-footer">
-              <p><small>Need full details?</small><strong>Use our estimate calculator</strong></p>
-              <button className="button button-coral" type="submit">Continue <span>→</span></button>
-            </div>
-            <p className="form-error" id="home-rate-error" role="alert"></p>
-          </form>
         </div>
       </section>
 
