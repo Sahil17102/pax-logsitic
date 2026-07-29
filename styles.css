@@ -2072,15 +2072,16 @@ h3 {
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(circle at 84% 10%, rgba(255, 200, 61, 0.14), transparent 32%),
-    linear-gradient(135deg, #5b352f 0%, #352523 100%);
-  color: #fff;
+    radial-gradient(circle at 84% 8%, rgba(255, 200, 61, 0.32), transparent 31%),
+    radial-gradient(circle at 8% 92%, rgba(255, 77, 88, 0.11), transparent 28%),
+    linear-gradient(135deg, #f1d5c6 0%, #f7eadf 58%, #efe3d7 100%);
+  color: var(--navy);
 }
 
 .estimate-band::before,
 .estimate-band::after {
   position: absolute;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(23, 50, 74, 0.13);
   border-radius: 50%;
   content: "";
 }
@@ -2112,16 +2113,21 @@ h3 {
   font-size: clamp(2.5rem, 4vw, 4.3rem);
 }
 
+.estimate-band .eyebrow.light {
+  color: #a03b49;
+}
+
 .band-copy > p:not(.eyebrow) {
   margin-top: 24px;
-  color: rgba(255, 255, 255, 0.66);
+  color: #5e5d58;
   line-height: 1.7;
 }
 
 .quick-rate-card {
+  border: 1px solid rgba(23, 50, 74, 0.08);
   border-radius: 25px;
   background: #fff;
-  box-shadow: 0 30px 70px rgba(48, 27, 23, 0.3);
+  box-shadow: 0 28px 65px rgba(57, 48, 40, 0.15);
   color: #171717;
   padding: 31px;
 }
