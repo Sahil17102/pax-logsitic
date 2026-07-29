@@ -1,3 +1,5 @@
+import { Fragment } from "react";
+
 const services = [
   {
     tone: "card-coral",
@@ -269,6 +271,55 @@ function PlatformVisual({ type }) {
   );
 }
 
+function ShippingEcosystemSection() {
+  return (
+    <section className="shipping-ecosystem" aria-labelledby="ecosystem-title">
+      <div className="ecosystem-wall" aria-hidden="true">
+        {ecosystemRows.map((row, rowIndex) => (
+          <div className="ecosystem-row" key={`ecosystem-row-${rowIndex}`}>
+            <div className="ecosystem-row-track">
+              {[0, 1].map((setIndex) => (
+                <div className="ecosystem-row-set" key={`ecosystem-set-${rowIndex}-${setIndex}`}>
+                  {row.map(([code, label], tileIndex) => {
+                    const accent = ecosystemAccents[(rowIndex * 3 + tileIndex) % ecosystemAccents.length];
+                    const isAccent = (rowIndex + tileIndex) % 9 === 4;
+                    return (
+                      <div
+                        className={`ecosystem-tile${isAccent ? " ecosystem-tile--accent" : ""}`}
+                        style={{ "--tile-accent": accent }}
+                        key={`${setIndex}-${code}-${tileIndex}`}
+                      >
+                        <span>{code}</span>
+                        <strong>{label}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="ecosystem-shade" aria-hidden="true"></div>
+      <div className="shell ecosystem-content">
+        <p className="eyebrow light">One coordinated network</p>
+        <h2 id="ecosystem-title">
+          Your entire shipping journey.
+          <span>All in one place.</span>
+        </h2>
+        <p>
+          From booking and doorstep pickup to hub movement, delivery and returns,
+          Pax keeps every important stage connected through one local logistics team.
+        </p>
+        <a className="ecosystem-cta" href="/services">
+          <span>Explore shipping services</span>
+          <i aria-hidden="true">→</i>
+        </a>
+      </div>
+    </section>
+  );
+}
+
 function ServiceVisual({ service }) {
   if (service.visual === "photo") {
     return (
@@ -477,19 +528,22 @@ export default function PaxLogisticsHome() {
 
         <div className="platform-capability-list">
           {platformCapabilities.map((capability, index) => (
-            <article className={`platform-capability ${capability.tone}${index % 2 ? " platform-capability-reverse" : ""}`} key={capability.label}>
-              <div className="shell platform-capability-grid">
-                <div className="platform-capability-copy reveal">
-                  <p className="platform-label">{capability.label}</p>
-                  <h3>{capability.title}</h3>
-                  <p>{capability.copy}</p>
-                  <a href={capability.link}>{capability.linkText} <span>→</span></a>
+            <Fragment key={capability.label}>
+              <article className={`platform-capability ${capability.tone}${index % 2 ? " platform-capability-reverse platform-capability-alt" : ""}`}>
+                <div className="shell platform-capability-grid">
+                  <div className="platform-capability-copy reveal">
+                    <p className="platform-label">{capability.label}</p>
+                    <h3>{capability.title}</h3>
+                    <p>{capability.copy}</p>
+                    <a href={capability.link}>{capability.linkText} <span>→</span></a>
+                  </div>
+                  <div className="platform-visual-shell reveal">
+                    <PlatformVisual type={capability.visual} />
+                  </div>
                 </div>
-                <div className="platform-visual-shell reveal">
-                  <PlatformVisual type={capability.visual} />
-                </div>
-              </div>
-            </article>
+              </article>
+              {index === 2 ? <ShippingEcosystemSection /> : null}
+            </Fragment>
           ))}
         </div>
 
@@ -557,51 +611,6 @@ export default function PaxLogisticsHome() {
               </article>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="shipping-ecosystem" aria-labelledby="ecosystem-title">
-        <div className="ecosystem-wall" aria-hidden="true">
-          {ecosystemRows.map((row, rowIndex) => (
-            <div className="ecosystem-row" key={`ecosystem-row-${rowIndex}`}>
-              <div className="ecosystem-row-track">
-                {[0, 1].map((setIndex) => (
-                  <div className="ecosystem-row-set" key={`ecosystem-set-${rowIndex}-${setIndex}`}>
-                    {row.map(([code, label], tileIndex) => {
-                      const accent = ecosystemAccents[(rowIndex * 3 + tileIndex) % ecosystemAccents.length];
-                      const isAccent = (rowIndex + tileIndex) % 9 === 4;
-                      return (
-                        <div
-                          className={`ecosystem-tile${isAccent ? " ecosystem-tile--accent" : ""}`}
-                          style={{ "--tile-accent": accent }}
-                          key={`${setIndex}-${code}-${tileIndex}`}
-                        >
-                          <span>{code}</span>
-                          <strong>{label}</strong>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="ecosystem-shade" aria-hidden="true"></div>
-        <div className="shell ecosystem-content">
-          <p className="eyebrow light">One coordinated network</p>
-          <h2 id="ecosystem-title">
-            Your entire shipping journey.
-            <span>All in one place.</span>
-          </h2>
-          <p>
-            From booking and doorstep pickup to hub movement, delivery and returns,
-            Pax keeps every important stage connected through one local logistics team.
-          </p>
-          <a className="ecosystem-cta" href="/services">
-            <span>Explore shipping services</span>
-            <i aria-hidden="true">→</i>
-          </a>
         </div>
       </section>
 

@@ -1343,7 +1343,7 @@ h3 {
   padding-block: 82px;
 }
 
-.platform-capability:nth-child(even) {
+.platform-capability-alt {
   background: #faf9f7;
 }
 
