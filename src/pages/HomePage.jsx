@@ -135,7 +135,7 @@ export default function PaxLogisticsHome() {
           <div className="hero-product-collage" aria-label="Pax Logistics shipment experience">
             <div className="hero-colour-block"></div>
             <div className="hero-image-card">
-              <img src="/assets/pax-last-mile-delivery.png" alt="Courier delivering a parcel in Hyderabad" />
+              <img src="/assets/pax-real-courier.jpg" alt="Courier loading parcels into a delivery van" />
               <span>Last-mile, handled.</span>
             </div>
             <div className="hero-track-ui">

@@ -5,3 +5,6 @@ public/
 next-env.d.ts
 *.tgz
 .DS_Store
+.openai/
+.env
+.env.*

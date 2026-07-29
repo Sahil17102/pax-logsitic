@@ -1,25 +1,22 @@
 {
   "name": "pax-logistics",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "predev": "node scripts/prepare-public.mjs",
-    "dev": "vinext dev",
+    "dev": "vite",
     "prebuild": "node scripts/prepare-public.mjs",
-    "build": "vinext build",
-    "postbuild": "node scripts/prepare-hosting.mjs",
-    "start": "vinext start"
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-server-dom-webpack": "^19.2.8",
-    "vinext": "^0.1.8"
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.4",
-    "@vitejs/plugin-rsc": "^0.5.32",
     "vite": "^8.1.5"
   }
 }
