@@ -4038,124 +4038,253 @@ h3 {
 
 .rate-hero-visual {
   display: block;
-  background: var(--navy);
+  background:
+    radial-gradient(circle at 82% 22%, rgba(255, 200, 61, 0.2), transparent 24%),
+    linear-gradient(145deg, #17324a, #102538);
 }
 
-.rate-hero-photo,
-.rate-photo-shade {
+.rate-map-grid {
   position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(145deg, #000, transparent 90%);
+}
+
+.rate-map-heading {
+  position: absolute;
+  z-index: 3;
+  top: 34px;
+  left: 36px;
+  display: grid;
+  gap: 7px;
+  color: #fff;
+}
+
+.rate-map-heading small {
+  color: var(--yellow);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.rate-map-heading strong {
+  font-size: 1.2rem;
+  letter-spacing: -0.035em;
+}
+
+.rate-map-line {
+  position: absolute;
+  z-index: 1;
   inset: 0;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
-.rate-hero-photo {
-  object-fit: cover;
-  object-position: 68% center;
+.rate-map-line path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
-.rate-photo-shade {
-  z-index: 1;
-  background:
-    linear-gradient(180deg, rgba(9, 27, 41, 0.08) 36%, rgba(9, 27, 41, 0.92) 100%),
-    linear-gradient(90deg, rgba(9, 27, 41, 0.18), transparent 65%);
+.rate-map-rail {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 14;
 }
 
-.rate-photo-status {
+.rate-map-dash {
+  animation: route-flow 10s infinite linear;
+  stroke: var(--yellow);
+  stroke-dasharray: 6 14;
+  stroke-width: 3;
+}
+
+@keyframes route-flow {
+  to {
+    stroke-dashoffset: -200;
+  }
+}
+
+.rate-map-stop {
   position: absolute;
-  z-index: 2;
-  top: 26px;
-  left: 26px;
-  display: inline-flex;
+  z-index: 4;
+  display: flex;
   align-items: center;
-  gap: 9px;
-  border-radius: 99px;
-  background: var(--yellow);
-  box-shadow: 0 12px 30px rgba(10, 28, 41, 0.18);
-  padding: 11px 15px;
-  color: var(--navy);
-  font-size: 0.64rem;
-  font-weight: 850;
+  gap: 13px;
+  color: #fff;
 }
 
-.rate-photo-status i {
-  width: 8px;
-  height: 8px;
+.rate-map-stop > i {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 6px solid var(--yellow);
   border-radius: 50%;
-  background: var(--coral-dark);
-  box-shadow: 0 0 0 4px rgba(255, 77, 88, 0.17);
+  background: var(--navy);
+  box-shadow: 0 0 0 7px rgba(255, 200, 61, 0.14);
 }
 
-.rate-photo-caption {
+.rate-map-stop > i::after {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  width: 1px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.28);
+  content: "";
+}
+
+.rate-map-stop > span {
+  display: grid;
+  gap: 2px;
+}
+
+.rate-map-stop small {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.5rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.rate-map-stop strong {
+  color: #fff;
+  font-size: 1.38rem;
+}
+
+.rate-map-stop b {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.59rem;
+  font-weight: 600;
+}
+
+.rate-map-start {
+  bottom: 100px;
+  left: 40px;
+}
+
+.rate-map-end {
+  top: 94px;
+  right: 34px;
+}
+
+.rate-map-end > i {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 7px rgba(255, 77, 88, 0.14);
+}
+
+.rate-map-van {
+  position: absolute;
+  z-index: 5;
+  top: 46%;
+  left: 49%;
+  display: grid;
+  width: 92px;
+  height: 68px;
+  place-items: center;
+  transform: translate(-50%, -50%) rotate(-7deg);
+  border-radius: 20px;
+  background: var(--yellow);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28);
+  animation: van-float 3.2s ease-in-out infinite;
+}
+
+.rate-map-van svg {
+  width: 67px;
+  fill: var(--navy);
+}
+
+.rate-map-van .rate-map-window {
+  fill: #fff;
+  opacity: 0.9;
+}
+
+@keyframes van-float {
+  50% {
+    transform: translate(-50%, calc(-50% - 7px)) rotate(-4deg);
+  }
+}
+
+.rate-map-parcels {
   position: absolute;
   z-index: 2;
+  right: 45px;
+  bottom: 110px;
+  width: 82px;
+  height: 72px;
+}
+
+.rate-map-parcels i {
+  position: absolute;
+  display: block;
+  width: 42px;
+  height: 35px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #c78b4d;
+  box-shadow: inset 0 8px 0 rgba(255, 255, 255, 0.1);
+}
+
+.rate-map-parcels i:nth-child(1) {
   right: 0;
   bottom: 0;
-  left: 0;
-  padding: 28px 30px 30px;
-  color: #fff;
 }
 
-.rate-photo-caption > small {
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 0.57rem;
-  font-weight: 850;
-  letter-spacing: 0.1em;
+.rate-map-parcels i:nth-child(2) {
+  right: 37px;
+  bottom: 0;
 }
 
-.rate-photo-route {
+.rate-map-parcels i:nth-child(3) {
+  right: 18px;
+  bottom: 34px;
+}
+
+.rate-map-summary {
+  position: absolute;
+  z-index: 6;
+  right: 28px;
+  bottom: 24px;
+  left: 28px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 16px;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 20px;
   align-items: center;
-  margin: 13px 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 14px 17px;
+  backdrop-filter: blur(12px);
 }
 
-.rate-photo-route > span {
+.rate-map-summary > span {
   display: grid;
-  gap: 3px;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 0.62rem;
+  gap: 2px;
 }
 
-.rate-photo-route > span:last-child {
-  text-align: right;
-}
-
-.rate-photo-route b {
-  color: #fff;
-  font-size: clamp(1.25rem, 2vw, 1.75rem);
-  letter-spacing: 0.02em;
-}
-
-.rate-photo-route i {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  border-radius: 50%;
-  color: var(--yellow);
-  font-size: 0.55rem;
-  font-style: normal;
-  font-weight: 900;
-}
-
-.rate-photo-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.rate-photo-tags span {
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.09);
-  padding: 7px 10px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.52rem;
+.rate-map-summary small {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 0.47rem;
   font-weight: 850;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+}
+
+.rate-map-summary strong {
+  color: #fff;
+  font-size: 0.72rem;
+}
+
+.rate-map-summary > b {
+  border-radius: 99px;
+  background: #bde7d8;
+  padding: 8px 11px;
+  color: var(--navy);
+  font-size: 0.53rem;
+  letter-spacing: 0.05em;
 }
 
 .tool-window {
@@ -5700,32 +5829,58 @@ h3 {
     min-height: 380px;
   }
 
-  .rate-hero-photo {
-    object-position: 71% center;
+  .rate-map-heading {
+    top: 24px;
+    left: 21px;
   }
 
-  .rate-photo-status {
-    top: 17px;
-    left: 17px;
-    padding: 9px 12px;
-    font-size: 0.56rem;
+  .rate-map-heading strong {
+    font-size: 1rem;
   }
 
-  .rate-photo-caption {
-    padding: 22px 18px;
-  }
-
-  .rate-photo-route {
+  .rate-map-stop {
     gap: 9px;
   }
 
-  .rate-photo-route i {
-    width: 31px;
-    height: 31px;
+  .rate-map-stop > i {
+    width: 18px;
+    height: 18px;
+    border-width: 5px;
   }
 
-  .rate-photo-route b {
+  .rate-map-stop strong {
     font-size: 1rem;
+  }
+
+  .rate-map-start {
+    bottom: 90px;
+    left: 20px;
+  }
+
+  .rate-map-end {
+    top: 88px;
+    right: 19px;
+  }
+
+  .rate-map-van {
+    width: 74px;
+    height: 58px;
+  }
+
+  .rate-map-van svg {
+    width: 56px;
+  }
+
+  .rate-map-parcels {
+    display: none;
+  }
+
+  .rate-map-summary {
+    right: 17px;
+    bottom: 17px;
+    left: 17px;
+    gap: 10px;
+    padding: 12px;
   }
 
   .tool-window {

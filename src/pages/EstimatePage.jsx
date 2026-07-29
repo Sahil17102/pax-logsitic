@@ -25,17 +25,26 @@ export default function EstimatePage() {
             </div>
           </div>
           <div className="tool-hero-visual rate-hero-visual" aria-hidden="true">
-            <img className="rate-hero-photo" src="/assets/pax-courier-hero.png" alt="" />
-            <div className="rate-photo-shade"></div>
-            <div className="rate-photo-status"><i></i><span>Route ready for pickup</span></div>
-            <div className="rate-photo-caption">
-              <small>PAX / DOMESTIC MOVEMENT</small>
-              <div className="rate-photo-route">
-                <span><b>500029</b> Hyderabad</span>
-                <i>TO</i>
-                <span><b>400001</b> Mumbai</span>
-              </div>
-              <div className="rate-photo-tags"><span>STANDARD</span><span>DOORSTEP</span><span>TRACKED</span></div>
+            <div className="rate-map-grid"></div>
+            <div className="rate-map-heading"><small>PAX / ROUTE DESK</small><strong>Domestic parcel movement</strong></div>
+            <svg className="rate-map-line" viewBox="0 0 600 430" preserveAspectRatio="none">
+              <path className="rate-map-rail" d="M72 334 C150 250 226 347 309 245 S458 110 536 105" />
+              <path className="rate-map-dash" d="M72 334 C150 250 226 347 309 245 S458 110 536 105" />
+            </svg>
+            <div className="rate-map-stop rate-map-start"><i></i><span><small>PICKUP</small><strong>500029</strong><b>Hyderabad</b></span></div>
+            <div className="rate-map-stop rate-map-end"><i></i><span><small>DELIVERY</small><strong>400001</strong><b>Mumbai</b></span></div>
+            <div className="rate-map-van">
+              <svg viewBox="0 0 92 52">
+                <path d="M7 13h48v27H7zM55 22h17l12 12v6H55z" />
+                <path d="M62 26h8l7 8H62z" className="rate-map-window" />
+                <circle cx="24" cy="42" r="7" /><circle cx="69" cy="42" r="7" />
+              </svg>
+            </div>
+            <div className="rate-map-parcels"><i></i><i></i><i></i></div>
+            <div className="rate-map-summary">
+              <span><small>SERVICE</small><strong>Standard</strong></span>
+              <span><small>PARCEL</small><strong>2 kg</strong></span>
+              <b>TRACKED</b>
             </div>
           </div>
         </div>
