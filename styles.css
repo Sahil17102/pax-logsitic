@@ -1250,8 +1250,7 @@ h3 {
 }
 
 .platform-intro h2,
-.platform-section-heading h2,
-.delivery-trust h2 {
+.platform-section-heading h2 {
   margin: 20px 0 28px;
   font-size: clamp(3rem, 4.7vw, 5rem);
   font-weight: 650;
@@ -1866,54 +1865,6 @@ h3 {
   height: 7px;
   border-radius: 50%;
   background: var(--purple);
-}
-
-.delivery-trust {
-  display: grid;
-  grid-template-columns: 0.9fr 1.1fr;
-  gap: clamp(60px, 8vw, 120px);
-  padding-block: 120px;
-}
-
-.delivery-trust h2 {
-  font-size: clamp(2.8rem, 4vw, 4.4rem);
-}
-
-.delivery-trust-copy > p:last-child {
-  max-width: 580px;
-  margin: 0;
-  color: #5c5964;
-  line-height: 1.75;
-}
-
-.delivery-trust-metrics {
-  display: grid;
-  gap: 12px;
-}
-
-.delivery-trust-metrics > div {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 24px;
-  align-items: center;
-  border-top: 1px solid #dddcd7;
-  padding: 23px 0;
-}
-
-.delivery-trust-metrics > div:last-child {
-  border-bottom: 1px solid #dddcd7;
-}
-
-.delivery-trust-metrics strong {
-  font-family: var(--display);
-  font-size: 3rem;
-  letter-spacing: -0.06em;
-}
-
-.delivery-trust-metrics span {
-  max-width: 330px;
-  color: #54515b;
-  line-height: 1.55;
 }
 
 .value-section {
@@ -3959,15 +3910,6 @@ h3 {
     padding: 30px;
   }
 
-  .delivery-trust {
-    grid-template-columns: 1fr;
-    gap: 50px;
-  }
-
-  .delivery-trust-copy {
-    max-width: 760px;
-  }
-
   .shipping-ecosystem,
   .ecosystem-content {
     min-height: 660px;
@@ -4206,23 +4148,6 @@ h3 {
 
   .platform-ui {
     padding: 24px;
-  }
-
-  .delivery-trust {
-    padding-block: 82px;
-  }
-
-  .delivery-trust h2 {
-    font-size: clamp(2.55rem, 9vw, 3.5rem);
-  }
-
-  .delivery-trust-metrics > div {
-    grid-template-columns: 78px 1fr;
-    gap: 18px;
-  }
-
-  .delivery-trust-metrics strong {
-    font-size: 2.4rem;
   }
 
   .shipping-ecosystem,

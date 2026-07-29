@@ -493,21 +493,6 @@ export default function PaxLogisticsHome() {
           ))}
         </div>
 
-        <div className="shell delivery-trust">
-          <div className="delivery-trust-copy reveal">
-            <p className="eyebrow">Clear delivery, lasting trust</p>
-            <h2>A better parcel experience keeps people informed.</h2>
-            <p>
-              Useful options before booking, visible handoffs during movement and direct support
-              when plans change help every shipment feel more dependable.
-            </p>
-          </div>
-          <div className="delivery-trust-metrics">
-            <div className="reveal"><strong>04</strong><span>clear journey stages from booking to delivery</span></div>
-            <div className="reveal"><strong>01</strong><span>local Hyderabad desk for direct assistance</span></div>
-            <div className="reveal"><strong>05</strong><span>connected workflows across the shipping journey</span></div>
-          </div>
-        </div>
       </section>
 
       <section className="section value-section">
