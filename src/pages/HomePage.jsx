@@ -614,18 +614,6 @@ export default function PaxLogisticsHome() {
         </div>
       </section>
 
-      <section className="final-cta section">
-        <div className="wide-shell final-cta-card reveal">
-          <div className="cta-orbit orbit-one"></div>
-          <div className="cta-orbit orbit-two"></div>
-          <p className="eyebrow light">City · Domestic · Business · Freight</p>
-          <h2>Ready to move<br />the next parcel?</h2>
-          <div className="final-actions">
-            <a className="button button-white" href="/contact">Plan a pickup <span>→</span></a>
-            <a className="button button-outline-white" href="tel:+919494338206">Call the team</a>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
