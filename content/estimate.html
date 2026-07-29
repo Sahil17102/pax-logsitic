@@ -2,7 +2,7 @@
 <html lang="en">
   <body>
     <main id="main">
-      <section class="page-hero">
+      <section class="page-hero estimate-page-hero">
         <div class="shell narrow">
           <p class="eyebrow">Quick estimate</p>
           <h1>A useful starting price.</h1>
@@ -13,6 +13,7 @@
       <section class="section page-section">
         <div class="shell form-layout">
           <form class="form-card" id="rate-form" novalidate>
+            <div class="form-card-tag">Route details</div>
             <div class="field-row">
               <label>Pickup PIN code<input id="pickup-pin" inputmode="numeric" maxlength="6" placeholder="500029" required /></label>
               <label>Delivery PIN code<input id="delivery-pin" inputmode="numeric" maxlength="6" placeholder="400001" required /></label>
@@ -28,7 +29,8 @@
               <a id="rate-whatsapp" href="#" target="_blank" rel="noreferrer">Confirm on WhatsApp →</a>
             </div>
           </form>
-          <aside class="form-aside">
+          <aside class="form-aside estimate-aside">
+            <span class="aside-number">₹</span>
             <p class="mini-label">Before you confirm</p>
             <h2>This is an estimate, not a final quote.</h2>
             <p>Final pricing can vary based on dimensions, exact serviceability and shipment type.</p>

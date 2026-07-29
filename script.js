@@ -7,8 +7,7 @@ if (year) year.textContent = new Date().getFullYear();
 
 const cleanPath = window.location.pathname.replace(/\/$/, "") || "/";
 document.querySelectorAll("[data-nav]").forEach((link) => {
-  const target = link.dataset.nav;
-  link.classList.toggle("is-active", target === cleanPath);
+  link.classList.toggle("is-active", link.dataset.nav === cleanPath);
 });
 
 const setMenu = (open) => {
@@ -28,11 +27,72 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") setMenu(false);
 });
 
+const revealItems = document.querySelectorAll(".reveal");
+
+if ("IntersectionObserver" in window) {
+  const revealObserver = new IntersectionObserver(
+    (entries, observer) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-visible");
+        observer.unobserve(entry.target);
+      });
+    },
+    { rootMargin: "0px 0px -8% 0px", threshold: 0.08 },
+  );
+
+  revealItems.forEach((item, index) => {
+    item.style.transitionDelay = `${Math.min(index % 4, 3) * 70}ms`;
+    revealObserver.observe(item);
+  });
+} else {
+  revealItems.forEach((item) => item.classList.add("is-visible"));
+}
+
 document.querySelectorAll('input[inputmode="numeric"]').forEach((input) => {
   input.addEventListener("input", () => {
     input.value = input.value.replace(/\D/g, "").slice(0, input.maxLength || 6);
   });
 });
+
+document.querySelectorAll(".faq-item").forEach((item) => {
+  const button = item.querySelector("button");
+
+  button?.addEventListener("click", () => {
+    const willOpen = !item.classList.contains("is-open");
+
+    document.querySelectorAll(".faq-item.is-open").forEach((openItem) => {
+      openItem.classList.remove("is-open");
+      openItem.querySelector("button")?.setAttribute("aria-expanded", "false");
+    });
+
+    item.classList.toggle("is-open", willOpen);
+    button.setAttribute("aria-expanded", String(willOpen));
+  });
+});
+
+const homeRateForm = document.querySelector("#home-rate-form");
+
+if (homeRateForm) {
+  const pickupInput = document.querySelector("#home-pickup-pin");
+  const deliveryInput = document.querySelector("#home-delivery-pin");
+  const homeRateError = document.querySelector("#home-rate-error");
+
+  homeRateForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const pickup = pickupInput.value.trim();
+    const delivery = deliveryInput.value.trim();
+    const validPin = (value) => /^[1-9]\d{5}$/.test(value);
+
+    if (!validPin(pickup) || !validPin(delivery)) {
+      homeRateError.textContent = "Please enter two valid 6-digit Indian PIN codes.";
+      return;
+    }
+
+    homeRateError.textContent = "";
+    window.location.href = `/estimate?pickup=${encodeURIComponent(pickup)}&delivery=${encodeURIComponent(delivery)}`;
+  });
+}
 
 const rateForm = document.querySelector("#rate-form");
 
@@ -42,12 +102,20 @@ if (rateForm) {
   const rateValue = document.querySelector("#rate-value");
   const rateRoute = document.querySelector("#rate-route");
   const rateWhatsapp = document.querySelector("#rate-whatsapp");
+  const pickupInput = document.querySelector("#pickup-pin");
+  const deliveryInput = document.querySelector("#delivery-pin");
+  const query = new URLSearchParams(window.location.search);
+  const queryPickup = query.get("pickup") || "";
+  const queryDelivery = query.get("delivery") || "";
+
+  if (/^[1-9]\d{5}$/.test(queryPickup)) pickupInput.value = queryPickup;
+  if (/^[1-9]\d{5}$/.test(queryDelivery)) deliveryInput.value = queryDelivery;
 
   rateForm.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    const pickup = document.querySelector("#pickup-pin").value.trim();
-    const delivery = document.querySelector("#delivery-pin").value.trim();
+    const pickup = pickupInput.value.trim();
+    const delivery = deliveryInput.value.trim();
     const weight = Number(document.querySelector("#weight").value);
     const speed = document.querySelector("#speed").value;
     const validPin = (value) => /^[1-9]\d{5}$/.test(value);
