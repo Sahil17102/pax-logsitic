@@ -1272,6 +1272,14 @@ h3 {
   flex-direction: column;
   border-radius: 27px;
   padding: 30px;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.value-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 22px 45px rgba(28, 35, 32, 0.1);
 }
 
 .value-pink {
@@ -1290,10 +1298,47 @@ h3 {
   background: #ffd6b6;
 }
 
-.value-card > span {
+.value-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: auto;
+}
+
+.value-card-top > span {
+  padding-top: 4px;
   font-size: 0.65rem;
   font-weight: 800;
+}
+
+.value-card-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgba(23, 23, 23, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.38);
+  transition: transform 0.25s ease;
+}
+
+.value-card:hover .value-card-icon {
+  transform: rotate(-5deg) scale(1.04);
+}
+
+.value-card-icon svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.value-card-copy {
+  max-width: 340px;
 }
 
 .value-card h3 {

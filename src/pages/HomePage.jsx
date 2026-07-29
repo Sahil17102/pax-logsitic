@@ -41,10 +41,10 @@ const services = [
 ];
 
 const values = [
-  ["value-pink", "01", "Talk to a person", "Call or email a Hyderabad-based contact when the shipment needs attention."],
-  ["value-blue", "02", "Start with clarity", "See a useful indicative range before you confirm the final service."],
-  ["value-mint", "03", "Know the stage", "A simple tracking journey keeps each major handoff understandable."],
-  ["value-orange", "04", "Scale the support", "Move from one parcel to recurring business dispatch assistance."],
+  ["value-pink", "01", "person", "Talk to a person", "Call or email a Hyderabad-based contact when the shipment needs attention."],
+  ["value-blue", "02", "estimate", "Start with clarity", "See a useful indicative range before you confirm the final service."],
+  ["value-mint", "03", "tracking", "Know the stage", "A simple tracking journey keeps each major handoff understandable."],
+  ["value-orange", "04", "growth", "Scale the support", "Move from one parcel to recurring business dispatch assistance."],
 ];
 
 const faqs = [
@@ -94,6 +94,48 @@ const ecosystemRows = Array.from({ length: 6 }, (_, rowIndex) =>
 );
 
 const ecosystemAccents = ["#ffca3a", "#ff5964", "#6758e8", "#80aec7", "#77bda6", "#ed8b4b"];
+
+function ValueIcon({ type }) {
+  if (type === "person") {
+    return (
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="11" r="5"></circle>
+        <path d="M7.5 27c.8-5 3.7-7.5 8.5-7.5s7.7 2.5 8.5 7.5"></path>
+        <path d="M25 10.5a9.8 9.8 0 0 1 0 7"></path>
+        <path d="M26 17.5h-3"></path>
+      </svg>
+    );
+  }
+
+  if (type === "estimate") {
+    return (
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M8 5h16v22H8z"></path>
+        <path d="M12 11h8M12 16h3M12 21h3"></path>
+        <path d="m19 20 2 2 4-5"></path>
+      </svg>
+    );
+  }
+
+  if (type === "tracking") {
+    return (
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="m7 10 9-5 9 5-9 5z"></path>
+        <path d="M7 10v11l9 6 9-6V10M16 15v12"></path>
+        <path d="M4 7h4M3 12h3M4 17h2"></path>
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M6 25h20"></path>
+      <path d="M8 22v-5h5v5M14 22v-9h5v9M20 22V8h5v14"></path>
+      <path d="m8 11 6-5 5 3 7-6"></path>
+      <path d="M21 3h5v5"></path>
+    </svg>
+  );
+}
 
 function ServiceVisual({ service }) {
   if (service.visual === "photo") {
@@ -278,9 +320,16 @@ export default function PaxLogisticsHome() {
             <p>Useful choices, direct contact and no unnecessary complexity.</p>
           </div>
           <div className="value-cards">
-            {values.map(([tone, number, title, copy]) => (
+            {values.map(([tone, number, icon, title, copy]) => (
               <article className={`value-card ${tone} reveal`} key={number}>
-                <span>{number}</span><h3>{title}</h3><p>{copy}</p>
+                <div className="value-card-top">
+                  <span>{number}</span>
+                  <div className="value-card-icon"><ValueIcon type={icon} /></div>
+                </div>
+                <div className="value-card-copy">
+                  <h3>{title}</h3>
+                  <p>{copy}</p>
+                </div>
               </article>
             ))}
           </div>
