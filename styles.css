@@ -150,7 +150,7 @@ svg {
   left: 50%;
   width: 100%;
   max-width: none;
-  transform: translate(-50%, -50%) scale(1.18);
+  transform: translate(-50%, -50%) scale(1.03);
 }
 
 .brand-box {
@@ -2911,7 +2911,7 @@ h3 {
 
 .footer-brand .brand-logo {
   width: 210px;
-  height: 70px;
+  height: 76px;
 }
 
 .footer-brand .brand-box {
