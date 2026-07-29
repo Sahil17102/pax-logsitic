@@ -1588,38 +1588,57 @@ h3 {
 .faq-item:nth-child(n + 3) {
   border-bottom: 0;
   border-radius: 19px;
-  background:
-    radial-gradient(circle at 92% 10%, rgba(255, 200, 61, 0.13), transparent 27%),
-    linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
   padding-inline: 22px;
-  color: #fff;
 }
 
 .faq-item:nth-child(3) {
   margin-top: 14px;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255, 255, 255, 0.32), transparent 28%),
+    linear-gradient(135deg, #f3d77c 0%, #e9bd4f 100%);
+  color: var(--ink);
 }
 
 .faq-item:nth-child(4) {
   margin-top: 10px;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255, 255, 255, 0.18), transparent 28%),
+    linear-gradient(135deg, #df7a6e 0%, #c95f55 100%);
+  color: #fff;
 }
 
-.faq-item:nth-child(n + 3) > button {
+.faq-item:nth-child(3) > button {
+  color: var(--ink);
+}
+
+.faq-item:nth-child(4) > button {
   color: #fff;
 }
 
 .faq-item:nth-child(n + 3) > button i {
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.faq-item:nth-child(3) > button i {
+  color: var(--ink);
+}
+
+.faq-item:nth-child(4) > button i {
   color: #fff;
 }
 
 .faq-item:nth-child(n + 3) > button[aria-expanded="true"] i {
-  border-color: var(--yellow);
-  background: var(--yellow);
+  border-color: #fff;
+  background: #fff;
   color: var(--ink);
 }
 
-.faq-item:nth-child(n + 3) > div > p {
+.faq-item:nth-child(3) > div > p {
+  color: rgba(23, 23, 23, 0.72);
+}
+
+.faq-item:nth-child(4) > div > p {
   color: rgba(255, 255, 255, 0.72);
 }
 
