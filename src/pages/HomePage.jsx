@@ -287,25 +287,6 @@ export default function PaxLogisticsHome() {
         </div>
       </section>
 
-      <section className="section home-contact-section">
-        <div className="shell home-contact-grid">
-          <div className="home-contact-intro reveal">
-            <p className="eyebrow light">Pax Logistics · Hyderabad</p>
-            <h2>All the details you need.</h2>
-            <p>Call, email or visit the Himayat Nagar shipping desk for your next parcel or recurring dispatch requirement.</p>
-          </div>
-          <div className="home-contact-details reveal">
-            <a href="tel:+919494338206"><small>Phone</small><strong>+91 94943 38206</strong><span>→</span></a>
-            <a href="mailto:Saipratham650@gmail.com"><small>Email</small><strong>Saipratham650@gmail.com</strong><span>→</span></a>
-            <a href="https://maps.google.com/?q=House+Number+3-6-105+Flat+Number+105+Himayat+Nagar+Hyderabad+Telangana+500029" target="_blank" rel="noreferrer">
-              <small>Address</small>
-              <strong>House No. 3-6-105, Flat No. 105, Himayat Nagar, Hyderabad, Telangana 500029, India</strong>
-              <span>↗</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
       <section className="final-cta section">
         <div className="wide-shell final-cta-card reveal">
           <div className="cta-orbit orbit-one"></div>

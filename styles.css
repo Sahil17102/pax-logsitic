@@ -2708,76 +2708,6 @@ h3 {
   letter-spacing: 0.16em;
 }
 
-.home-contact-section {
-  background: var(--green);
-  color: #fff;
-}
-
-.home-contact-grid {
-  display: grid;
-  grid-template-columns: 0.82fr 1.18fr;
-  gap: 80px;
-  align-items: start;
-}
-
-.home-contact-intro {
-  position: sticky;
-  top: 130px;
-}
-
-.home-contact-intro h2 {
-  max-width: 520px;
-}
-
-.home-contact-intro > p:last-child {
-  max-width: 520px;
-  margin-top: 25px;
-  color: rgba(255, 255, 255, 0.68);
-  line-height: 1.75;
-}
-
-.home-contact-details {
-  display: grid;
-  gap: 12px;
-}
-
-.home-contact-details > a {
-  display: grid;
-  grid-template-columns: 100px 1fr auto;
-  gap: 20px;
-  align-items: center;
-  border-radius: 18px;
-  background: #fff;
-  padding: 25px;
-  color: var(--ink);
-}
-
-.home-contact-details > a:nth-child(2) {
-  background: var(--yellow);
-}
-
-.home-contact-details > a:nth-child(3) {
-  background: var(--coral);
-  color: #fff;
-}
-
-.home-contact-details small {
-  font-size: 0.58rem;
-  font-weight: 850;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.home-contact-details strong {
-  font-family: var(--display);
-  font-size: clamp(1rem, 1.5vw, 1.35rem);
-  line-height: 1.4;
-}
-
-.home-contact-details > a > span {
-  font-size: 1.3rem;
-}
-
 .footer-contact {
   max-width: 380px;
   font-style: normal;
@@ -3166,7 +3096,6 @@ h3 {
   .value-grid,
   .estimate-band-grid,
   .faq-grid,
-  .home-contact-grid,
   .service-showcase-grid,
   .form-layout,
   .contact-layout {
@@ -3183,8 +3112,7 @@ h3 {
   }
 
   .value-heading,
-  .faq-heading,
-  .home-contact-intro {
+  .faq-heading {
     position: static;
     max-width: 720px;
   }
@@ -3317,14 +3245,6 @@ h3 {
     width: 82px;
     height: 82px;
     border-width: 5px;
-  }
-
-  .home-contact-details > a {
-    grid-template-columns: 1fr auto;
-  }
-
-  .home-contact-details small {
-    grid-column: 1 / -1;
   }
 
   .dimension-row {
@@ -3625,9 +3545,6 @@ h3 {
     width: 205px;
   }
 
-  .home-contact-details > a {
-    padding: 21px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
