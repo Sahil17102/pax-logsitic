@@ -218,7 +218,7 @@ export default function PaxLogisticsHome() {
             <a className="button button-white" href="/services">Explore services <span>→</span></a>
           </div>
           <div className="operations-photo reveal">
-            <img src="/assets/pax-warehouse-operations.png" alt="Parcel sorting team working inside a logistics hub" />
+            <img src="/assets/pax-real-warehouse.jpg" alt="Workers moving parcels through a real warehouse" />
             <div className="photo-overlay"></div>
             <div className="ops-metrics">
               <div><small>01</small><strong>One local desk</strong><span>Direct support</span></div>

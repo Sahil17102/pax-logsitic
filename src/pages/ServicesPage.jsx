@@ -24,7 +24,7 @@ export default function ServicesPage() {
       <section className="section service-showcase">
         <div className="shell service-showcase-grid">
           <div className="service-showcase-photo reveal">
-            <img src="/assets/pax-warehouse-operations.png" alt="Parcel sorting team coordinating shipments" />
+            <img src="/assets/pax-real-warehouse.jpg" alt="Workers moving parcels through a real warehouse" />
             <span>Local desk. Connected movement.</span>
           </div>
           <div className="service-showcase-copy reveal">
