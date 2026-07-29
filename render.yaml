@@ -1,9 +1,12 @@
 services:
   - type: web
-    name: pax-logistics
+    name: paxlogistic
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://pax-logistic.onrender.com
     routes:
       - type: rewrite
         source: /*

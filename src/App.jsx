@@ -7,6 +7,7 @@ import TrackPage from "./pages/TrackPage.jsx";
 import ContactPage from "./pages/ContactPage.jsx";
 import SignInPage from "./pages/SignInPage.jsx";
 import { usePageInteractions } from "./usePageInteractions.js";
+import { API_BASE_URL } from "./config.js";
 
 const navItems = [
   ["/", "Home"],
@@ -166,11 +167,11 @@ export default function App() {
   }, []);
 
   return (
-    <>
+    <div data-api-base={API_BASE_URL}>
       <a className="skip-link" href="#main">Skip to content</a>
       <Header pathname={location.pathname} />
       <SiteRoutes location={location} />
       <Footer />
-    </>
+    </div>
   );
 }
