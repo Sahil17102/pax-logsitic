@@ -48,8 +48,7 @@ function Header({ pathname }) {
     <header className="site-header">
       <div className="shell nav">
         <AppLink className="brand" to="/" aria-label="Pax Logistics home">
-          <span className="brand-box">P</span>
-          <span className="brand-words"><strong>Pax</strong><small>Logistics</small></span>
+          <span className="brand-logo"><img src="/assets/pax-logo.png" alt="PAX — Reaching Further" /></span>
         </AppLink>
         <nav className="desktop-nav" aria-label="Primary navigation">
           {navItems.map(([path, label]) => (
@@ -84,8 +83,7 @@ function Footer() {
       <div className="shell footer-grid">
         <div>
           <AppLink className="brand footer-brand" to="/">
-            <span className="brand-box">P</span>
-            <span className="brand-words"><strong>Pax</strong><small>Logistics</small></span>
+            <span className="brand-logo"><img src="/assets/pax-logo.png" alt="PAX — Reaching Further" /></span>
           </AppLink>
           <p>Clear, practical shipping support from Hyderabad.</p>
         </div>
