@@ -71,26 +71,18 @@ export default function RootLayout({ children }) {
               <a href="/track">Track</a>
               <a href="/contact">Contact</a>
             </div>
-            <div className="footer-contact">
+            <address className="footer-contact">
               <a href="tel:+919494338206">+91 94943 38206</a>
               <a href="mailto:Saipratham650@gmail.com">Saipratham650@gmail.com</a>
-              <span>Himayat Nagar, Hyderabad 500029</span>
-            </div>
+              <span>House No. 3-6-105, Flat No. 105</span>
+              <span>Himayat Nagar, Hyderabad, Telangana 500029, India</span>
+            </address>
           </div>
           <div className="shell footer-bottom">
             <span>© <span id="year"></span> Pax Logistics</span>
             <span>Hyderabad · Telangana · India</span>
           </div>
         </footer>
-        <a
-          className="whatsapp-link"
-          href="https://wa.me/919494338206?text=Hello%20Pax%20Logistics%2C%20I%20need%20help%20with%20a%20shipment."
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Chat with Pax Logistics on WhatsApp"
-        >
-          <span>WA</span> WhatsApp
-        </a>
         <script src="/script.js" defer />
       </body>
     </html>
