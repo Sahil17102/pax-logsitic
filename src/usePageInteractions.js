@@ -41,7 +41,7 @@ export function usePageInteractions(location, navigate) {
         return;
       }
       error.textContent = "";
-      navigate(`/estimate?pickup=${encodeURIComponent(pickup)}&delivery=${encodeURIComponent(delivery)}`);
+      navigate(`/rate-calculator?pickup=${encodeURIComponent(pickup)}&delivery=${encodeURIComponent(delivery)}`);
     });
 
     const rateForm = document.querySelector("#rate-form");
@@ -114,6 +114,50 @@ export function usePageInteractions(location, navigate) {
         showTracking("PAX-260729");
       });
     }
+
+    const weightForm = document.querySelector("#weight-form");
+    listen(weightForm, "submit", (event) => {
+      event.preventDefault();
+      const actual = Number(document.querySelector("#actual-weight")?.value);
+      const length = Number(document.querySelector("#parcel-length")?.value);
+      const width = Number(document.querySelector("#parcel-width")?.value);
+      const height = Number(document.querySelector("#parcel-height")?.value);
+      const divisor = Number(document.querySelector("#weight-divisor")?.value);
+      const error = document.querySelector("#weight-error");
+      const result = document.querySelector("#weight-result");
+
+      error.textContent = "";
+      result.classList.remove("is-visible");
+      if (![actual, length, width, height, divisor].every((value) => Number.isFinite(value) && value > 0)) {
+        error.textContent = "Please enter valid weight and parcel dimensions.";
+        return;
+      }
+
+      const volumetric = (length * width * height) / divisor;
+      const chargeable = Math.max(actual, volumetric);
+      document.querySelector("#actual-result").textContent = `${actual.toFixed(2)} kg`;
+      document.querySelector("#volumetric-result").textContent = `${volumetric.toFixed(2)} kg`;
+      document.querySelector("#chargeable-result").textContent = `${chargeable.toFixed(2)} kg`;
+      result.classList.add("is-visible");
+    });
+
+    const signInForm = document.querySelector("#signin-form");
+    listen(signInForm, "submit", (event) => {
+      event.preventDefault();
+      const email = document.querySelector("#signin-email")?.value.trim() || "";
+      const password = document.querySelector("#signin-password")?.value || "";
+      const error = document.querySelector("#signin-error");
+      const status = document.querySelector("#signin-status");
+
+      error.textContent = "";
+      status.textContent = "";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
+        error.textContent = "Enter a valid email and a password of at least 6 characters.";
+        return;
+      }
+
+      status.textContent = "Account interface is ready. Connect your authentication service to enable secure customer sign-in.";
+    });
 
     const contactForm = document.querySelector("#contact-form");
     listen(contactForm, "submit", (event) => {

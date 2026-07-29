@@ -25,7 +25,7 @@ const services = [
     icon: "₹",
     title: "Clear estimate",
     description: "Start with route, weight and speed before confirming the final service.",
-    link: "/estimate",
+    link: "/rate-calculator",
     linkText: "Check an estimate",
     visual: "estimate",
   },
@@ -122,7 +122,7 @@ export default function PaxLogisticsHome() {
             <h1>Every parcel.<br /><em>One clear journey.</em></h1>
             <p className="lead">City pickups, domestic shipping and business dispatch—coordinated by one accessible Hyderabad team.</p>
             <div className="hero-actions">
-              <a className="button button-coral" href="/estimate">Get an estimate <span>→</span></a>
+              <a className="button button-coral" href="/rate-calculator">Get an estimate <span>→</span></a>
               <a className="button button-cream" href="/track">Track shipment</a>
             </div>
             <div className="hero-trust">

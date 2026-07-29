@@ -1,6 +1,6 @@
 const serviceRows = [
   ["service-coral", "01", "Local movement", "City courier", "Documents and parcels moved across Hyderabad with coordinated pickup and direct support.", "/contact", "Plan a pickup"],
-  ["service-yellow", "02", "Across India", "Domestic shipping", "Intercity parcel movement with standard and express preferences based on the shipment.", "/estimate", "Get an estimate"],
+  ["service-yellow", "02", "Across India", "Domestic shipping", "Intercity parcel movement with standard and express preferences based on the shipment.", "/rate-calculator", "Get an estimate"],
   ["service-green", "03", "For growing teams", "Business dispatch", "Recurring pickup and dispatch assistance for local sellers, offices and small businesses.", "/contact", "Discuss your volume"],
   ["service-purple", "04", "Heavier consignments", "Freight support", "Help coordinating commercial consignments when the parcel needs more planning than a standard courier.", "tel:+919494338206", "Call the team"],
 ];

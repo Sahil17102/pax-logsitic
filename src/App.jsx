@@ -2,14 +2,24 @@ import { useEffect, useState } from "react";
 import HomePage from "./pages/HomePage.jsx";
 import ServicesPage from "./pages/ServicesPage.jsx";
 import EstimatePage from "./pages/EstimatePage.jsx";
+import WeightCalculatorPage from "./pages/WeightCalculatorPage.jsx";
 import TrackPage from "./pages/TrackPage.jsx";
 import ContactPage from "./pages/ContactPage.jsx";
+import SignInPage from "./pages/SignInPage.jsx";
 import { usePageInteractions } from "./usePageInteractions.js";
 
 const navItems = [
   ["/", "Home"],
+  ["/rate-calculator", "Rate Calculator"],
+  ["/weight-calculator", "Weight Calculator"],
+  ["/track", "Track"],
+  ["/sign-in", "Sign In"],
+];
+
+const footerItems = [
   ["/services", "Services"],
-  ["/estimate", "Estimate"],
+  ["/rate-calculator", "Rate Calculator"],
+  ["/weight-calculator", "Weight Calculator"],
   ["/track", "Track"],
   ["/contact", "Contact"],
 ];
@@ -52,13 +62,15 @@ function Header({ pathname }) {
         </AppLink>
         <nav className="desktop-nav" aria-label="Primary navigation">
           {navItems.map(([path, label]) => (
-            <AppLink key={path} to={path} className={({ isActive }) => isActive ? "is-active" : undefined}>{label}</AppLink>
+            <AppLink
+              key={path}
+              to={path}
+              className={({ isActive }) => `${isActive ? "is-active" : ""}${path === "/sign-in" ? " nav-signin" : ""}`.trim()}
+            >
+              {label}
+            </AppLink>
           ))}
         </nav>
-        <a className="nav-phone" href="tel:+919494338206">
-          <small>Call us</small>
-          <strong>+91 94943 38206</strong>
-        </a>
         <button
           className="menu-toggle"
           type="button"
@@ -70,8 +82,9 @@ function Header({ pathname }) {
         </button>
       </div>
       <nav className={`mobile-nav${menuOpen ? " is-open" : ""}`} aria-label="Mobile navigation">
-        {navItems.map(([path, label]) => <AppLink key={path} to={path}>{label}</AppLink>)}
-        <a className="button button-dark" href="tel:+919494338206">Call +91 94943 38206</a>
+        {navItems.map(([path, label]) => (
+          <AppLink key={path} to={path} className={path === "/sign-in" ? "button button-dark" : undefined}>{label}</AppLink>
+        ))}
       </nav>
     </header>
   );
@@ -88,7 +101,7 @@ function Footer() {
           <p>Clear, practical shipping support from Hyderabad.</p>
         </div>
         <div className="footer-nav">
-          {navItems.slice(1).map(([path, label]) => <AppLink key={path} to={path}>{label}</AppLink>)}
+          {footerItems.map(([path, label]) => <AppLink key={path} to={path}>{label}</AppLink>)}
         </div>
         <address className="footer-contact">
           <a href="tel:+919494338206">+91 94943 38206</a>
@@ -113,9 +126,12 @@ function SiteRoutes({ location }) {
     const titles = {
       "/": "Pax Logistics — Courier & Shipping, Hyderabad",
       "/services": "Services — Pax Logistics",
-      "/estimate": "Shipping Estimate — Pax Logistics",
+      "/estimate": "Rate Calculator — Pax Logistics",
+      "/rate-calculator": "Rate Calculator — Pax Logistics",
+      "/weight-calculator": "Weight Calculator — Pax Logistics",
       "/track": "Track a Shipment — Pax Logistics",
       "/contact": "Contact — Pax Logistics",
+      "/sign-in": "Sign In — Pax Logistics",
     };
     document.title = titles[location.pathname] || titles["/"];
   }, [location.pathname]);
@@ -124,8 +140,11 @@ function SiteRoutes({ location }) {
     "/": <HomePage />,
     "/services": <ServicesPage />,
     "/estimate": <EstimatePage />,
+    "/rate-calculator": <EstimatePage />,
+    "/weight-calculator": <WeightCalculatorPage />,
     "/track": <TrackPage />,
     "/contact": <ContactPage />,
+    "/sign-in": <SignInPage />,
   };
 
   return pages[location.pathname] || <HomePage />;

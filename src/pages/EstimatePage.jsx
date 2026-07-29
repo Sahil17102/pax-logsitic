@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Shipping Estimate — Pax Logistics",
-  description: "Get an indicative Pax Logistics shipping estimate.",
+  title: "Rate Calculator — Pax Logistics",
+  description: "Calculate an indicative Pax Logistics shipping rate.",
 };
 
 export default function EstimatePage() {
@@ -8,9 +8,9 @@ export default function EstimatePage() {
     <main id="main">
       <section className="page-hero estimate-page-hero">
         <div className="shell narrow">
-          <p className="eyebrow">Quick estimate</p>
-          <h1>A useful starting price.</h1>
-          <p className="lead">Enter basic route and parcel details. We will show an indicative range that you can confirm with our team.</p>
+          <p className="eyebrow">Rate calculator</p>
+          <h1>Calculate a useful starting price.</h1>
+          <p className="lead">Enter route, weight and service details to see an indicative shipping range.</p>
         </div>
       </section>
 
