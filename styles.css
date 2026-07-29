@@ -13,6 +13,8 @@
   --blue: #6e8df5;
   --mint: #a6e5cf;
   --orange: #ff8b42;
+  --navy: #17324a;
+  --navy-dark: #102538;
   --radius: 28px;
   --shadow: 0 28px 75px rgba(18, 27, 24, 0.12);
 }
@@ -77,7 +79,7 @@ svg {
 }
 
 .section {
-  padding: 116px 0;
+  padding: 96px 0;
 }
 
 .sr-only {
@@ -437,7 +439,7 @@ h3 {
 
 .hero-copy h1 {
   margin-bottom: 27px;
-  font-size: clamp(4.6rem, 8vw, 8rem);
+  font-size: clamp(3.6rem, 5.6vw, 6.1rem);
   font-weight: 700;
   line-height: 0.88;
 }
@@ -641,7 +643,7 @@ h3 {
 .page-hero h1,
 .section h2 {
   margin-bottom: 0;
-  font-size: clamp(3rem, 5.8vw, 6rem);
+  font-size: clamp(2.6rem, 4.2vw, 4.6rem);
   font-weight: 650;
   line-height: 1.01;
 }
@@ -1146,19 +1148,21 @@ h3 {
 
 .operations-section {
   overflow: hidden;
-  background: var(--green-dark);
+  background:
+    radial-gradient(circle at 86% 8%, rgba(255, 200, 61, 0.15), transparent 28%),
+    linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
   color: #fff;
 }
 
 .operations-copy {
   display: grid;
-  max-width: 950px;
+  max-width: 850px;
   justify-items: start;
-  margin-bottom: 55px;
+  margin-bottom: 46px;
 }
 
 .operations-copy h2 {
-  max-width: 930px;
+  max-width: 820px;
 }
 
 .operations-copy > p:not(.eyebrow) {
@@ -1171,7 +1175,7 @@ h3 {
 
 .operations-photo {
   position: relative;
-  min-height: 620px;
+  min-height: 540px;
   overflow: hidden;
   border-radius: 34px;
 }
@@ -1187,7 +1191,7 @@ h3 {
 .photo-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 35%, rgba(5, 32, 27, 0.9) 100%);
+  background: linear-gradient(180deg, transparent 38%, rgba(8, 24, 38, 0.92) 100%);
 }
 
 .ops-metrics {
@@ -1200,7 +1204,7 @@ h3 {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 22px;
-  background: rgba(5, 40, 33, 0.72);
+  background: rgba(10, 31, 48, 0.78);
   backdrop-filter: blur(14px);
 }
 
@@ -1247,7 +1251,7 @@ h3 {
 }
 
 .value-heading h2 {
-  font-size: clamp(3rem, 5vw, 5.2rem);
+  font-size: clamp(2.5rem, 4vw, 4.3rem);
 }
 
 .value-heading > p:last-child {
@@ -1342,7 +1346,7 @@ h3 {
 }
 
 .band-copy h2 {
-  font-size: clamp(3rem, 5vw, 5.2rem);
+  font-size: clamp(2.5rem, 4vw, 4.3rem);
 }
 
 .band-copy > p:not(.eyebrow) {
@@ -1451,7 +1455,7 @@ h3 {
 }
 
 .faq-heading h2 {
-  font-size: clamp(3rem, 4.8vw, 4.8rem);
+  font-size: clamp(2.5rem, 3.8vw, 4.1rem);
 }
 
 .faq-heading > p:not(.eyebrow) {
@@ -1651,7 +1655,7 @@ h3 {
 .ecosystem-content h2 {
   max-width: 940px;
   margin: 20px 0 34px;
-  font-size: clamp(3.7rem, 6vw, 6.8rem);
+  font-size: clamp(3.2rem, 4.8vw, 5.4rem);
   font-weight: 580;
   letter-spacing: -0.065em;
   line-height: 0.92;
@@ -1733,7 +1737,7 @@ h3 {
 .final-cta-card h2 {
   position: relative;
   z-index: 2;
-  font-size: clamp(4rem, 7vw, 7rem);
+  font-size: clamp(3.2rem, 5.2vw, 5.6rem);
   line-height: 0.95;
 }
 
@@ -1832,7 +1836,7 @@ h3 {
 }
 
 .service-row h2 {
-  font-size: clamp(2.2rem, 3.7vw, 3.7rem);
+  font-size: clamp(2rem, 3vw, 3rem);
 }
 
 .service-row > div:last-child p {
@@ -1974,7 +1978,7 @@ h3 {
 
 .form-aside h2 {
   margin-bottom: 22px;
-  font-size: clamp(2.3rem, 3.8vw, 3.8rem);
+  font-size: clamp(2.1rem, 3vw, 3.1rem);
 }
 
 .form-aside > p:not(.mini-label) {
@@ -2364,7 +2368,7 @@ h3 {
 }
 
 .service-showcase-copy h2 {
-  font-size: clamp(2.6rem, 4vw, 4.4rem);
+  font-size: clamp(2.3rem, 3.2vw, 3.5rem);
 }
 
 .service-showcase-copy > p:not(.eyebrow) {
@@ -2560,8 +2564,8 @@ h3 {
   width: 45%;
   height: calc(100% - 70px);
   background:
-    radial-gradient(circle at 82% 14%, rgba(255, 255, 255, 0.4), transparent 30%),
-    linear-gradient(145deg, #dce4e8 0%, #bdcbd5 52%, #9fb1c0 100%);
+    radial-gradient(circle at 82% 14%, rgba(255, 255, 255, 0.38), transparent 30%),
+    linear-gradient(145deg, #f2dfd5 0%, #e8c5b5 52%, #d9aa98 100%);
   content: "";
 }
 
@@ -2569,11 +2573,11 @@ h3 {
   position: relative;
   z-index: 1;
   display: grid;
-  min-height: 720px;
+  min-height: 660px;
   grid-template-columns: 0.88fr 1.12fr;
   gap: clamp(45px, 6vw, 100px);
   align-items: center;
-  padding-block: 74px 116px;
+  padding-block: 66px 96px;
 }
 
 .product-hero-copy {
@@ -2598,9 +2602,9 @@ h3 {
 }
 
 .product-hero h1 {
-  max-width: 720px;
+  max-width: 620px;
   margin: 22px 0 27px;
-  font-size: clamp(4.3rem, 7.5vw, 7.8rem);
+  font-size: clamp(3.6rem, 5.2vw, 5.6rem);
   font-weight: 720;
   letter-spacing: -0.07em;
   line-height: 0.9;
@@ -3003,7 +3007,7 @@ h3 {
 .signin-copy h1 {
   max-width: 720px;
   margin: 24px 0 28px;
-  font-size: clamp(4rem, 7vw, 7.2rem);
+  font-size: clamp(3.4rem, 5vw, 5.4rem);
   letter-spacing: -0.065em;
   line-height: 0.92;
 }
@@ -3065,7 +3069,7 @@ h3 {
 
 .signin-card h2 {
   margin: 9px 0 30px;
-  font-size: clamp(2.3rem, 3.5vw, 3.7rem);
+  font-size: clamp(2.1rem, 3vw, 3.1rem);
 }
 
 .signin-card > label {
@@ -3372,7 +3376,7 @@ h3 {
 
   .ecosystem-content h2 {
     margin-bottom: 25px;
-    font-size: clamp(3.25rem, 15vw, 4.9rem);
+    font-size: clamp(2.9rem, 11vw, 4.2rem);
   }
 
   .ecosystem-content > p:not(.eyebrow) {
@@ -3390,7 +3394,7 @@ h3 {
   }
 
   .section {
-    padding: 78px 0;
+    padding: 68px 0;
   }
 
   .page-hero {
@@ -3447,7 +3451,7 @@ h3 {
   }
 
   .product-hero h1 {
-    font-size: clamp(3.8rem, 15vw, 6.2rem);
+    font-size: clamp(3.1rem, 10vw, 4.4rem);
   }
 
   .hero-product-collage {
@@ -3511,7 +3515,7 @@ h3 {
   }
 
   .signin-copy h1 {
-    font-size: clamp(3.7rem, 15vw, 5.8rem);
+    font-size: clamp(3.1rem, 10vw, 4.4rem);
   }
 
   .hero-photo-wrap img {
@@ -3531,7 +3535,7 @@ h3 {
   }
 
   .hero-copy h1 {
-    font-size: clamp(4.1rem, 17vw, 5.6rem);
+    font-size: clamp(3.2rem, 11vw, 4.5rem);
   }
 
   .hero-copy .lead {
@@ -3564,7 +3568,7 @@ h3 {
   .operations-copy h2,
   .page-hero h1,
   .section h2 {
-    font-size: clamp(2.65rem, 12vw, 4rem);
+    font-size: clamp(2.35rem, 9vw, 3.4rem);
   }
 
   .colour-card-rail {
@@ -3594,7 +3598,7 @@ h3 {
   }
 
   .operations-photo {
-    min-height: 640px;
+    min-height: 520px;
   }
 
   .operations-photo > img {
@@ -3651,7 +3655,7 @@ h3 {
   }
 
   .final-cta-card h2 {
-    font-size: clamp(3.6rem, 15vw, 5rem);
+    font-size: clamp(3rem, 11vw, 4rem);
   }
 
   .final-actions {
@@ -3741,7 +3745,7 @@ h3 {
 
 @media (max-width: 480px) {
   .ecosystem-content h2 {
-    font-size: 3.15rem;
+    font-size: 2.7rem;
   }
 
   .ecosystem-cta {
@@ -3750,7 +3754,7 @@ h3 {
   }
 
   .product-hero h1 {
-    font-size: 3.55rem;
+    font-size: 2.9rem;
   }
 
   .hero-trust {
