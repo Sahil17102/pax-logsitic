@@ -42,6 +42,17 @@ const services = [
   },
 ];
 
+const courierBrands = [
+  ["Delhivery", "delhivery"],
+  ["Blue Dart", "blue-dart"],
+  ["DTDC", "dtdc"],
+  ["India Post", "india-post"],
+  ["DHL Express", "dhl"],
+  ["FedEx", "fedex"],
+  ["XpressBees", "xpressbees"],
+  ["Ecom Express", "ecom"],
+];
+
 const values = [
   ["value-pink", "01", "person", "Talk to a person", "Call or email a Hyderabad-based contact when the shipment needs attention."],
   ["value-blue", "02", "estimate", "Start with clarity", "See a useful indicative range before you confirm the final service."],
@@ -421,10 +432,11 @@ export default function PaxLogisticsHome() {
             <div className="hero-roundel">PAX<br /><small>LOGISTICS</small></div>
           </div>
         </div>
-        <div className="hero-marquee" aria-label="Pax Logistics services">
+        <div className="hero-marquee" aria-label="Courier network brands">
           <div className="marquee-track">
-            <span>City courier</span><i>✦</i><span>Domestic shipping</span><i>✦</i><span>Business dispatch</span><i>✦</i><span>Freight support</span><i>✦</i>
-            <span>City courier</span><i>✦</i><span>Domestic shipping</span><i>✦</i><span>Business dispatch</span><i>✦</i><span>Freight support</span><i>✦</i>
+            {[...courierBrands, ...courierBrands].map(([name, tone], index) => (
+              <span className={`carrier-name carrier-${tone}`} key={`${name}-${index}`}>{name}</span>
+            ))}
           </div>
         </div>
       </section>
