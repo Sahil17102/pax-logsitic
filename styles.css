@@ -2383,7 +2383,9 @@ h3 {
   right: 0;
   width: 45%;
   height: calc(100% - 70px);
-  background: var(--green);
+  background:
+    radial-gradient(circle at 82% 14%, rgba(255, 255, 255, 0.4), transparent 30%),
+    linear-gradient(145deg, #dce4e8 0%, #bdcbd5 52%, #9fb1c0 100%);
   content: "";
 }
 
