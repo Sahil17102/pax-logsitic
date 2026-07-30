@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useRef, useState } from "react";
 
 const services = [
   {
@@ -51,6 +51,54 @@ const courierBrands = [
   ["FedEx", "fedex"],
   ["XpressBees", "xpressbees"],
   ["Ecom Express", "ecom"],
+];
+
+const heroServices = [
+  {
+    id: "city",
+    label: "City express",
+    kicker: "Same-day Hyderabad",
+    shipment: "PAX-HYD-2048",
+    status: "Courier is heading to pickup",
+    origin: "Himayat Nagar",
+    destination: "HITEC City",
+    eta: "Today · by 6:30 PM",
+    progress: 42,
+    activeStep: 1,
+    cardLabel: "CITY EXPRESS",
+    cardValue: "Same day",
+    cardNote: "Doorstep pickup · Live updates",
+  },
+  {
+    id: "domestic",
+    label: "Domestic",
+    kicker: "Nationwide delivery",
+    shipment: "PAX-DOM-7319",
+    status: "Moving to destination hub",
+    origin: "Hyderabad",
+    destination: "Mumbai",
+    eta: "Tomorrow · by 8:00 PM",
+    progress: 72,
+    activeStep: 2,
+    cardLabel: "DOMESTIC EXPRESS",
+    cardValue: "1–2 days",
+    cardNote: "2 kg parcel · Priority movement",
+  },
+  {
+    id: "business",
+    label: "Business",
+    kicker: "Recurring dispatch",
+    shipment: "PAX-B2B-1086",
+    status: "18 shipments moving on schedule",
+    origin: "Your workspace",
+    destination: "Across India",
+    eta: "98% on-time this week",
+    progress: 88,
+    activeStep: 3,
+    cardLabel: "BUSINESS DISPATCH",
+    cardValue: "18 moving",
+    cardNote: "One desk · Multi-city support",
+  },
 ];
 
 const values = [
@@ -390,46 +438,100 @@ function ServiceVisual({ service }) {
 }
 
 export default function PaxLogisticsHome() {
+  const [activeHeroService, setActiveHeroService] = useState(heroServices[0]);
+  const heroVisualRef = useRef(null);
+
+  const handleHeroPointerMove = (event) => {
+    if (!heroVisualRef.current || event.pointerType === "touch") return;
+    const bounds = heroVisualRef.current.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
+    const y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
+    heroVisualRef.current.style.setProperty("--hero-x", x.toFixed(3));
+    heroVisualRef.current.style.setProperty("--hero-y", y.toFixed(3));
+  };
+
+  const resetHeroPointer = () => {
+    heroVisualRef.current?.style.setProperty("--hero-x", "0");
+    heroVisualRef.current?.style.setProperty("--hero-y", "0");
+  };
+
   return (
     <main id="main">
       <section className="product-hero">
+        <div className="hero-grid-pattern" aria-hidden="true"></div>
         <div className="shell product-hero-grid">
           <div className="product-hero-copy">
-            <p className="eyebrow"><span></span> Hyderabad courier & logistics</p>
-            <h1>Every parcel.<br /><em>One clear journey.</em></h1>
-            <p className="lead">City pickups, domestic shipping and business dispatch—coordinated by one accessible Hyderabad team.</p>
+            <p className="eyebrow"><span></span> Hyderabad's shipping partner</p>
+            <h1>Move anything.<br /><em>Know everything.</em></h1>
+            <p className="lead">From a single city pickup to nationwide business dispatch, Pax keeps every shipment moving—and every update clear.</p>
             <div className="hero-actions">
               <a className="button button-coral" href="/rate-calculator">Get an estimate <span>→</span></a>
-              <a className="button button-cream" href="/track">Track shipment</a>
+              <a className="button button-cream" href="/track"><span className="button-live-dot"></span> Track shipment</a>
             </div>
             <div className="hero-trust">
-              <span><i>01</i> Local support</span>
-              <span><i>02</i> Clear stages</span>
-              <span><i>03</i> Flexible service</span>
+              <span><strong>01</strong><i>Human support<br />from Hyderabad</i></span>
+              <span><strong>02</strong><i>Clear updates<br />at every stage</i></span>
+              <span><strong>03</strong><i>Flexible service<br />as you grow</i></span>
             </div>
           </div>
 
-          <div className="hero-product-collage" aria-label="Pax Logistics shipment experience">
+          <div
+            className="hero-product-collage"
+            aria-label="Interactive Pax Logistics shipment experience"
+            ref={heroVisualRef}
+            onPointerMove={handleHeroPointerMove}
+            onPointerLeave={resetHeroPointer}
+          >
             <div className="hero-colour-block"></div>
+            <div className="hero-mode-switcher" aria-label="Preview a shipping service">
+              {heroServices.map((service) => (
+                <button
+                  type="button"
+                  aria-pressed={activeHeroService.id === service.id}
+                  className={activeHeroService.id === service.id ? "is-active" : ""}
+                  key={service.id}
+                  onClick={() => setActiveHeroService(service)}
+                >
+                  {service.label}
+                </button>
+              ))}
+            </div>
             <div className="hero-image-card">
               <img src="/assets/pax-real-courier.jpg" alt="Courier loading parcels into a delivery van" />
-              <span>Last-mile, handled.</span>
+              <div className="hero-image-meta">
+                <span><i></i> Pickup team active</span>
+                <strong>{activeHeroService.kicker}</strong>
+              </div>
             </div>
-            <div className="hero-track-ui">
-              <div className="hero-ui-head"><span>PAX / TRACK</span><b>Live</b></div>
-              <p>Shipment PAX-260729</p>
-              <strong>Moving to delivery hub</strong>
+            <div className="hero-track-ui" key={`track-${activeHeroService.id}`} aria-live="polite">
+              <div className="hero-ui-head"><span>LIVE SHIPMENT</span><b><i></i> On schedule</b></div>
+              <p>{activeHeroService.shipment}</p>
+              <strong>{activeHeroService.status}</strong>
+              <div className="hero-route-names">
+                <span><small>FROM</small>{activeHeroService.origin}</span>
+                <i>→</i>
+                <span><small>TO</small>{activeHeroService.destination}</span>
+              </div>
               <div className="hero-ui-route">
-                <i className="done">✓</i><span></span><i className="done">✓</i><span></span><i className="active"></i><span></span><i></i>
+                {[0, 1, 2, 3].map((step, index) => (
+                  <Fragment key={step}>
+                    <i className={step < activeHeroService.activeStep ? "done" : step === activeHeroService.activeStep ? "active" : ""}>
+                      {step < activeHeroService.activeStep ? "✓" : ""}
+                    </i>
+                    {index < 3 && <span className={step < activeHeroService.activeStep ? "done" : ""}></span>}
+                  </Fragment>
+                ))}
               </div>
               <div className="hero-ui-labels"><small>Booked</small><small>Pickup</small><small>Transit</small><small>Delivery</small></div>
+              <div className="hero-eta"><span>ESTIMATED ARRIVAL</span><strong>{activeHeroService.eta}</strong></div>
             </div>
-            <div className="hero-route-card">
-              <small>INDICATIVE ROUTE</small>
-              <div><strong>500029</strong><span>→</span><strong>400001</strong></div>
-              <p>Standard · 2 kg</p>
+            <div className="hero-route-card" key={`route-${activeHeroService.id}`}>
+              <small>{activeHeroService.cardLabel}</small>
+              <div><strong>{activeHeroService.cardValue}</strong><span>↗</span></div>
+              <p>{activeHeroService.cardNote}</p>
+              <i className="hero-route-progress"><span style={{ width: `${activeHeroService.progress}%` }}></span></i>
             </div>
-            <div className="hero-roundel">PAX<br /><small>LOGISTICS</small></div>
+            <div className="hero-roundel"><span>PAX</span><small>REACHING<br />FURTHER</small></div>
           </div>
         </div>
         <div className="hero-marquee" aria-label="Courier network brands">
