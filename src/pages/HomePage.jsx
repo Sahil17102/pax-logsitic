@@ -384,6 +384,30 @@ export default function PaxLogisticsHome() {
       <section className="reference-hero">
         <div className="reference-hero-glow reference-glow-left" aria-hidden="true"></div>
         <div className="reference-hero-glow reference-glow-right" aria-hidden="true"></div>
+        <div className="reference-route-pattern" aria-hidden="true">
+          <svg viewBox="0 0 1440 650" preserveAspectRatio="none">
+            <defs>
+              <pattern id="hero-dot-grid" width="34" height="34" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1.35"></circle>
+              </pattern>
+            </defs>
+            <rect width="1440" height="650" fill="url(#hero-dot-grid)"></rect>
+            <g className="reference-route-lines">
+              <path d="M-80 490 C150 360 245 540 450 408 S760 245 985 356 1260 500 1510 315"></path>
+              <path d="M70 88 C270 210 365 135 535 205 S820 345 1070 198 1310 88 1500 172"></path>
+              <path d="M190 670 C280 520 390 515 510 560 S770 670 925 525 1170 418 1485 555"></path>
+            </g>
+            <g className="reference-route-nodes">
+              <circle cx="184" cy="428" r="6"></circle>
+              <circle cx="450" cy="408" r="6"></circle>
+              <circle cx="742" cy="276" r="6"></circle>
+              <circle cx="985" cy="356" r="6"></circle>
+              <circle cx="1250" cy="455" r="6"></circle>
+              <circle cx="535" cy="205" r="5"></circle>
+              <circle cx="1070" cy="198" r="5"></circle>
+            </g>
+          </svg>
+        </div>
 
         <div className="shell reference-hero-grid">
           <div className="reference-hero-copy">
