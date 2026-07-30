@@ -2797,3 +2797,93 @@ body {
     transform: translate3d(24px, 18px, 0) scale(1.06);
   }
 }
+
+.reference-route-pattern {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.reference-route-pattern svg {
+  width: 100%;
+  height: 100%;
+}
+
+.reference-route-pattern rect {
+  fill: rgba(70, 104, 190, 0.13);
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.28) 48%, rgba(0, 0, 0, 0.68));
+}
+
+.reference-route-lines {
+  fill: none;
+  stroke: rgba(69, 99, 181, 0.18);
+  stroke-width: 1.4;
+  stroke-dasharray: 8 12;
+  vector-effect: non-scaling-stroke;
+}
+
+.reference-route-lines path:nth-child(2) {
+  stroke: rgba(86, 145, 184, 0.17);
+  stroke-dasharray: 4 14;
+}
+
+.reference-route-lines path:nth-child(3) {
+  stroke: rgba(58, 82, 151, 0.11);
+}
+
+.reference-route-nodes {
+  fill: #fff;
+  stroke: rgba(52, 84, 209, 0.42);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.reference-route-nodes circle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reference-route-lines path {
+    animation: pax-route-flow 18s linear infinite;
+  }
+
+  .reference-route-lines path:nth-child(2) {
+    animation-duration: 23s;
+    animation-direction: reverse;
+  }
+
+  .reference-route-nodes circle {
+    animation: pax-node-pulse 3.6s ease-in-out infinite;
+  }
+
+  .reference-route-nodes circle:nth-child(2n) {
+    animation-delay: -1.8s;
+  }
+}
+
+@keyframes pax-route-flow {
+  to {
+    stroke-dashoffset: -240;
+  }
+}
+
+@keyframes pax-node-pulse {
+  50% {
+    transform: scale(1.45);
+    fill: #dce7ff;
+    stroke-opacity: 0.75;
+  }
+}
+
+@media (max-width: 850px) {
+  .reference-route-pattern {
+    opacity: 0.68;
+  }
+
+  .reference-route-pattern rect {
+    mask-image: linear-gradient(180deg, #000, rgba(0, 0, 0, 0.28) 70%, transparent);
+  }
+}
