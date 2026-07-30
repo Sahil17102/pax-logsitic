@@ -5,8 +5,8 @@ const services = [
     tone: "card-coral",
     icon: "↗",
     title: "City courier",
-    image: "/assets/pax-last-mile-delivery.png",
-    imageAlt: "Pax last-mile courier in Hyderabad",
+    image: "/assets/pax-local-vans-v2.jpg",
+    imageAlt: "Pax local delivery vans at a Hyderabad dispatch hub",
     tag: "Hyderabad pickup",
     description: "Documents and parcels across the city, coordinated through one local desk.",
     link: "/contact",
@@ -107,7 +107,7 @@ const faqs = [
 const ecosystemItems = [
   ["SD", "Same-day"],
   ["EX", "Express parcel"],
-  ["AC", "Air cargo"],
+  ["CC", "City cargo"],
   ["RF", "Road freight"],
   ["WH", "Warehousing"],
   ["LM", "Last mile"],
@@ -143,7 +143,7 @@ const ecosystemRows = Array.from({ length: 6 }, (_, rowIndex) =>
   )
 );
 
-const ecosystemAccents = ["#ffca3a", "#ff5964", "#6758e8", "#80aec7", "#77bda6", "#ed8b4b"];
+const ecosystemAccents = ["#dfe8ff", "#cbd8ff", "#b7c9ff", "#a7d8ee", "#d7e3f7", "#8faaf4"];
 
 function ValueIcon({ type }) {
   if (type === "person") {
@@ -387,14 +387,14 @@ export default function PaxLogisticsHome() {
 
         <div className="shell reference-hero-grid">
           <div className="reference-hero-copy">
-            <p className="reference-kicker"><span>✦</span> Pax logistics solutions</p>
+            <p className="reference-kicker"><span>✦</span> Hyderabad courier network</p>
             <h1>
-              Smart Logistics
-              <span>For A Smarter World</span>
+              Smarter Deliveries.
+              <span>Built For India.</span>
             </h1>
             <p>
-              Integrated logistics and technology solutions that ensure efficiency,
-              transparency and growth for every shipment.
+              Same-day Hyderabad delivery, dependable intercity shipping and clear
+              tracking—coordinated through one responsive local team.
             </p>
             <div className="reference-actions">
               <a className="button reference-primary" href="/services">
@@ -410,25 +410,18 @@ export default function PaxLogisticsHome() {
             </div>
           </div>
 
-          <div className="reference-collage" aria-label="Pax logistics network across air, warehousing and last-mile delivery">
+          <div className="reference-collage" aria-label="Pax domestic logistics network across local delivery, road transport, parcel sorting and warehousing">
             <div className="reference-tile reference-tile--warehouse">
-              <img src="/assets/pax-warehouse-operations.png" alt="Pax warehouse operations" />
+              <img src="/assets/pax-domestic-sort-v2.jpg" alt="Automated parcel sorting at a domestic courier hub" />
             </div>
-            <div className="reference-tile reference-tile--air" aria-hidden="true">
-              <div className="reference-air-scene">
-                <span className="reference-cloud reference-cloud-one"></span>
-                <span className="reference-cloud reference-cloud-two"></span>
-                <svg viewBox="0 0 24 24" role="img">
-                  <path d="M2.4 13.8v-2.1l7.5-3.4V4.1c0-1.3.9-2.6 2.1-3.2 1.2.6 2.1 1.9 2.1 3.2v4.2l7.5 3.4v2.1l-7.5-1.4v5.2l2.3 1.6v1.7L12 20l-4.4.9v-1.7l2.3-1.6v-5.2l-7.5 1.4Z"></path>
-                </svg>
-                <span className="reference-flight-line"></span>
-              </div>
+            <div className="reference-tile reference-tile--air">
+              <img src="/assets/pax-local-vans-v2.jpg" alt="Local courier vans at a Hyderabad delivery hub" />
             </div>
             <div className="reference-tile reference-tile--courier">
-              <img src="/assets/pax-courier-hero.png" alt="Courier scanning a shipment before dispatch" />
+              <img src="/assets/pax-smart-warehouse-v2.jpg" alt="People-free automated warehouse system" />
             </div>
             <div className="reference-tile reference-tile--delivery">
-              <img src="/assets/pax-real-courier.jpg" alt="Delivery van being loaded with parcels" />
+              <img src="/assets/pax-intercity-truck-v2.jpg" alt="Domestic cargo truck on an Indian expressway" />
             </div>
             <div className="reference-tile reference-tile--core" aria-hidden="true">
               <span>PAX</span>
@@ -443,7 +436,7 @@ export default function PaxLogisticsHome() {
         <div className="shell reference-feature-strip" aria-label="Pax logistics services">
           <a href="/services">
             <span className="reference-feature-icon">↗</span>
-            <span><strong>Freight Forwarding</strong><small>End-to-end global freight solutions</small></span>
+            <span><strong>Same-day Delivery</strong><small>Fast pickups across Hyderabad</small></span>
             <i>›</i>
           </a>
           <a href="/services">
@@ -453,12 +446,12 @@ export default function PaxLogisticsHome() {
           </a>
           <a href="/services">
             <span className="reference-feature-icon">✓</span>
-            <span><strong>Customs Clearance</strong><small>Hassle-free customs and compliance</small></span>
+            <span><strong>Intercity Shipping</strong><small>Reliable movement across India</small></span>
             <i>›</i>
           </a>
           <a href="/track">
             <span className="reference-feature-icon">⌁</span>
-            <span><strong>Supply Chain Tech</strong><small>Real-time visibility and AI-powered insight</small></span>
+            <span><strong>Live Shipment Tech</strong><small>Clear tracking at every handoff</small></span>
             <i>›</i>
           </a>
         </div>
@@ -541,7 +534,7 @@ export default function PaxLogisticsHome() {
             <a className="button button-white" href="/services">Explore services <span>→</span></a>
           </div>
           <div className="operations-photo reveal">
-            <img src="/assets/pax-real-warehouse.jpg" alt="Workers moving parcels through a real warehouse" />
+            <img src="/assets/pax-smart-warehouse-v2.jpg" alt="Automated parcel handling inside a smart warehouse" />
             <div className="photo-overlay"></div>
             <div className="ops-metrics">
               <div><small>01</small><strong>One local desk</strong><span>Direct support</span></div>
