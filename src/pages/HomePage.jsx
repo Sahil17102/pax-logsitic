@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 
 const services = [
   {
@@ -39,65 +39,6 @@ const services = [
     link: "/contact",
     linkText: "Discuss your volume",
     visual: "dashboard",
-  },
-];
-
-const courierBrands = [
-  ["Delhivery", "delhivery"],
-  ["Blue Dart", "blue-dart"],
-  ["DTDC", "dtdc"],
-  ["India Post", "india-post"],
-  ["DHL Express", "dhl"],
-  ["FedEx", "fedex"],
-  ["XpressBees", "xpressbees"],
-  ["Ecom Express", "ecom"],
-];
-
-const heroServices = [
-  {
-    id: "city",
-    label: "City express",
-    kicker: "Same-day Hyderabad",
-    shipment: "PAX-HYD-2048",
-    status: "Courier is heading to pickup",
-    origin: "Himayat Nagar",
-    destination: "HITEC City",
-    eta: "Today · by 6:30 PM",
-    progress: 42,
-    activeStep: 1,
-    cardLabel: "CITY EXPRESS",
-    cardValue: "Same day",
-    cardNote: "Doorstep pickup · Live updates",
-  },
-  {
-    id: "domestic",
-    label: "Domestic",
-    kicker: "Nationwide delivery",
-    shipment: "PAX-DOM-7319",
-    status: "Moving to destination hub",
-    origin: "Hyderabad",
-    destination: "Mumbai",
-    eta: "Tomorrow · by 8:00 PM",
-    progress: 72,
-    activeStep: 2,
-    cardLabel: "DOMESTIC EXPRESS",
-    cardValue: "1–2 days",
-    cardNote: "2 kg parcel · Priority movement",
-  },
-  {
-    id: "business",
-    label: "Business",
-    kicker: "Recurring dispatch",
-    shipment: "PAX-B2B-1086",
-    status: "18 shipments moving on schedule",
-    origin: "Your workspace",
-    destination: "Across India",
-    eta: "98% on-time this week",
-    progress: 88,
-    activeStep: 3,
-    cardLabel: "BUSINESS DISPATCH",
-    cardValue: "18 moving",
-    cardNote: "One desk · Multi-city support",
   },
 ];
 
@@ -438,93 +379,88 @@ function ServiceVisual({ service }) {
 }
 
 export default function PaxLogisticsHome() {
-  const [activeHeroService, setActiveHeroService] = useState(heroServices[0]);
-
   return (
     <main id="main">
-      <section className="command-hero">
-        <div className="command-hero-orbit command-orbit-one" aria-hidden="true"></div>
-        <div className="command-hero-orbit command-orbit-two" aria-hidden="true"></div>
+      <section className="reference-hero">
+        <div className="reference-hero-glow reference-glow-left" aria-hidden="true"></div>
+        <div className="reference-hero-glow reference-glow-right" aria-hidden="true"></div>
 
-        <div className="shell command-hero-grid">
-          <div className="command-hero-copy">
-            <p className="command-kicker"><span></span> Hyderabad to everywhere</p>
-            <h1>Your business moves fast.<br /><em>So should your logistics.</em></h1>
+        <div className="shell reference-hero-grid">
+          <div className="reference-hero-copy">
+            <p className="reference-kicker"><span>✦</span> Pax logistics solutions</p>
+            <h1>
+              Smart Logistics
+              <span>For A Smarter World</span>
+            </h1>
             <p>
-              Same-day city delivery, nationwide shipping and recurring dispatch—
-              coordinated through one responsive team and one clear journey.
+              Integrated logistics and technology solutions that ensure efficiency,
+              transparency and growth for every shipment.
             </p>
-            <div className="command-actions">
-              <a className="button command-primary" href="/rate-calculator">Get a delivery estimate <span>↗</span></a>
-              <a className="button command-secondary" href="/track">Track a shipment <span>→</span></a>
+            <div className="reference-actions">
+              <a className="button reference-primary" href="/services">
+                Our Solutions <span aria-hidden="true">↗</span>
+              </a>
+              <a className="button reference-secondary" href="/contact">
+                Contact Us <span aria-hidden="true">→</span>
+              </a>
             </div>
-            <div className="command-assurance" aria-label="Pax service benefits">
-              <span><i>✓</i><strong>Direct support</strong><small>Talk to a real person</small></span>
-              <span><i>✓</i><strong>Clear pricing</strong><small>Estimate before booking</small></span>
-              <span><i>✓</i><strong>Live progress</strong><small>Know every handoff</small></span>
+            <div className="reference-proof">
+              <span className="reference-proof-icon">✓</span>
+              <span><strong>Hyderabad based</strong><small>Local support, nationwide reach</small></span>
             </div>
           </div>
 
-          <div className="command-visual" aria-label="Pax live logistics operations preview">
-            <div className="command-photo">
-              <img src="/assets/pax-real-courier.jpg" alt="Pax courier preparing parcels for delivery" />
-              <div className="command-photo-shade"></div>
-              <div className="command-photo-topline">
-                <span>PAX MOVEMENT NETWORK</span>
-                <b><i></i> Operations live</b>
-              </div>
-              <div className="command-photo-caption">
-                <small>LOCAL TEAM · NATIONAL REACH</small>
-                <strong>Every parcel, professionally coordinated.</strong>
+          <div className="reference-collage" aria-label="Pax logistics network across air, warehousing and last-mile delivery">
+            <div className="reference-tile reference-tile--warehouse">
+              <img src="/assets/pax-warehouse-operations.png" alt="Pax warehouse operations" />
+            </div>
+            <div className="reference-tile reference-tile--air" aria-hidden="true">
+              <div className="reference-air-scene">
+                <span className="reference-cloud reference-cloud-one"></span>
+                <span className="reference-cloud reference-cloud-two"></span>
+                <svg viewBox="0 0 24 24" role="img">
+                  <path d="M2.4 13.8v-2.1l7.5-3.4V4.1c0-1.3.9-2.6 2.1-3.2 1.2.6 2.1 1.9 2.1 3.2v4.2l7.5 3.4v2.1l-7.5-1.4v5.2l2.3 1.6v1.7L12 20l-4.4.9v-1.7l2.3-1.6v-5.2l-7.5 1.4Z"></path>
+                </svg>
+                <span className="reference-flight-line"></span>
               </div>
             </div>
-
-            <div className="command-service-switcher" aria-label="Choose a logistics service preview">
-              {heroServices.map((service) => (
-                <button
-                  type="button"
-                  aria-pressed={activeHeroService.id === service.id}
-                  className={activeHeroService.id === service.id ? "is-active" : ""}
-                  key={service.id}
-                  onClick={() => setActiveHeroService(service)}
-                >
-                  <span>{service.label}</span>
-                  <small>{service.cardValue}</small>
-                </button>
-              ))}
+            <div className="reference-tile reference-tile--courier">
+              <img src="/assets/pax-courier-hero.png" alt="Courier scanning a shipment before dispatch" />
             </div>
-
-            <div className="command-route-panel" key={activeHeroService.id} aria-live="polite">
-              <div className="command-route-head">
-                <span><i></i> {activeHeroService.cardLabel}</span>
-                <small>{activeHeroService.shipment}</small>
-              </div>
-              <h2>{activeHeroService.status}</h2>
-              <div className="command-route-points">
-                <span><small>FROM</small><strong>{activeHeroService.origin}</strong></span>
-                <i>→</i>
-                <span><small>TO</small><strong>{activeHeroService.destination}</strong></span>
-              </div>
-              <div className="command-progress">
-                <span style={{ width: `${activeHeroService.progress}%` }}></span>
-                <i style={{ left: `${activeHeroService.progress}%` }}></i>
-              </div>
-              <div className="command-route-footer">
-                <span>Booked</span><span>Pickup</span><span>In transit</span><span>Delivered</span>
-              </div>
-              <div className="command-arrival">
-                <span><small>ESTIMATED ARRIVAL</small><strong>{activeHeroService.eta}</strong></span>
-                <a href="/track" aria-label="Open shipment tracking">↗</a>
-              </div>
+            <div className="reference-tile reference-tile--delivery">
+              <img src="/assets/pax-real-courier.jpg" alt="Delivery van being loaded with parcels" />
+            </div>
+            <div className="reference-tile reference-tile--core" aria-hidden="true">
+              <span>PAX</span>
+              <small>CONNECTED</small>
+            </div>
+            <div className="reference-live-pill" aria-hidden="true">
+              <span></span> Network active
             </div>
           </div>
         </div>
 
-        <div className="shell command-network">
-          <p><span>One coordinated desk</span> Connected with India's leading delivery networks</p>
-          <div>
-            {courierBrands.slice(0, 6).map(([name]) => <span key={name}>{name}</span>)}
-          </div>
+        <div className="shell reference-feature-strip" aria-label="Pax logistics services">
+          <a href="/services">
+            <span className="reference-feature-icon">↗</span>
+            <span><strong>Freight Forwarding</strong><small>End-to-end global freight solutions</small></span>
+            <i>›</i>
+          </a>
+          <a href="/services">
+            <span className="reference-feature-icon">▦</span>
+            <span><strong>Warehousing</strong><small>Secure, scalable and smart warehouses</small></span>
+            <i>›</i>
+          </a>
+          <a href="/services">
+            <span className="reference-feature-icon">✓</span>
+            <span><strong>Customs Clearance</strong><small>Hassle-free customs and compliance</small></span>
+            <i>›</i>
+          </a>
+          <a href="/track">
+            <span className="reference-feature-icon">⌁</span>
+            <span><strong>Supply Chain Tech</strong><small>Real-time visibility and AI-powered insight</small></span>
+            <i>›</i>
+          </a>
         </div>
       </section>
 
