@@ -58,11 +58,12 @@ function AppLink({ to, className, children, ...props }) {
 
 function Header({ pathname }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const isHome = pathname === "/";
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
   return (
-    <header className="site-header">
+    <header className={`site-header${isHome ? " site-header--home" : ""}`}>
       <div className="header-utility">
         <div className="shell header-utility-inner">
           <span><i></i> Hyderabad-based courier and logistics support</span>
@@ -88,10 +89,16 @@ function Header({ pathname }) {
             </AppLink>
           ))}
         </nav>
-        <a className="nav-phone" href="tel:+919494338206">
-          <small>Talk to our team</small>
-          <strong>+91 94943 38206</strong>
-        </a>
+        {isHome ? (
+          <AppLink className="home-quote-button" to="/rate-calculator">
+            Get a Quote <span aria-hidden="true">↗</span>
+          </AppLink>
+        ) : (
+          <a className="nav-phone" href="tel:+919494338206">
+            <small>Talk to our team</small>
+            <strong>+91 94943 38206</strong>
+          </a>
+        )}
         <button
           className="menu-toggle"
           type="button"
