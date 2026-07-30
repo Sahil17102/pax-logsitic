@@ -26,25 +26,30 @@ export default function EstimatePage() {
           </div>
           <div className="tool-hero-visual rate-hero-visual" aria-hidden="true">
             <div className="rate-map-grid"></div>
-            <div className="rate-map-heading"><small>PAX / ROUTE DESK</small><strong>Domestic parcel movement</strong></div>
-            <svg className="rate-map-line" viewBox="0 0 600 430" preserveAspectRatio="none">
-              <path className="rate-map-rail" d="M72 334 C150 250 226 347 309 245 S458 110 536 105" />
-              <path className="rate-map-dash" d="M72 334 C150 250 226 347 309 245 S458 110 536 105" />
-            </svg>
-            <div className="rate-map-stop rate-map-start"><i></i><span><small>PICKUP</small><strong>500029</strong><b>Hyderabad</b></span></div>
-            <div className="rate-map-stop rate-map-end"><i></i><span><small>DELIVERY</small><strong>400001</strong><b>Mumbai</b></span></div>
-            <div className="rate-map-van">
-              <svg viewBox="0 0 92 52">
-                <path d="M7 13h48v27H7zM55 22h17l12 12v6H55z" />
-                <path d="M62 26h8l7 8H62z" className="rate-map-window" />
-                <circle cx="24" cy="42" r="7" /><circle cx="69" cy="42" r="7" />
-              </svg>
-            </div>
-            <div className="rate-map-parcels"><i></i><i></i><i></i></div>
-            <div className="rate-map-summary">
-              <span><small>SERVICE</small><strong>Standard</strong></span>
-              <span><small>PARCEL</small><strong>2 kg</strong></span>
-              <b>TRACKED</b>
+            <div className="tool-window rate-estimate-window">
+              <div className="tool-window-head">
+                <span>ESTIMATE PREVIEW</span>
+                <b>INDICATIVE</b>
+              </div>
+              <div className="rate-route-preview">
+                <div><small>PICKUP PIN</small><strong>500029</strong><span>Hyderabad</span></div>
+                <i>→</i>
+                <div><small>DELIVERY PIN</small><strong>400001</strong><span>Mumbai</span></div>
+              </div>
+              <div className="rate-preview-meta">
+                <span>2 kg parcel</span>
+                <span>Standard service</span>
+                <span>Domestic</span>
+              </div>
+              <div className="rate-cost-breakdown">
+                <span><small>Route &amp; handling</small><b>Included</b></span>
+                <span><small>Weight slab</small><b>Up to 2 kg</b></span>
+              </div>
+              <div className="rate-preview-total">
+                <small>INDICATIVE SHIPPING RANGE</small>
+                <strong>₹210–₹270</strong>
+              </div>
+              <p className="rate-preview-note">Final price depends on serviceability, dimensions and shipment contents.</p>
             </div>
           </div>
         </div>

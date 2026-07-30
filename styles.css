@@ -4396,6 +4396,31 @@ h3 {
   font-weight: 800;
 }
 
+.rate-cost-breakdown {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 26px;
+  border-block: 1px solid #e3e4df;
+  padding-block: 18px;
+}
+
+.rate-cost-breakdown span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.rate-cost-breakdown small {
+  color: #777d78;
+  font-size: 0.62rem;
+}
+
+.rate-cost-breakdown b {
+  color: var(--navy);
+  font-size: 0.68rem;
+}
+
 .rate-preview-total {
   display: flex;
   align-items: flex-end;
@@ -4406,6 +4431,13 @@ h3 {
 .rate-preview-total strong {
   color: var(--coral-dark);
   font-size: clamp(1.55rem, 2.6vw, 2.25rem);
+}
+
+.rate-preview-note {
+  margin: 18px 0 0;
+  color: #858a86;
+  font-size: 0.58rem;
+  line-height: 1.55;
 }
 
 .weight-hero-visual {
