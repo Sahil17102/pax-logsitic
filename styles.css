@@ -4056,7 +4056,6 @@ h3 {
     linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
   background-size: 42px 42px;
-  mask-image: linear-gradient(145deg, #000, transparent 90%);
 }
 
 .rate-map-heading {
