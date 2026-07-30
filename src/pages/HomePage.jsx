@@ -663,7 +663,7 @@ export default function PaxLogisticsHome() {
         </div>
 
         <div className="platform-capability-list">
-          {platformCapabilities.map((capability, index) => (
+          {platformCapabilities.slice(0, 3).map((capability, index) => (
             <Fragment key={capability.label}>
               <article className={`platform-capability ${capability.tone}${index % 2 ? " platform-capability-reverse platform-capability-alt" : ""}`}>
                 <div className="shell platform-capability-grid">

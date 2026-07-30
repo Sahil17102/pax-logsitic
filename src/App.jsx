@@ -9,13 +9,19 @@ import SignInPage from "./pages/SignInPage.jsx";
 import { usePageInteractions } from "./usePageInteractions.js";
 import { API_BASE_URL } from "./config.js";
 
-const navItems = [
-  ["/", "Home"],
+const primaryNavItems = [
+  ["/services", "Services"],
   ["/rate-calculator", "Rate Calculator"],
+  ["/track", "Track Shipment"],
+  ["/contact", "Contact"],
+];
+
+const utilityNavItems = [
   ["/weight-calculator", "Weight Calculator"],
-  ["/track", "Track"],
   ["/sign-in", "Sign In"],
 ];
+
+const navItems = [...primaryNavItems, ...utilityNavItems];
 
 const footerItems = [
   ["/services", "Services"],
@@ -57,21 +63,35 @@ function Header({ pathname }) {
 
   return (
     <header className="site-header">
+      <div className="header-utility">
+        <div className="shell header-utility-inner">
+          <span><i></i> Hyderabad-based courier and logistics support</span>
+          <nav aria-label="Utility navigation">
+            {utilityNavItems.map(([path, label]) => (
+              <AppLink key={path} to={path}>{label}</AppLink>
+            ))}
+          </nav>
+        </div>
+      </div>
       <div className="shell nav">
         <AppLink className="brand" to="/" aria-label="Pax Logistics home">
           <span className="brand-logo"><img src="/assets/pax-logo.png" alt="PAX — Reaching Further" /></span>
         </AppLink>
         <nav className="desktop-nav" aria-label="Primary navigation">
-          {navItems.map(([path, label]) => (
+          {primaryNavItems.map(([path, label]) => (
             <AppLink
               key={path}
               to={path}
-              className={({ isActive }) => `${isActive ? "is-active" : ""}${path === "/sign-in" ? " nav-signin" : ""}`.trim()}
+              className={({ isActive }) => isActive ? "is-active" : ""}
             >
               {label}
             </AppLink>
           ))}
         </nav>
+        <a className="nav-phone" href="tel:+919494338206">
+          <small>Talk to our team</small>
+          <strong>+91 94943 38206</strong>
+        </a>
         <button
           className="menu-toggle"
           type="button"
@@ -84,8 +104,9 @@ function Header({ pathname }) {
       </div>
       <nav className={`mobile-nav${menuOpen ? " is-open" : ""}`} aria-label="Mobile navigation">
         {navItems.map(([path, label]) => (
-          <AppLink key={path} to={path} className={path === "/sign-in" ? "button button-dark" : undefined}>{label}</AppLink>
+          <AppLink key={path} to={path}>{label}</AppLink>
         ))}
+        <a className="button button-dark" href="tel:+919494338206">Call logistics desk</a>
       </nav>
     </header>
   );
