@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useState } from "react";
 
 const services = [
   {
@@ -439,51 +439,47 @@ function ServiceVisual({ service }) {
 
 export default function PaxLogisticsHome() {
   const [activeHeroService, setActiveHeroService] = useState(heroServices[0]);
-  const heroVisualRef = useRef(null);
-
-  const handleHeroPointerMove = (event) => {
-    if (!heroVisualRef.current || event.pointerType === "touch") return;
-    const bounds = heroVisualRef.current.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
-    const y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
-    heroVisualRef.current.style.setProperty("--hero-x", x.toFixed(3));
-    heroVisualRef.current.style.setProperty("--hero-y", y.toFixed(3));
-  };
-
-  const resetHeroPointer = () => {
-    heroVisualRef.current?.style.setProperty("--hero-x", "0");
-    heroVisualRef.current?.style.setProperty("--hero-y", "0");
-  };
 
   return (
     <main id="main">
-      <section className="product-hero">
-        <div className="hero-grid-pattern" aria-hidden="true"></div>
-        <div className="shell product-hero-grid">
-          <div className="product-hero-copy">
-            <p className="eyebrow"><span></span> Hyderabad's shipping partner</p>
-            <h1>Move anything.<br /><em>Know everything.</em></h1>
-            <p className="lead">From a single city pickup to nationwide business dispatch, Pax keeps every shipment moving—and every update clear.</p>
-            <div className="hero-actions">
-              <a className="button button-coral" href="/rate-calculator">Get an estimate <span>→</span></a>
-              <a className="button button-cream" href="/track"><span className="button-live-dot"></span> Track shipment</a>
+      <section className="command-hero">
+        <div className="command-hero-orbit command-orbit-one" aria-hidden="true"></div>
+        <div className="command-hero-orbit command-orbit-two" aria-hidden="true"></div>
+
+        <div className="shell command-hero-grid">
+          <div className="command-hero-copy">
+            <p className="command-kicker"><span></span> Hyderabad to everywhere</p>
+            <h1>Your business moves fast.<br /><em>So should your logistics.</em></h1>
+            <p>
+              Same-day city delivery, nationwide shipping and recurring dispatch—
+              coordinated through one responsive team and one clear journey.
+            </p>
+            <div className="command-actions">
+              <a className="button command-primary" href="/rate-calculator">Get a delivery estimate <span>↗</span></a>
+              <a className="button command-secondary" href="/track">Track a shipment <span>→</span></a>
             </div>
-            <div className="hero-trust">
-              <span><strong>01</strong><i>Human support<br />from Hyderabad</i></span>
-              <span><strong>02</strong><i>Clear updates<br />at every stage</i></span>
-              <span><strong>03</strong><i>Flexible service<br />as you grow</i></span>
+            <div className="command-assurance" aria-label="Pax service benefits">
+              <span><i>✓</i><strong>Direct support</strong><small>Talk to a real person</small></span>
+              <span><i>✓</i><strong>Clear pricing</strong><small>Estimate before booking</small></span>
+              <span><i>✓</i><strong>Live progress</strong><small>Know every handoff</small></span>
             </div>
           </div>
 
-          <div
-            className="hero-product-collage"
-            aria-label="Interactive Pax Logistics shipment experience"
-            ref={heroVisualRef}
-            onPointerMove={handleHeroPointerMove}
-            onPointerLeave={resetHeroPointer}
-          >
-            <div className="hero-colour-block"></div>
-            <div className="hero-mode-switcher" aria-label="Preview a shipping service">
+          <div className="command-visual" aria-label="Pax live logistics operations preview">
+            <div className="command-photo">
+              <img src="/assets/pax-real-courier.jpg" alt="Pax courier preparing parcels for delivery" />
+              <div className="command-photo-shade"></div>
+              <div className="command-photo-topline">
+                <span>PAX MOVEMENT NETWORK</span>
+                <b><i></i> Operations live</b>
+              </div>
+              <div className="command-photo-caption">
+                <small>LOCAL TEAM · NATIONAL REACH</small>
+                <strong>Every parcel, professionally coordinated.</strong>
+              </div>
+            </div>
+
+            <div className="command-service-switcher" aria-label="Choose a logistics service preview">
               {heroServices.map((service) => (
                 <button
                   type="button"
@@ -492,53 +488,42 @@ export default function PaxLogisticsHome() {
                   key={service.id}
                   onClick={() => setActiveHeroService(service)}
                 >
-                  {service.label}
+                  <span>{service.label}</span>
+                  <small>{service.cardValue}</small>
                 </button>
               ))}
             </div>
-            <div className="hero-image-card">
-              <img src="/assets/pax-real-courier.jpg" alt="Courier loading parcels into a delivery van" />
-              <div className="hero-image-meta">
-                <span><i></i> Pickup team active</span>
-                <strong>{activeHeroService.kicker}</strong>
+
+            <div className="command-route-panel" key={activeHeroService.id} aria-live="polite">
+              <div className="command-route-head">
+                <span><i></i> {activeHeroService.cardLabel}</span>
+                <small>{activeHeroService.shipment}</small>
               </div>
-            </div>
-            <div className="hero-track-ui" key={`track-${activeHeroService.id}`} aria-live="polite">
-              <div className="hero-ui-head"><span>LIVE SHIPMENT</span><b><i></i> On schedule</b></div>
-              <p>{activeHeroService.shipment}</p>
-              <strong>{activeHeroService.status}</strong>
-              <div className="hero-route-names">
-                <span><small>FROM</small>{activeHeroService.origin}</span>
+              <h2>{activeHeroService.status}</h2>
+              <div className="command-route-points">
+                <span><small>FROM</small><strong>{activeHeroService.origin}</strong></span>
                 <i>→</i>
-                <span><small>TO</small>{activeHeroService.destination}</span>
+                <span><small>TO</small><strong>{activeHeroService.destination}</strong></span>
               </div>
-              <div className="hero-ui-route">
-                {[0, 1, 2, 3].map((step, index) => (
-                  <Fragment key={step}>
-                    <i className={step < activeHeroService.activeStep ? "done" : step === activeHeroService.activeStep ? "active" : ""}>
-                      {step < activeHeroService.activeStep ? "✓" : ""}
-                    </i>
-                    {index < 3 && <span className={step < activeHeroService.activeStep ? "done" : ""}></span>}
-                  </Fragment>
-                ))}
+              <div className="command-progress">
+                <span style={{ width: `${activeHeroService.progress}%` }}></span>
+                <i style={{ left: `${activeHeroService.progress}%` }}></i>
               </div>
-              <div className="hero-ui-labels"><small>Booked</small><small>Pickup</small><small>Transit</small><small>Delivery</small></div>
-              <div className="hero-eta"><span>ESTIMATED ARRIVAL</span><strong>{activeHeroService.eta}</strong></div>
+              <div className="command-route-footer">
+                <span>Booked</span><span>Pickup</span><span>In transit</span><span>Delivered</span>
+              </div>
+              <div className="command-arrival">
+                <span><small>ESTIMATED ARRIVAL</small><strong>{activeHeroService.eta}</strong></span>
+                <a href="/track" aria-label="Open shipment tracking">↗</a>
+              </div>
             </div>
-            <div className="hero-route-card" key={`route-${activeHeroService.id}`}>
-              <small>{activeHeroService.cardLabel}</small>
-              <div><strong>{activeHeroService.cardValue}</strong><span>↗</span></div>
-              <p>{activeHeroService.cardNote}</p>
-              <i className="hero-route-progress"><span style={{ width: `${activeHeroService.progress}%` }}></span></i>
-            </div>
-            <div className="hero-roundel"><span>PAX</span><small>REACHING<br />FURTHER</small></div>
           </div>
         </div>
-        <div className="hero-marquee" aria-label="Courier network brands">
-          <div className="marquee-track">
-            {[...courierBrands, ...courierBrands].map(([name, tone], index) => (
-              <span className={`carrier-name carrier-${tone}`} key={`${name}-${index}`}>{name}</span>
-            ))}
+
+        <div className="shell command-network">
+          <p><span>One coordinated desk</span> Connected with India's leading delivery networks</p>
+          <div>
+            {courierBrands.slice(0, 6).map(([name]) => <span key={name}>{name}</span>)}
           </div>
         </div>
       </section>
