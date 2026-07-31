@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 const SESSION_KEY = "pax-user-session";
+const USERS_KEY = "pax-demo-users";
 const SHIPMENTS_KEY = "pax-demo-shipments";
 
 const starterShipments = [
@@ -11,20 +12,32 @@ const starterShipments = [
 ];
 
 const navItems = [
-  ["overview", "grid", "Overview"],
+  ["overview", "home", "Overview"],
+  ["dashboard", "grid", "Dashboard"],
   ["shipments", "box", "Shipments"],
-  ["tracking", "route", "Tracking"],
+  ["exceptions", "alert", "Exceptions"],
   ["finance", "wallet", "Finance"],
+  ["audits", "audit", "Audits"],
+  ["utilities", "tools", "Utilities"],
+  ["insights", "insights", "Insights"],
+  ["channels", "store", "Channels"],
+  ["workspace", "settings", "Workspace"],
   ["support", "support", "Support"],
-  ["profile", "user", "Profile"],
 ];
 
 function Icon({ name }) {
   const paths = {
+    home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
     grid: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
     box: <><path d="m4 7 8-4 8 4-8 4-8-4Z" /><path d="M4 7v10l8 4 8-4V7M12 11v10" /></>,
     route: <><circle cx="6" cy="18" r="3" /><circle cx="18" cy="6" r="3" /><path d="M8.5 16.5c4-2 2-7 7-9" /></>,
+    alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 17h.01" /></>,
     wallet: <><path d="M4 6h14a2 2 0 0 1 2 2v10H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11" /><path d="M16 11h5v4h-5a2 2 0 0 1 0-4Z" /></>,
+    audit: <><path d="M7 20h10M6 7h12M12 4v16" /><path d="m6 7-3 6a3 3 0 0 0 6 0L6 7ZM18 7l-3 6a3 3 0 0 0 6 0l-3-6Z" /></>,
+    tools: <><path d="m14 6 4-4 4 4-4 4M2 18l4 4 12-12-4-4L2 18Z" /><path d="m7 3 4 4M3 7l4 4M17 17l4 4" /></>,
+    insights: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+    store: <><path d="M3 9h18l-2-5H5L3 9Z" /><path d="M5 9v11h14V9M9 20v-6h6v6" /><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></>,
     support: <><circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.3 2.3 0 1 1 3.3 2.1c-.8.4-1.1.8-1.1 1.7M12 17h.01" /></>,
     user: <><circle cx="12" cy="8" r="4" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></>,
     search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
@@ -38,7 +51,13 @@ function Icon({ name }) {
 
 function readSession() {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || "null");
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || "null");
+    if (!session || session.authVersion !== 2) {
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return session;
   } catch {
     return null;
   }
@@ -63,7 +82,7 @@ function EmptyAuth() {
     <main className="portal-auth-empty">
       <img src="/assets/pax-logo.png" alt="Pax Logistics" />
       <h1>Your Pax workspace is locked.</h1>
-      <p>Sign in with the on-screen OTP to open the customer panel.</p>
+      <p>Create your account first, then log in with your registered email/mobile and password.</p>
       <button className="button button-dark" type="button" onClick={() => goTo("/sign-in")}>Go to sign in <span>→</span></button>
     </main>
   );
@@ -153,7 +172,17 @@ export default function DashboardPage() {
     const data = new FormData(event.currentTarget);
     const next = { ...user, fullName: data.get("fullName"), businessName: data.get("businessName"), phone: data.get("phone"), city: data.get("city") };
     setUser(next);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    const sessionStorageTarget = localStorage.getItem(SESSION_KEY) ? localStorage : sessionStorage;
+    sessionStorageTarget.setItem(SESSION_KEY, JSON.stringify(next));
+    try {
+      const accounts = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+      const updatedAccounts = accounts.map((account) =>
+        account.email === user.email ? { ...account, ...next } : account,
+      );
+      localStorage.setItem(USERS_KEY, JSON.stringify(updatedAccounts));
+    } catch {
+      // Keep the active session usable even if an older browser record is malformed.
+    }
     notify("Profile changes saved.");
   };
 
@@ -208,6 +237,37 @@ export default function DashboardPage() {
     </>
   );
 
+  const renderDashboard = () => (
+    <>
+      <section className="section-title-row">
+        <div><p>OPERATIONS DASHBOARD</p><h1>Today at a glance</h1><span>Dispatch decisions, service health and quick actions in one place.</span></div>
+        <button className="portal-primary" type="button" onClick={openShipment}><Icon name="plus" /> Create shipment</button>
+      </section>
+      <section className="portal-kpis portal-kpis-compact">
+        <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>READY TO SHIP</small><strong>12</strong><p>Pickup cut-off · 4:30 PM</p></article>
+        <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN MOVEMENT</small><strong>08</strong><p>5 active destination lanes</p></article>
+        <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="insights" /></span><small>DELIVERY RATE</small><strong>96.4%</strong><p>First-attempt success</p></article>
+        <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="alert" /></span><small>NEEDS ACTION</small><strong>03</strong><p>2 NDR · 1 address issue</p></article>
+      </section>
+      <section className="dashboard-action-grid">
+        {[
+          ["box", "Create shipment", "Book a new customer order", openShipment],
+          ["alert", "Resolve exceptions", "Review NDR and address issues", () => navigatePanel("exceptions")],
+          ["wallet", "Check COD", "View remittance and invoices", () => navigatePanel("finance")],
+          ["tools", "Open utilities", "Track, estimate and calculate", () => navigatePanel("utilities")],
+        ].map(([icon, title, copy, action]) => (
+          <button type="button" onClick={action} key={title}>
+            <span><Icon name={icon} /></span><div><strong>{title}</strong><small>{copy}</small></div><b>→</b>
+          </button>
+        ))}
+      </section>
+      <section className="portal-card shipment-list-card">
+        <div className="portal-card-head"><div><small>DISPATCH QUEUE</small><h2>Orders needing attention</h2></div><button type="button" onClick={() => navigatePanel("shipments")}>All shipments →</button></div>
+        <ShipmentTable shipments={shipments.filter((item) => item.status !== "Delivered").slice(0, 4)} />
+      </section>
+    </>
+  );
+
   const renderShipments = () => (
     <>
       <section className="section-title-row">
@@ -220,6 +280,26 @@ export default function DashboardPage() {
           <span>{filteredShipments.length} shipments</span>
         </div>
         <ShipmentTable shipments={filteredShipments} />
+      </section>
+    </>
+  );
+
+  const renderExceptions = () => (
+    <>
+      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>Exceptions</h1><span>Resolve failed attempts, address issues and delayed movement.</span></div><span className="section-count-pill">3 open cases</span></section>
+      <section className="exception-grid">
+        {[
+          ["PAX-260728", "Customer unavailable", "Nila Studios · Bengaluru", "Call customer", "high"],
+          ["PAX-260719", "Address needs confirmation", "Rohan Mehta · Chennai", "Update address", "medium"],
+          ["PAX-260706", "Movement delayed", "Indigo Home · Pune", "Escalate courier", "low"],
+        ].map(([id, issue, customer, action, priority]) => (
+          <article className="portal-card exception-card" key={id}>
+            <div><span className={`priority-dot priority-${priority}`}></span><small>{priority} priority</small><b>{id}</b></div>
+            <h2>{issue}</h2><p>{customer}</p>
+            <div className="exception-meta"><span>Last update</span><strong>Today · 10:42 AM</strong></div>
+            <button type="button" onClick={() => notify(`${id}: ${action} action saved.`)}>{action} <span>→</span></button>
+          </article>
+        ))}
       </section>
     </>
   );
@@ -258,6 +338,82 @@ export default function DashboardPage() {
     </>
   );
 
+  const renderAudits = () => (
+    <>
+      <section className="section-title-row"><div><p>COMPLIANCE CENTRE</p><h1>Audits</h1><span>Keep shipment documents, COD records and account checks organised.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Audit report prepared in demo mode.")}>Export audit report</button></section>
+      <section className="audit-layout">
+        <article className="portal-card audit-score-card"><small>WORKSPACE HEALTH</small><div className="audit-score"><strong>92</strong><span>/100</span></div><p>All critical checks are complete. Two recommendations remain.</p><div className="audit-progress"><i></i></div></article>
+        <article className="portal-card audit-checklist">
+          <div className="portal-card-head"><div><small>CHECKLIST</small><h2>Compliance status</h2></div></div>
+          {[
+            ["✓", "KYC documents", "Verified", "done"],
+            ["✓", "GST information", user.gstin ? "Verified" : "Not applicable", "done"],
+            ["✓", "COD reconciliation", "Matched through 30 Jul", "done"],
+            ["!", "Pickup address proof", "Review recommended", "warn"],
+            ["!", "Invoice numbering", "2 gaps detected", "warn"],
+          ].map(([mark, title, copy, tone]) => <div className={`audit-row audit-${tone}`} key={title}><span>{mark}</span><div><strong>{title}</strong><small>{copy}</small></div><button type="button" onClick={() => notify(`${title} opened.`)}>Review</button></div>)}
+        </article>
+      </section>
+    </>
+  );
+
+  const renderUtilities = () => (
+    <>
+      <section className="section-title-row"><div><p>SHIPPING TOOLS</p><h1>Utilities</h1><span>Every everyday shipping tool available from one screen.</span></div></section>
+      <section className="utility-grid">
+        {[
+          ["route", "Track shipment", "Open the live movement timeline", () => document.querySelector(".utility-tracker")?.scrollIntoView({ behavior: "smooth" })],
+          ["wallet", "Rate calculator", "Estimate a route before booking", () => goTo("/rate-calculator")],
+          ["box", "Weight calculator", "Check volumetric chargeable weight", () => goTo("/weight-calculator")],
+          ["support", "Serviceability", "Confirm delivery PIN support", () => notify("500029 is serviceable for standard and express delivery.")],
+        ].map(([icon, title, copy, action]) => <button type="button" onClick={action} key={title}><span><Icon name={icon} /></span><strong>{title}</strong><small>{copy}</small><b>Open →</b></button>)}
+      </section>
+      <section className="tracking-workspace utility-tracker">
+        <form className="portal-card track-search-card" onSubmit={submitTracking}>
+          <small>SHIPMENT TRACKER</small><h2>Where is your parcel?</h2>
+          <label><input value={trackId} onChange={(event) => setTrackId(event.target.value)} placeholder="PAX-260728" /><button type="submit"><Icon name="search" /> Track</button></label>
+          <p>Try sample reference <button type="button" onClick={() => { setTrackId("PAX-260728"); setTrackResult("PAX-260728"); }}>PAX-260728</button></p>
+        </form>
+        <article className="portal-card tracking-result-card">
+          <div className="tracking-result-head"><div><small>{trackResult}</small><h2>Moving to destination hub</h2></div><StatusBadge status="In transit" /></div>
+          <div className="tracking-route-names"><span><small>FROM</small>Hyderabad, TS</span><i>→</i><span><small>TO</small>Bengaluru, KA</span></div>
+          <div className="utility-track-steps"><span className="done">Booked</span><span className="done">Picked up</span><span className="current">In transit</span><span>Delivery</span></div>
+        </article>
+      </section>
+    </>
+  );
+
+  const renderInsights = () => (
+    <>
+      <section className="section-title-row"><div><p>SELLER ANALYTICS</p><h1>Insights</h1><span>Use route, payment and delivery patterns to plan better dispatches.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Insights date range refreshed.")}>Last 30 days ▾</button></section>
+      <section className="insight-layout">
+        <article className="portal-card insight-bars">
+          <div className="portal-card-head"><div><small>TOP DESTINATIONS</small><h2>Shipment volume by city</h2></div><span className="trend-pill">+14.8%</span></div>
+          {[["Hyderabad",88,42],["Bengaluru",72,34],["Mumbai",58,27],["Chennai",44,21],["Pune",32,15]].map(([city,width,count]) => <div className="insight-bar-row" key={city}><span>{city}</span><div><i style={{ width: `${width}%` }}></i></div><strong>{count}</strong></div>)}
+        </article>
+        <article className="portal-card insight-summary">
+          <small>ORDER QUALITY</small><h2>Delivery performance</h2>
+          <div><strong>96.4%</strong><span>Delivered successfully</span></div>
+          <ul><li><span>Average delivery</span><b>2.8 days</b></li><li><span>RTO rate</span><b>3.6%</b></li><li><span>Prepaid / COD</span><b>62% / 38%</b></li><li><span>Average order value</span><b>₹1,180</b></li></ul>
+        </article>
+      </section>
+    </>
+  );
+
+  const renderChannels = () => (
+    <>
+      <section className="section-title-row"><div><p>CONNECTED COMMERCE</p><h1>Channels</h1><span>Bring store orders into the Pax dispatch workflow.</span></div><button className="portal-primary" type="button" onClick={() => notify("Channel connection wizard opened.")}><Icon name="plus" /> Connect store</button></section>
+      <section className="channel-grid">
+        {[
+          ["SH", "Shopify", "Connected", "1,248 orders synced", true],
+          ["WC", "WooCommerce", "Not connected", "Connect with store URL", false],
+          ["AZ", "Amazon", "Not connected", "Import marketplace orders", false],
+          ["CS", "CSV orders", "Ready", "Upload an order file", true],
+        ].map(([code, title, status, copy, connected]) => <article className="portal-card channel-card" key={title}><div className={`channel-logo channel-${code.toLowerCase()}`}>{code}</div><span className={connected ? "channel-status connected" : "channel-status"}><i></i>{status}</span><h2>{title}</h2><p>{copy}</p><button type="button" onClick={() => notify(`${title} ${connected ? "settings opened" : "connection started"}.`)}>{connected ? "Manage" : "Connect"} →</button></article>)}
+      </section>
+    </>
+  );
+
   const renderSupport = () => (
     <>
       <section className="section-title-row"><div><p>WE’RE HERE TO HELP</p><h1>Support desk</h1><span>Raise a ticket or talk to the local Pax team.</span></div></section>
@@ -276,9 +432,9 @@ export default function DashboardPage() {
     </>
   );
 
-  const renderProfile = () => (
+  const renderWorkspace = () => (
     <>
-      <section className="section-title-row"><div><p>WORKSPACE SETTINGS</p><h1>Profile</h1><span>Keep your contact and business details current.</span></div></section>
+      <section className="section-title-row"><div><p>WORKSPACE SETTINGS</p><h1>Workspace</h1><span>Manage profile, business identity and primary pickup details.</span></div></section>
       <form className="portal-card profile-form" onSubmit={saveProfile}>
         <div className="profile-avatar">{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</div>
         <div className="profile-fields">
@@ -288,13 +444,27 @@ export default function DashboardPage() {
           <label>Mobile number<input name="phone" defaultValue={user.phone} required /></label>
           <label>City<input name="city" defaultValue={user.city} required /></label>
           <label>Account type<input value={user.accountType || "Business"} readOnly /></label>
+          <label>State<input value={user.state || "Telangana"} readOnly /></label>
+          <label>PIN code<input value={user.pincode || "500029"} readOnly /></label>
         </div>
         <div className="profile-actions"><button className="portal-primary" type="submit">Save changes</button><button className="portal-secondary danger" type="button" onClick={logout}>Sign out</button></div>
       </form>
     </>
   );
 
-  const panels = { overview: renderOverview, shipments: renderShipments, tracking: renderTracking, finance: renderFinance, support: renderSupport, profile: renderProfile };
+  const panels = {
+    overview: renderOverview,
+    dashboard: renderDashboard,
+    shipments: renderShipments,
+    exceptions: renderExceptions,
+    finance: renderFinance,
+    audits: renderAudits,
+    utilities: renderUtilities,
+    insights: renderInsights,
+    channels: renderChannels,
+    workspace: renderWorkspace,
+    support: renderSupport,
+  };
 
   return (
     <div className="portal-shell">
@@ -315,7 +485,7 @@ export default function DashboardPage() {
           <label className="portal-search"><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => setActive("shipments")} placeholder="Search shipments..." /><kbd>⌘ K</kbd></label>
           <div className="portal-header-actions">
             <button className="notification-button" type="button" onClick={() => notify("You’re all caught up.")}><Icon name="bell" /><i></i></button>
-            <button className="account-button" type="button" onClick={() => navigatePanel("profile")}><span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div><b>⌄</b></button>
+            <button className="account-button" type="button" onClick={() => navigatePanel("workspace")}><span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div><b>⌄</b></button>
           </div>
         </header>
         <main className="portal-content">{panels[active]()}</main>
