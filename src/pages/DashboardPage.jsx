@@ -193,6 +193,7 @@ export default function DashboardPage() {
   const [openMenu, setOpenMenu] = useState(null);
   const [submenuTop, setSubmenuTop] = useState(110);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
   const [search, setSearch] = useState("");
@@ -300,54 +301,180 @@ export default function DashboardPage() {
   const greeting = currentHour < 12 ? "Good morning" : currentHour < 17 ? "Good afternoon" : "Good evening";
   const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
 
-  const renderOverview = () => (
-    <>
-      <section className="portal-welcome">
-        <div>
-          <p>{todayLabel}</p>
-          <h1>{greeting}, {user.fullName?.split(" ")[0] || "there"}.</h1>
-          <span>Here’s what’s moving across your Pax network today.</span>
-        </div>
-        <button className="portal-primary" type="button" onClick={openShipment}><Icon name="plus" /> Create shipment</button>
-      </section>
-      <section className="portal-kpis" aria-label="Shipment summary">
-        <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>TOTAL SHIPMENTS</small><strong>{shipments.length + 34}</strong><p><b>↑ 12%</b> from last month</p></article>
-        <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN TRANSIT</small><strong>{shipments.filter((item) => item.status.includes("transit") || item.status.includes("delivery")).length + 6}</strong><p>Across 5 active lanes</p></article>
-        <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="box" /></span><small>DELIVERED TODAY</small><strong>{shipments.filter((item) => item.status === "Delivered").length + 23}</strong><p><b>96.4%</b> first-attempt success</p></article>
-        <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="wallet" /></span><small>COD AVAILABLE</small><strong>₹18.4k</strong><p>Next settlement: 03 Aug</p></article>
-      </section>
-      <section className="portal-main-grid">
-        <article className="portal-card movement-card">
-          <div className="portal-card-head"><div><small>7-DAY MOVEMENT</small><h2>Shipment activity</h2></div><span className="trend-pill">+18.2%</span></div>
-          <div className="chart-wrap">
-            <div className="chart-lines"><i></i><i></i><i></i><i></i></div>
-            <svg viewBox="0 0 640 190" preserveAspectRatio="none" aria-label="Shipment activity rising over seven days">
-              <defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#6e61e8" stopOpacity=".28" /><stop offset="1" stopColor="#6e61e8" stopOpacity="0" /></linearGradient></defs>
-              <path className="area" d="M0 160 C70 150 80 110 140 126 S220 170 280 105 S360 85 410 99 S490 82 535 47 S590 60 640 18 L640 190 L0 190Z" />
-              <path className="line" d="M0 160 C70 150 80 110 140 126 S220 170 280 105 S360 85 410 99 S490 82 535 47 S590 60 640 18" />
-            </svg>
-            <div className="chart-days"><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
+  const overviewAnalytics = {
+    "7D": {
+      label: "Last 7 days",
+      shipments: shipments.length + 34,
+      revenue: "₹84.6K",
+      cost: "₹46.2K",
+      aov: "₹642",
+      growth: "+18.2%",
+      bars: [48, 61, 52, 76, 68, 88, 96],
+      labels: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
+    },
+    "30D": {
+      label: "Last 30 days",
+      shipments: shipments.length + 176,
+      revenue: "₹3.42L",
+      cost: "₹1.86L",
+      aov: "₹688",
+      growth: "+24.8%",
+      bars: [42, 57, 69, 64, 78, 83, 94],
+      labels: ["01", "05", "10", "15", "20", "25", "30"],
+    },
+    "90D": {
+      label: "Last 90 days",
+      shipments: shipments.length + 538,
+      revenue: "₹10.8L",
+      cost: "₹5.72L",
+      aov: "₹704",
+      growth: "+31.4%",
+      bars: [36, 48, 55, 67, 72, 86, 98],
+      labels: ["May", "W2", "Jun", "W2", "Jul", "W3", "Now"],
+    },
+  };
+
+  const renderOverview = () => {
+    const analytics = overviewAnalytics[overviewRange];
+    return (
+      <>
+        <section className="portal-welcome overview-welcome">
+          <div>
+            <p>{todayLabel} · CONTROL TOWER</p>
+            <h1>{greeting}, {user.fullName?.split(" ")[0] || "there"}.</h1>
+            <span>Every shipment, rupee and delivery signal in one intelligent view.</span>
           </div>
-        </article>
-        <article className="portal-card status-card">
-          <div className="portal-card-head"><div><small>LIVE STATUS</small><h2>Delivery mix</h2></div><button type="button" onClick={() => navigatePanel("shipments")}>View all</button></div>
-          <div className="donut-row">
-            <div className="donut"><div><strong>38</strong><span>Total</span></div></div>
-            <div className="donut-legend">
-              <span><i className="legend-green"></i><b>Delivered</b><em>24</em></span>
-              <span><i className="legend-purple"></i><b>In transit</b><em>8</em></span>
-              <span><i className="legend-yellow"></i><b>Scheduled</b><em>4</em></span>
-              <span><i className="legend-coral"></i><b>Attention</b><em>2</em></span>
+          <div className="overview-welcome-actions">
+            <div className="overview-range-tabs" aria-label="Analytics date range">
+              {["7D", "30D", "90D"].map((range) => (
+                <button className={overviewRange === range ? "is-active" : ""} key={range} type="button" onClick={() => setOverviewRange(range)}>{range}</button>
+              ))}
             </div>
+            <button className="portal-primary" type="button" onClick={openShipment}><Icon name="plus" /> Create shipment</button>
           </div>
-        </article>
-      </section>
-      <section className="portal-card shipment-list-card">
-        <div className="portal-card-head"><div><small>RECENT ACTIVITY</small><h2>Latest shipments</h2></div><button type="button" onClick={() => navigatePanel("shipments")}>View all <span>→</span></button></div>
-        <ShipmentTable shipments={shipments.slice(0, 4)} />
-      </section>
-    </>
-  );
+        </section>
+
+        <section className="overview-signal-bar" aria-label="Network health">
+          <div><span className="signal-live"><i></i> Live network</span><strong>All systems operational</strong></div>
+          <div><small>ACTIVE LANES</small><strong>12</strong><span>5 priority routes</span></div>
+          <div><small>AVG. DELIVERY</small><strong>2.8 days</strong><span>0.4 day faster</span></div>
+          <div><small>FIRST ATTEMPT</small><strong>96.4%</strong><span>Top 8% benchmark</span></div>
+          <div><small>RTO RATE</small><strong>3.6%</strong><span>↓ 0.8% this month</span></div>
+        </section>
+
+        <section className="portal-kpis overview-kpis" aria-label="Shipment summary">
+          <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>TOTAL SHIPMENTS</small><strong>{analytics.shipments}</strong><p><b>↑ 12%</b> from previous period</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN TRANSIT</small><strong>{shipments.filter((item) => item.status.includes("transit") || item.status.includes("delivery")).length + 6}</strong><p>Across 5 active lanes</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="box" /></span><small>DELIVERED TODAY</small><strong>{shipments.filter((item) => item.status === "Delivered").length + 23}</strong><p><b>96.4%</b> first-attempt success</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="wallet" /></span><small>COD AVAILABLE</small><strong>₹18.4K</strong><p>Next settlement: 03 Aug</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+        </section>
+
+        <section className="overview-finance-strip" aria-label="Commercial analytics">
+          <article><span><Icon name="wallet" /></span><div><small>GROSS REVENUE</small><strong>{analytics.revenue}</strong></div><b>{analytics.growth}</b></article>
+          <article><span><Icon name="insights" /></span><div><small>SHIPPING COST</small><strong>{analytics.cost}</strong></div><b className="is-neutral">54.6% of revenue</b></article>
+          <article><span><Icon name="box" /></span><div><small>AVG. ORDER VALUE</small><strong>{analytics.aov}</strong></div><b>+7.2%</b></article>
+          <article><span><Icon name="route" /></span><div><small>COD SHARE</small><strong>38.2%</strong></div><b className="is-neutral">24 orders</b></article>
+        </section>
+
+        <section className="portal-main-grid overview-primary-grid">
+          <article className="portal-card movement-card overview-movement-card">
+            <div className="portal-card-head">
+              <div><small>SHIPMENT INTELLIGENCE · {analytics.label.toUpperCase()}</small><h2>Network movement</h2></div>
+              <div className="overview-chart-legend"><span><i></i> Shipments</span><b>{analytics.growth}</b></div>
+            </div>
+            <div className="chart-wrap overview-chart-wrap">
+              <div className="chart-lines"><i></i><i></i><i></i><i></i></div>
+              <svg viewBox="0 0 640 190" preserveAspectRatio="none" aria-label="Shipment activity trend">
+                <defs><linearGradient id="areaOverview" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3157c8" stopOpacity=".3" /><stop offset="1" stopColor="#3157c8" stopOpacity="0" /></linearGradient></defs>
+                <path className="area overview-area" d="M0 160 C70 150 80 110 140 126 S220 170 280 105 S360 85 410 99 S490 82 535 47 S590 60 640 18 L640 190 L0 190Z" />
+                <path className="line overview-line" d="M0 160 C70 150 80 110 140 126 S220 170 280 105 S360 85 410 99 S490 82 535 47 S590 60 640 18" />
+              </svg>
+              <div className="chart-days">{analytics.labels.map((label) => <span key={label}>{label}</span>)}</div>
+            </div>
+            <div className="overview-chart-summary"><span><small>PEAK VOLUME</small><strong>42 orders</strong></span><span><small>DAILY AVERAGE</small><strong>27 orders</strong></span><span><small>BEST LANE</small><strong>HYD → BLR</strong></span></div>
+          </article>
+          <article className="portal-card status-card overview-status-card">
+            <div className="portal-card-head"><div><small>LIVE STATUS</small><h2>Delivery mix</h2></div><button type="button" onClick={() => navigatePanel("shipments")}>View all</button></div>
+            <div className="donut-row">
+              <div className="donut"><div><strong>{analytics.shipments}</strong><span>Total</span></div></div>
+              <div className="donut-legend">
+                <span><i className="legend-green"></i><b>Delivered</b><em>63%</em></span>
+                <span><i className="legend-purple"></i><b>In transit</b><em>21%</em></span>
+                <span><i className="legend-yellow"></i><b>Scheduled</b><em>11%</em></span>
+                <span><i className="legend-coral"></i><b>Attention</b><em>5%</em></span>
+              </div>
+            </div>
+            <div className="overview-delivery-note"><span>✓</span><div><strong>Healthy delivery mix</strong><small>Attention shipments are below your 8% threshold.</small></div></div>
+          </article>
+        </section>
+
+        <section className="overview-analytics-grid">
+          <article className="portal-card overview-revenue-card">
+            <div className="portal-card-head"><div><small>COMMERCIAL PERFORMANCE</small><h2>Revenue vs shipping cost</h2></div><button type="button" onClick={() => notify("Finance report prepared for export.")}>Export report ↗</button></div>
+            <div className="overview-revenue-head"><div><small>NET CONTRIBUTION</small><strong>₹38.4K</strong><span>45.4% margin</span></div><p>Revenue is growing faster than shipping spend across the selected period.</p></div>
+            <div className="overview-bars">
+              {analytics.bars.map((height, index) => <div key={`${overviewRange}-${index}`}><span style={{ height: `${height}%` }}><i style={{ height: `${Math.max(25, height * .55)}%` }}></i></span><small>{analytics.labels[index]}</small></div>)}
+            </div>
+            <div className="overview-bar-legend"><span><i></i> Revenue</span><span><i></i> Shipping cost</span></div>
+          </article>
+
+          <article className="portal-card overview-sla-card">
+            <div className="portal-card-head"><div><small>SERVICE QUALITY</small><h2>SLA health</h2></div><span className="trend-pill">Excellent</span></div>
+            <div className="overview-sla-score"><div className="sla-gauge"><span><strong>94.8</strong><small>/100</small></span></div><div><strong>On-time performance</strong><p>3.2 points above your 30-day average.</p></div></div>
+            <div className="overview-sla-list">
+              <div><span>Pickup SLA</span><b>98.2%</b><i><em style={{ width: "98.2%" }}></em></i></div>
+              <div><span>In-transit SLA</span><b>94.8%</b><i><em style={{ width: "94.8%" }}></em></i></div>
+              <div><span>First attempt</span><b>96.4%</b><i><em style={{ width: "96.4%" }}></em></i></div>
+              <div><span>NDR resolution</span><b>88.6%</b><i><em style={{ width: "88.6%" }}></em></i></div>
+            </div>
+          </article>
+        </section>
+
+        <section className="overview-operations-grid">
+          <article className="portal-card overview-courier-card">
+            <div className="portal-card-head"><div><small>PARTNER SCORECARD</small><h2>Courier performance</h2></div><button type="button" onClick={() => navigatePanel("insights", "insights-courier")}>Deep analysis →</button></div>
+            <div className="overview-courier-table">
+              <div className="is-heading"><span>Courier partner</span><span>Volume</span><span>On-time</span><span>Avg. TAT</span><span>Health</span></div>
+              {[
+                ["PX", "Pax Express", "46%", "97.2%", "2.1 days", 97],
+                ["PN", "Partner North", "28%", "95.8%", "2.5 days", 91],
+                ["PS", "Partner South", "18%", "94.9%", "2.7 days", 86],
+                ["PL", "Partner Local", "8%", "91.4%", "1.4 days", 74],
+              ].map(([code, name, volume, onTime, tat, health]) => (
+                <div key={name}><span><i>{code}</i><b>{name}</b></span><span>{volume}</span><span>{onTime}</span><span>{tat}</span><span><i className="courier-health"><em style={{ width: `${health}%` }}></em></i></span></div>
+              ))}
+            </div>
+          </article>
+
+          <article className="portal-card overview-insight-card">
+            <div className="portal-card-head"><div><small>SMART INSIGHTS</small><h2>Needs your attention</h2></div><span className="overview-ai-pill">PAX SIGNAL</span></div>
+            <div className="overview-insight-list">
+              <button type="button" onClick={() => navigatePanel("exceptions", "exceptions-delayed")}><span className="is-warning"><Icon name="alert" /></span><div><strong>2 shipments may breach SLA</strong><small>HYD → Mumbai lane · act within 3 hours</small></div><b>→</b></button>
+              <button type="button" onClick={() => navigatePanel("finance", "finance-cod")}><span className="is-success"><Icon name="wallet" /></span><div><strong>₹18,420 ready to settle</strong><small>24 COD orders are fully reconciled</small></div><b>→</b></button>
+              <button type="button" onClick={() => navigatePanel("insights", "insights-rto")}><span className="is-info"><Icon name="insights" /></span><div><strong>RTO improved by 0.8%</strong><small>Bengaluru and Pune are your best routes</small></div><b>→</b></button>
+            </div>
+          </article>
+        </section>
+
+        <section className="overview-zone-section">
+          <div className="overview-section-heading"><div><small>DESTINATION INTELLIGENCE</small><h2>Zone performance</h2></div><button type="button" onClick={() => navigatePanel("insights", "insights-zones")}>Explore all zones →</button></div>
+          <div className="overview-zone-grid">
+            {[
+              ["Local", "22%", "98.4%", "1.2 days", "is-blue"],
+              ["Regional", "31%", "96.8%", "2.1 days", "is-green"],
+              ["Metro", "28%", "95.2%", "2.6 days", "is-purple"],
+              ["National", "19%", "92.7%", "3.8 days", "is-amber"],
+            ].map(([zone, share, success, tat, tone]) => <article className={`overview-zone-card ${tone}`} key={zone}><span>{zone.slice(0, 1)}</span><small>{zone.toUpperCase()} ZONE</small><strong>{success}</strong><p>Delivery success</p><div><b>{share} volume</b><em>{tat}</em></div></article>)}
+          </div>
+        </section>
+
+        <section className="portal-card shipment-list-card overview-latest-card">
+          <div className="portal-card-head"><div><small>RECENT ACTIVITY</small><h2>Latest shipments</h2></div><button type="button" onClick={() => navigatePanel("shipments")}>View all <span>→</span></button></div>
+          <ShipmentTable shipments={shipments.slice(0, 4)} />
+        </section>
+      </>
+    );
+  };
 
   const renderDashboard = () => (
     <>
