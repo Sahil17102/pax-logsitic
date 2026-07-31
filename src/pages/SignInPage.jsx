@@ -323,7 +323,7 @@ export default function SignInPage() {
               from one dependable workspace.
             </p>
             <div className="auth-visual">
-              <img src="/assets/pax-real-courier.jpg" alt="Pax courier delivering a parcel" />
+              <img src="/assets/pax-courier-hero.png" alt="Pax courier scanning a parcel beside a delivery van" />
               <div className="auth-visual-shade"></div>
               <div className="auth-parcel-scene" aria-hidden="true">
                 <div className="auth-parcel-cube">
@@ -336,13 +336,21 @@ export default function SignInPage() {
                 </div>
                 <i className="auth-parcel-shadow"></i>
               </div>
-              <div className="auth-visual-top"><span><i></i> Deliveries live</span><b>PAX CONTROL DESK</b></div>
-              <div className="auth-visual-card">
-                <small>TODAY'S NETWORK</small>
-                <strong>38 shipments moving</strong>
-                <div><span><i></i> Picked up</span><span><i></i> In transit</span><span><i></i> Delivered</span></div>
+              <div className="auth-visual-top"><span><i></i> Network live</span><b>HYDERABAD HUB</b></div>
+              <div className="auth-delivery-ticket">
+                <span aria-hidden="true">✓</span>
+                <div>
+                  <small>LATEST UPDATE</small>
+                  <strong>Out for delivery</strong>
+                  <em>Hyderabad · arriving today</em>
+                </div>
+                <b aria-hidden="true">→</b>
               </div>
-              <div className="auth-visual-route"><span>HYD</span><i></i><b>→</b><i></i><span>INDIA</span></div>
+              <div className="auth-network-strip">
+                <span><small>PICKED UP</small><b>12</b></span>
+                <span><small>IN TRANSIT</small><b>18</b></span>
+                <span><small>DELIVERED</small><b>08</b></span>
+              </div>
             </div>
             <div className="signin-points">
               <span><i>01</i> Doorstep pickup</span>
