@@ -2104,7 +2104,7 @@
   content: "";
 }
 
-.portal-submenu > p {
+.portal-submenu-content > p {
   margin: 2px 8px 7px;
   color: #8190a7;
   font-size: .49rem;
@@ -2113,7 +2113,7 @@
   text-transform: uppercase;
 }
 
-.portal-submenu > button {
+.portal-submenu-content > button {
   position: relative;
   z-index: 1;
   display: grid;
@@ -2131,14 +2131,14 @@
   transition: background .18s ease, color .18s ease, transform .18s ease;
 }
 
-.portal-submenu > button:hover,
-.portal-submenu > button.is-active {
+.portal-submenu-content > button:hover,
+.portal-submenu-content > button.is-active {
   transform: translateX(2px);
   background: #edf3ff;
   color: #294fc2;
 }
 
-.portal-submenu > button > span {
+.portal-submenu-content > button > span {
   display: grid;
   width: 34px;
   height: 34px;
@@ -2148,8 +2148,8 @@
   color: #5e7393;
 }
 
-.portal-submenu > button:hover > span,
-.portal-submenu > button.is-active > span {
+.portal-submenu-content > button:hover > span,
+.portal-submenu-content > button.is-active > span {
   background: #dce8ff;
   color: #3454d1;
 }
@@ -3689,18 +3689,18 @@
   font-size: 12px;
 }
 
-.portal-submenu > p {
+.portal-submenu-content > p {
   color: #71829a;
   font-size: 11px;
   font-weight: 800;
 }
 
-.portal-submenu > button {
+.portal-submenu-content > button {
   color: #53657f;
 }
 
-.portal-submenu > button:hover,
-.portal-submenu > button.is-active {
+.portal-submenu-content > button:hover,
+.portal-submenu-content > button.is-active {
   background: var(--portal-blue-soft);
   color: var(--portal-blue-dark);
 }
@@ -5494,23 +5494,32 @@
   border-color: #d8e2f0;
   border-radius: 20px;
   box-shadow: 0 28px 75px rgba(31, 52, 86, .21);
-  padding: 13px;
+  padding: 0;
 }
 
-.portal-submenu > button {
+.portal-submenu-content {
+  display: grid;
+  max-height: calc(100dvh - 24px);
+  gap: 4px;
+  overflow-y: auto;
+  padding: 13px;
+  overscroll-behavior: contain;
+}
+
+.portal-submenu-content > button {
   min-height: 54px;
   border: 1px solid transparent;
   border-radius: 12px;
 }
 
-.portal-submenu > button:hover,
-.portal-submenu > button.is-active {
+.portal-submenu-content > button:hover,
+.portal-submenu-content > button.is-active {
   border-color: #d8e3f7;
   background:
     linear-gradient(90deg, #eef3ff, #f7f9ff);
 }
 
-.portal-submenu > button > span {
+.portal-submenu-content > button > span {
   box-shadow: inset 0 0 0 1px rgba(53, 80, 128, .04);
 }
 
@@ -6854,5 +6863,26 @@
 
   .portal-logout {
     min-height: 27px;
+  }
+}
+
+@media (max-height: 420px) {
+  .portal-submenu-content {
+    gap: 3px;
+    padding: 9px;
+  }
+
+  .portal-submenu-content > p {
+    margin: 0 7px 4px;
+  }
+
+  .portal-submenu-content > button {
+    min-height: 45px;
+    padding: 5px 8px;
+  }
+
+  .portal-submenu-content > button > span {
+    width: 32px;
+    height: 32px;
   }
 }

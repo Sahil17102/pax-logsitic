@@ -312,7 +312,8 @@ export default function DashboardPage() {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const estimatedHeight = item.children.length * 54 + 28;
+    const compactSubmenu = window.innerHeight <= 420;
+    const estimatedHeight = item.children.length * (compactSubmenu ? 48 : 58) + (compactSubmenu ? 38 : 52);
     const availableTop = Math.max(12, window.innerHeight - estimatedHeight - 12);
     const nextTop = Math.min(rect.top - 3, availableTop);
     const pointerSize = 13;
@@ -934,20 +935,22 @@ export default function DashboardPage() {
             role="menu"
             aria-label={`${openNavItem.label} options`}
           >
-            <p>{openNavItem.label}</p>
-            {openNavItem.children.map(([toolId, icon, label]) => (
-              <button
-                className={activeTool === toolId ? "is-active" : ""}
-                type="button"
-                role="menuitem"
-                onClick={() => navigatePanel(openNavItem.id, toolId)}
-                key={toolId}
-              >
-                <span><Icon name={icon} /></span>
-                <b>{label}</b>
-                <i>→</i>
-              </button>
-            ))}
+            <div className="portal-submenu-content">
+              <p>{openNavItem.label}</p>
+              {openNavItem.children.map(([toolId, icon, label]) => (
+                <button
+                  className={activeTool === toolId ? "is-active" : ""}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => navigatePanel(openNavItem.id, toolId)}
+                  key={toolId}
+                >
+                  <span><Icon name={icon} /></span>
+                  <b>{label}</b>
+                  <i>→</i>
+                </button>
+              ))}
+            </div>
           </div>
         </>
       )}
