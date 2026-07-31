@@ -4,6 +4,7 @@ const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
 const SHIPMENTS_KEY = "pax-demo-shipments";
 const NOTIFICATIONS_KEY = "pax-demo-notifications";
+const WALLET_KEY = "pax-demo-wallet-balance";
 
 const starterShipments = [
   { id: "PAX-260731", customer: "Aarav Retail", destination: "Mumbai, MH", amount: 1240, payment: "Prepaid", status: "In transit", date: "31 Jul 2026" },
@@ -185,6 +186,11 @@ function readNotifications() {
   }
 }
 
+function readWalletBalance() {
+  const saved = Number(localStorage.getItem(WALLET_KEY));
+  return Number.isFinite(saved) && saved >= 0 ? saved : 12840;
+}
+
 function goTo(path) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -214,6 +220,11 @@ export default function DashboardPage() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState(readNotifications);
+  const [walletBalance, setWalletBalance] = useState(readWalletBalance);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [walletModal, setWalletModal] = useState(false);
+  const [rechargeAmount, setRechargeAmount] = useState("1000");
+  const [rechargeMethod, setRechargeMethod] = useState("UPI");
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
@@ -235,6 +246,7 @@ export default function DashboardPage() {
     );
   }, [search, shipments]);
   const unreadNotificationCount = notifications.filter((notification) => notification.unread).length;
+  const walletBalanceLabel = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(walletBalance);
 
   if (!user) return <EmptyAuth />;
 
@@ -256,6 +268,7 @@ export default function DashboardPage() {
     setOpenMenu(null);
     setAccountMenuOpen(false);
     setNotificationsOpen(false);
+    setWalletMenuOpen(false);
     setMobileNav(false);
   };
 
@@ -275,6 +288,21 @@ export default function DashboardPage() {
       return next;
     });
     notify("All notifications marked as read.");
+  };
+
+  const addWalletMoney = (event) => {
+    event.preventDefault();
+    const amount = Number(rechargeAmount);
+    if (!Number.isFinite(amount) || amount < 100 || amount > 50000) {
+      notify("Enter an amount between ₹100 and ₹50,000.");
+      return;
+    }
+    const nextBalance = walletBalance + amount;
+    setWalletBalance(nextBalance);
+    localStorage.setItem(WALLET_KEY, String(nextBalance));
+    setWalletModal(false);
+    setRechargeAmount("1000");
+    notify(`${new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount)} added through ${rechargeMethod}.`);
   };
 
   const toggleSubmenu = (event, item) => {
@@ -650,7 +678,7 @@ export default function DashboardPage() {
     <>
       <section className="section-title-row"><div><p>MONEY MOVEMENT</p><h1>Finance</h1><span>Your wallet, COD settlements and invoices at a glance.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Statement downloaded in demo mode.")}>Download statement</button></section>
       <section className="finance-grid">
-        <article className="finance-hero"><small>AVAILABLE WALLET BALANCE</small><strong>₹12,840</strong><span>Last recharge · ₹5,000 on 28 Jul</span><button type="button" onClick={() => notify("Recharge flow opened in demo mode.")}>+ Add money</button></article>
+        <article className="finance-hero"><small>AVAILABLE WALLET BALANCE</small><strong>{walletBalanceLabel}</strong><span>Ready for shipping charges and adjustments</span><button type="button" onClick={() => setWalletModal(true)}>+ Add money</button></article>
         <article className="portal-card settlement-card"><small>COD SETTLEMENT</small><h2>₹18,420</h2><p>Available for remittance</p><div><span>Next settlement</span><b>03 Aug 2026</b></div><button type="button" onClick={() => notify("COD remittance requested.")}>Request remittance →</button></article>
         <article className="portal-card invoice-card"><div className="portal-card-head"><div><small>RECENT INVOICES</small><h2>Billing history</h2></div></div>{[["INV-0731","31 Jul 2026","₹4,860","Paid"],["INV-0724","24 Jul 2026","₹3,240","Paid"],["INV-0717","17 Jul 2026","₹5,180","Due"]].map((invoice) => <div className="invoice-row" key={invoice[0]}><span><b>{invoice[0]}</b><small>{invoice[1]}</small></span><strong>{invoice[2]}</strong><em className={invoice[3] === "Paid" ? "paid" : "due"}>{invoice[3]}</em><button type="button" onClick={() => notify(`${invoice[0]} downloaded.`)}>↓</button></div>)}</article>
       </section>
@@ -789,6 +817,10 @@ export default function DashboardPage() {
       setTrackResult("PAX-260728");
       return;
     }
+    if (toolId === "finance-wallet" && (label.includes("Add money") || label.includes("balance"))) {
+      setWalletModal(true);
+      return;
+    }
     if (toolId === "support-contact") {
       window.open("https://wa.me/919494338206", "_blank", "noopener,noreferrer");
       return;
@@ -799,7 +831,10 @@ export default function DashboardPage() {
   const renderFeatureWorkspace = (toolId) => {
     const details = featureDetails[toolId];
     if (!details) return renderOverview();
-    const [eyebrow, title, copy, features] = details;
+    const [eyebrow, title, copy, baseFeatures] = details;
+    const features = toolId === "finance-wallet"
+      ? [`${walletBalanceLabel} balance`, "Add money instantly", "₹860 debited today", "₹240 refunded"]
+      : baseFeatures;
     return (
       <>
         <section className="section-title-row feature-title-row">
@@ -916,7 +951,7 @@ export default function DashboardPage() {
               <button
                 className={`notification-button${unreadNotificationCount ? " has-unread" : ""}`}
                 type="button"
-                onClick={() => { setNotificationsOpen((open) => !open); setAccountMenuOpen(false); }}
+                onClick={() => { setNotificationsOpen((open) => !open); setAccountMenuOpen(false); setWalletMenuOpen(false); }}
                 aria-label={`Open notifications, ${unreadNotificationCount} unread`}
                 aria-expanded={notificationsOpen}
                 aria-haspopup="menu"
@@ -949,8 +984,35 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+            <div className="portal-wallet-menu-wrap">
+              <button
+                className="wallet-header-button"
+                type="button"
+                onClick={() => { setWalletMenuOpen((open) => !open); setNotificationsOpen(false); setAccountMenuOpen(false); }}
+                aria-label={`Wallet balance ${walletBalanceLabel}`}
+                aria-expanded={walletMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span><Icon name="wallet" /></span>
+                <div><small>WALLET</small><strong>{walletBalanceLabel}</strong></div>
+                <b>{walletMenuOpen ? "⌃" : "⌄"}</b>
+              </button>
+              {walletMenuOpen && (
+                <div className="portal-wallet-dropdown" role="menu" aria-label="Wallet">
+                  <div className="wallet-dropdown-balance">
+                    <span><Icon name="wallet" /></span>
+                    <small>AVAILABLE BALANCE</small>
+                    <strong>{walletBalanceLabel}</strong>
+                    <p>Use this balance for shipment charges and adjustments.</p>
+                  </div>
+                  <button className="wallet-add-button" type="button" onClick={() => { setWalletModal(true); setWalletMenuOpen(false); }}><span>+</span> Add money</button>
+                  <div className="wallet-mini-stats"><span><small>THIS MONTH</small><b>₹8,640 spent</b></span><span><small>LAST RECHARGE</small><b>₹5,000</b></span></div>
+                  <button className="wallet-transactions-link" type="button" onClick={() => navigatePanel("finance", "finance-wallet")}>View wallet transactions <span>→</span></button>
+                </div>
+              )}
+            </div>
             <div className="portal-account-menu-wrap">
-              <button className="account-button" type="button" onClick={() => { setAccountMenuOpen((open) => !open); setNotificationsOpen(false); }} aria-expanded={accountMenuOpen} aria-haspopup="menu">
+              <button className="account-button" type="button" onClick={() => { setAccountMenuOpen((open) => !open); setNotificationsOpen(false); setWalletMenuOpen(false); }} aria-expanded={accountMenuOpen} aria-haspopup="menu">
                 <span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
                 <div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div>
                 <b>{accountMenuOpen ? "⌃" : "⌄"}</b>
@@ -987,6 +1049,33 @@ export default function DashboardPage() {
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
             </div>
             <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Create & schedule pickup <Icon name="arrow" /></button></div>
+          </form>
+        </div>
+      )}
+      {walletModal && (
+        <div className="modal-backdrop wallet-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setWalletModal(false); }}>
+          <form className="wallet-recharge-modal" onSubmit={addWalletMoney}>
+            <div className="wallet-modal-head">
+              <div><span><Icon name="wallet" /></span><div><small>SECURE RECHARGE</small><h2>Add money to wallet</h2></div></div>
+              <button type="button" onClick={() => setWalletModal(false)} aria-label="Close">×</button>
+            </div>
+            <div className="wallet-current-balance"><span>Current balance</span><strong>{walletBalanceLabel}</strong></div>
+            <fieldset className="wallet-amount-field">
+              <legend>Select amount</legend>
+              <div>
+                {["500", "1000", "2000", "5000"].map((amount) => <button className={rechargeAmount === amount ? "is-active" : ""} type="button" onClick={() => setRechargeAmount(amount)} key={amount}>₹{Number(amount).toLocaleString("en-IN")}</button>)}
+              </div>
+              <label>Custom amount<div><span>₹</span><input value={rechargeAmount} onChange={(event) => setRechargeAmount(event.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" placeholder="Enter ₹100–₹50,000" autoFocus /></div></label>
+            </fieldset>
+            <fieldset className="wallet-method-field">
+              <legend>Payment method</legend>
+              <div>
+                {["UPI", "Card", "Net banking"].map((method) => <button className={rechargeMethod === method ? "is-active" : ""} type="button" onClick={() => setRechargeMethod(method)} key={method}><span>{method === "UPI" ? "UPI" : method === "Card" ? "▣" : "⌂"}</span>{method}</button>)}
+              </div>
+            </fieldset>
+            <div className="wallet-recharge-summary"><span>Balance after recharge</span><strong>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(walletBalance + (Number(rechargeAmount) || 0))}</strong></div>
+            <p className="wallet-secure-note"><span>✓</span> Payment is simulated securely for this customer portal demo.</p>
+            <div className="wallet-modal-actions"><button className="portal-secondary" type="button" onClick={() => setWalletModal(false)}>Cancel</button><button className="portal-primary" type="submit">Add {Number(rechargeAmount) >= 100 ? `₹${Number(rechargeAmount).toLocaleString("en-IN")}` : "money"} <Icon name="arrow" /></button></div>
           </form>
         </div>
       )}
