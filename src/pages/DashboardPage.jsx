@@ -12,18 +12,112 @@ const starterShipments = [
 ];
 
 const navItems = [
-  ["overview", "home", "Overview"],
-  ["dashboard", "grid", "Dashboard"],
-  ["shipments", "box", "Shipments"],
-  ["exceptions", "alert", "Exceptions"],
-  ["finance", "wallet", "Finance"],
-  ["audits", "audit", "Audits"],
-  ["utilities", "tools", "Utilities"],
-  ["insights", "insights", "Insights"],
-  ["channels", "store", "Channels"],
-  ["workspace", "settings", "Workspace"],
-  ["support", "support", "Support"],
+  { id: "overview", icon: "home", label: "Overview", children: [
+    ["overview-home", "home", "Overview Home"],
+    ["overview-actions", "plus", "Quick Actions"],
+  ] },
+  { id: "dashboard", icon: "grid", label: "Dashboard", children: [
+    ["dashboard-operations", "grid", "Operations Dashboard"],
+    ["dashboard-performance", "insights", "Delivery Performance"],
+    ["dashboard-pickups", "route", "Pickup Schedule"],
+  ] },
+  { id: "shipments", icon: "box", label: "Shipments", children: [
+    ["shipments-create", "plus", "Create Shipment"],
+    ["shipments-all", "box", "All Shipments"],
+    ["shipments-track", "route", "Track Shipment"],
+    ["shipments-pickups", "home", "Pickup Requests"],
+    ["shipments-manifests", "audit", "Manifests"],
+  ] },
+  { id: "exceptions", icon: "alert", label: "Exceptions", children: [
+    ["exceptions-ndr", "alert", "NDR Management"],
+    ["exceptions-rto", "route", "RTO Shipments"],
+    ["exceptions-delayed", "box", "Delayed Shipments"],
+    ["exceptions-weight", "audit", "Weight Disputes"],
+  ] },
+  { id: "finance", icon: "wallet", label: "Finance", children: [
+    ["finance-wallet", "wallet", "Wallet Transactions"],
+    ["finance-cod", "wallet", "COD Settlements"],
+    ["finance-invoices", "audit", "Invoices"],
+  ] },
+  { id: "audits", icon: "audit", label: "Audits", children: [
+    ["audits-weight", "audit", "Weight Discrepancies"],
+    ["audits-cod", "wallet", "COD Reconciliation"],
+    ["audits-billing", "insights", "Billing Audit"],
+  ] },
+  { id: "utilities", icon: "tools", label: "Utilities", children: [
+    ["utilities-rate", "wallet", "Rate Calculator"],
+    ["utilities-weight", "box", "Weight Calculator"],
+    ["utilities-pincode", "route", "Pincode Serviceability"],
+    ["utilities-labels", "audit", "Label Generator"],
+  ] },
+  { id: "insights", icon: "insights", label: "Insights", children: [
+    ["insights-shipments", "insights", "Shipment Analytics"],
+    ["insights-courier", "route", "Courier Performance"],
+    ["insights-zones", "grid", "Zone Analysis"],
+    ["insights-rto", "alert", "RTO Analytics"],
+  ] },
+  { id: "channels", icon: "store", label: "Channels", children: [
+    ["channels-connected", "store", "Connected Channels"],
+    ["channels-connect", "plus", "Connect Store"],
+    ["channels-sync", "route", "Order Sync"],
+  ] },
+  { id: "workspace", icon: "settings", label: "Workspace", children: [
+    ["workspace-company", "user", "Company Profile"],
+    ["workspace-pickups", "home", "Pickup Addresses"],
+    ["workspace-team", "user", "Team & Roles"],
+    ["workspace-kyc", "audit", "KYC & Billing"],
+  ] },
+  { id: "support", icon: "support", label: "Support", children: [
+    ["support-raise", "plus", "Raise Ticket"],
+    ["support-history", "audit", "Ticket History"],
+    ["support-contact", "support", "Contact Support"],
+  ] },
 ];
+
+const featureDetails = {
+  "overview-actions": ["WORKSPACE SHORTCUTS", "Quick Actions", "Start the most common shipping jobs without leaving this screen.", ["Create shipment", "Track shipment", "Add wallet money", "Raise support ticket"]],
+  "dashboard-performance": ["DELIVERY CONTROL", "Delivery Performance", "Review service success, delivery speed and destination health.", ["96.4% success rate", "2.8 day average", "3.6% RTO", "24 delivered today"]],
+  "dashboard-pickups": ["PICKUP CONTROL", "Pickup Schedule", "Plan today’s handovers and confirm what the courier desk will collect.", ["4 pickups today", "12 parcels ready", "Next run 2:30 PM", "1 address pending"]],
+  "shipments-create": ["NEW ORDER", "Create Shipment", "Add a receiver, parcel and payment mode to schedule a pickup.", ["Receiver details", "Delivery address", "Parcel weight", "Payment mode"]],
+  "shipments-track": ["LIVE MOVEMENT", "Track Shipment", "Search a Pax reference and review its latest movement milestone.", ["Booked", "Picked up", "In transit", "Out for delivery"]],
+  "shipments-pickups": ["PICKUP REQUESTS", "Pickup Requests", "Manage pending, scheduled and completed pickup handovers.", ["4 scheduled", "1 pending", "8 completed today", "0 missed"]],
+  "shipments-manifests": ["DISPATCH DOCUMENTS", "Manifests", "Create and download courier-wise shipment manifests.", ["Manifest PAX-M-731", "12 orders assigned", "2 couriers", "Last closed 4:20 PM"]],
+  "exceptions-rto": ["RETURN CONTROL", "RTO Shipments", "Review return-to-origin parcels and plan the reverse journey.", ["3 in return transit", "1 address issue", "₹2,450 value", "2 actions due"]],
+  "exceptions-delayed": ["DELAY MONITOR", "Delayed Shipments", "Find shipments beyond their expected movement milestone.", ["2 hub delays", "1 weather delay", "0 lost", "Oldest 18 hours"]],
+  "exceptions-weight": ["WEIGHT REVIEW", "Weight Disputes", "Compare declared and courier-measured parcel weight.", ["2 open disputes", "₹184 at risk", "1 accepted", "1 under review"]],
+  "finance-wallet": ["WALLET LEDGER", "Wallet Transactions", "Review credits, shipping debits, refunds and adjustments.", ["₹12,840 balance", "₹5,000 last recharge", "₹860 debited today", "₹240 refunded"]],
+  "finance-invoices": ["BILLING RECORDS", "Invoices", "Review, filter and download weekly shipping invoices.", ["3 recent invoices", "₹13,280 billed", "2 paid", "1 due"]],
+  "audits-cod": ["COD CONTROL", "COD Reconciliation", "Match collected COD against remittance and order records.", ["₹18,420 matched", "24 COD orders", "0 mismatches", "Next close 03 Aug"]],
+  "audits-billing": ["CHARGE REVIEW", "Billing Audit", "Review shipping charges, taxes and invoice-level adjustments.", ["42 orders checked", "₹184 adjustment", "2 recommendations", "92/100 health"]],
+  "utilities-rate": ["SHIPPING TOOL", "Rate Calculator", "Estimate indicative shipping charges for a route and parcel.", ["Pickup PIN", "Delivery PIN", "Chargeable weight", "Service speed"]],
+  "utilities-weight": ["SHIPPING TOOL", "Weight Calculator", "Compare actual and volumetric weight before booking.", ["Length × width × height", "Actual weight", "Volumetric divisor", "Chargeable result"]],
+  "utilities-pincode": ["SERVICEABILITY", "Pincode Serviceability", "Check whether a destination supports standard, express and COD.", ["Standard delivery", "Express delivery", "COD availability", "Expected timeline"]],
+  "utilities-labels": ["DOCUMENT TOOL", "Label Generator", "Prepare shipping labels for booked customer orders.", ["A6 shipping label", "Invoice copy", "Barcode", "Download PDF"]],
+  "insights-courier": ["COURIER ANALYTICS", "Courier Performance", "Compare delivery success, speed and RTO across courier partners.", ["Pax Express 97.2%", "Partner North 95.8%", "Partner South 94.9%", "Best SLA 2.1 days"]],
+  "insights-zones": ["ROUTE ANALYTICS", "Zone Analysis", "Understand shipment mix and cost by delivery zone.", ["Local 22%", "Regional 31%", "Metro 28%", "National 19%"]],
+  "insights-rto": ["RETURN ANALYTICS", "RTO Analytics", "Identify return patterns by city, payment and exception reason.", ["3.6% RTO", "COD 68% of RTO", "Top reason unavailable", "Down 0.8%"]],
+  "channels-connect": ["STORE CONNECTION", "Connect Store", "Connect a commerce channel and start importing orders.", ["Shopify", "WooCommerce", "Amazon", "CSV upload"]],
+  "channels-sync": ["ORDER AUTOMATION", "Order Sync", "Review imports, mapping rules and sync failures.", ["Last sync 6 mins ago", "36 orders imported", "2 skipped", "0 failed"]],
+  "workspace-pickups": ["ORIGIN SETTINGS", "Pickup Addresses", "Manage warehouses, offices and recurring pickup origins.", ["Himayat Nagar", "Kukatpally", "2 active origins", "Default origin set"]],
+  "workspace-team": ["ACCESS CONTROL", "Team & Roles", "Invite teammates and decide what each role can manage.", ["3 team members", "1 administrator", "2 operators", "0 pending invites"]],
+  "workspace-kyc": ["BUSINESS VERIFICATION", "KYC & Billing", "Review KYC, GST and billing identity for the workspace.", ["KYC verified", "GST active", "Billing address set", "PAN verified"]],
+  "support-history": ["SUPPORT RECORDS", "Ticket History", "Track open and resolved conversations with the Pax team.", ["1 open ticket", "8 resolved", "12 min avg response", "Latest PAX-SUP-104"]],
+  "support-contact": ["CONTACT DESK", "Contact Support", "Reach the local logistics team by WhatsApp, phone or email.", ["WhatsApp support", "+91 94943 38206", "Email support", "Mon–Sat 9 AM–7 PM"]],
+};
+
+const defaultTools = {
+  overview: "overview-home",
+  dashboard: "dashboard-operations",
+  shipments: "shipments-all",
+  exceptions: "exceptions-ndr",
+  finance: "finance-wallet",
+  audits: "audits-weight",
+  utilities: "utilities-rate",
+  insights: "insights-shipments",
+  channels: "channels-connected",
+  workspace: "workspace-company",
+  support: "support-raise",
+};
 
 function Icon({ name }) {
   const paths = {
@@ -95,6 +189,10 @@ function StatusBadge({ status }) {
 export default function DashboardPage() {
   const [user, setUser] = useState(readSession);
   const [active, setActive] = useState("overview");
+  const [activeTool, setActiveTool] = useState("overview-home");
+  const [openMenu, setOpenMenu] = useState(null);
+  const [submenuTop, setSubmenuTop] = useState(110);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
   const [search, setSearch] = useState("");
@@ -129,9 +227,20 @@ export default function DashboardPage() {
     goTo("/");
   };
 
-  const navigatePanel = (section) => {
+  const navigatePanel = (section, tool = defaultTools[section]) => {
     setActive(section);
+    setActiveTool(tool);
+    setOpenMenu(null);
+    setAccountMenuOpen(false);
     setMobileNav(false);
+  };
+
+  const toggleSubmenu = (event, item) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const estimatedHeight = item.children.length * 54 + 28;
+    const availableTop = Math.max(12, window.innerHeight - estimatedHeight - 12);
+    setSubmenuTop(Math.min(rect.top - 3, availableTop));
+    setOpenMenu((current) => current === item.id ? null : item.id);
   };
 
   const createShipment = (event) => {
@@ -187,13 +296,16 @@ export default function DashboardPage() {
   };
 
   const openShipment = () => setShipmentModal(true);
+  const currentHour = new Date().getHours();
+  const greeting = currentHour < 12 ? "Good morning" : currentHour < 17 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
 
   const renderOverview = () => (
     <>
       <section className="portal-welcome">
         <div>
-          <p>Friday, 31 July</p>
-          <h1>Good morning, {user.fullName?.split(" ")[0] || "there"}.</h1>
+          <p>{todayLabel}</p>
+          <h1>{greeting}, {user.fullName?.split(" ")[0] || "there"}.</h1>
           <span>Here’s what’s moving across your Pax network today.</span>
         </div>
         <button className="portal-primary" type="button" onClick={openShipment}><Icon name="plus" /> Create shipment</button>
@@ -452,19 +564,91 @@ export default function DashboardPage() {
     </>
   );
 
-  const panels = {
-    overview: renderOverview,
-    dashboard: renderDashboard,
-    shipments: renderShipments,
-    exceptions: renderExceptions,
-    finance: renderFinance,
-    audits: renderAudits,
-    utilities: renderUtilities,
-    insights: renderInsights,
-    channels: renderChannels,
-    workspace: renderWorkspace,
-    support: renderSupport,
+  const runFeatureAction = (toolId, label) => {
+    if (toolId === "shipments-create") {
+      openShipment();
+      return;
+    }
+    if (toolId === "utilities-rate") {
+      goTo("/rate-calculator");
+      return;
+    }
+    if (toolId === "utilities-weight") {
+      goTo("/weight-calculator");
+      return;
+    }
+    if (toolId === "shipments-track") {
+      setTrackId("PAX-260728");
+      setTrackResult("PAX-260728");
+      return;
+    }
+    if (toolId === "support-contact") {
+      window.open("https://wa.me/919494338206", "_blank", "noopener,noreferrer");
+      return;
+    }
+    notify(`${label} opened successfully.`);
   };
+
+  const renderFeatureWorkspace = (toolId) => {
+    const details = featureDetails[toolId];
+    if (!details) return renderOverview();
+    const [eyebrow, title, copy, features] = details;
+    return (
+      <>
+        <section className="section-title-row feature-title-row">
+          <div><p>{eyebrow}</p><h1>{title}</h1><span>{copy}</span></div>
+          <button className="portal-primary" type="button" onClick={() => runFeatureAction(toolId, title)}>
+            Open {title} <Icon name="arrow" />
+          </button>
+        </section>
+        <section className="feature-function-grid">
+          {features.map((feature, index) => (
+            <button type="button" onClick={() => runFeatureAction(toolId, feature)} key={feature}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <div><strong>{feature}</strong><small>View details and manage this workflow</small></div>
+              <b>→</b>
+            </button>
+          ))}
+        </section>
+        <section className="feature-workspace-grid">
+          <article className="portal-card feature-activity-card">
+            <div className="portal-card-head"><div><small>RECENT ACTIVITY</small><h2>{title} activity</h2></div><span className="trend-pill">Live</span></div>
+            {features.map((feature, index) => (
+              <div className="feature-activity-row" key={feature}>
+                <span className={index < 2 ? "is-complete" : ""}>{index < 2 ? "✓" : index + 1}</span>
+                <div><strong>{feature}</strong><small>{index < 2 ? "Updated today" : "Ready for review"}</small></div>
+                <button type="button" onClick={() => runFeatureAction(toolId, feature)}>Open</button>
+              </div>
+            ))}
+          </article>
+          <article className="portal-card feature-help-card">
+            <span><Icon name="support" /></span>
+            <small>NEED HELP?</small>
+            <h2>Work through {title.toLowerCase()} with the Pax desk.</h2>
+            <p>Contact the Hyderabad operations team when an order needs a manual review.</p>
+            <button type="button" onClick={() => navigatePanel("support", "support-contact")}>Contact support →</button>
+          </article>
+        </section>
+      </>
+    );
+  };
+
+  const toolRenderers = {
+    "overview-home": renderOverview,
+    "dashboard-operations": renderDashboard,
+    "shipments-all": renderShipments,
+    "shipments-track": renderTracking,
+    "exceptions-ndr": renderExceptions,
+    "finance-cod": renderFinance,
+    "audits-weight": renderAudits,
+    "insights-shipments": renderInsights,
+    "channels-connected": renderChannels,
+    "workspace-company": renderWorkspace,
+    "support-raise": renderSupport,
+  };
+
+  const renderActiveTool = () => (toolRenderers[activeTool] || (() => renderFeatureWorkspace(activeTool)))();
+  const openNavItem = navItems.find((item) => item.id === openMenu);
 
   return (
     <div className="portal-shell">
@@ -473,22 +657,71 @@ export default function DashboardPage() {
         <div className="portal-workspace"><span>{(user.businessName || "PX").slice(0, 2).toUpperCase()}</span><div><small>WORKSPACE</small><strong>{user.businessName || "My workspace"}</strong></div></div>
         <nav aria-label="Customer portal">
           <small>MAIN MENU</small>
-          {navItems.map(([id, icon, label]) => <button className={active === id ? "is-active" : ""} type="button" onClick={() => navigatePanel(id)} key={id}><Icon name={icon} /><span>{label}</span>{label === "Shipments" && <em>{shipments.length}</em>}</button>)}
+          {navItems.map((item) => (
+            <button
+              className={`${active === item.id ? "is-active" : ""}${openMenu === item.id ? " is-open" : ""}`}
+              type="button"
+              onClick={(event) => toggleSubmenu(event, item)}
+              aria-expanded={openMenu === item.id}
+              aria-haspopup="menu"
+              key={item.id}
+            >
+              <Icon name={item.icon} />
+              <span>{item.label}</span>
+              {item.label === "Shipments" && <em>{shipments.length}</em>}
+            </button>
+          ))}
         </nav>
         <div className="portal-help"><span>?</span><strong>Need a hand?</strong><p>Our Hyderabad team is ready to help.</p><button type="button" onClick={() => navigatePanel("support")}>Open support</button></div>
         <button className="portal-logout" type="button" onClick={logout}>← <span>Sign out</span></button>
       </aside>
+      {openNavItem && (
+        <>
+          <button className="portal-submenu-scrim" type="button" aria-label="Close submenu" onClick={() => setOpenMenu(null)}></button>
+          <div className="portal-submenu" style={{ top: `${submenuTop}px` }} role="menu" aria-label={`${openNavItem.label} options`}>
+            <p>{openNavItem.label}</p>
+            {openNavItem.children.map(([toolId, icon, label]) => (
+              <button
+                className={activeTool === toolId ? "is-active" : ""}
+                type="button"
+                role="menuitem"
+                onClick={() => navigatePanel(openNavItem.id, toolId)}
+                key={toolId}
+              >
+                <span><Icon name={icon} /></span>
+                <b>{label}</b>
+                <i>→</i>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {mobileNav && <button className="portal-scrim" type="button" aria-label="Close menu" onClick={() => setMobileNav(false)}></button>}
       <div className="portal-body">
         <header className="portal-header">
           <button className="portal-menu" type="button" onClick={() => setMobileNav(true)} aria-label="Open portal menu"><Icon name="menu" /></button>
-          <label className="portal-search"><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => setActive("shipments")} placeholder="Search shipments..." /><kbd>⌘ K</kbd></label>
+          <label className="portal-search"><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => navigatePanel("shipments", "shipments-all")} placeholder="Search shipments..." /><kbd>⌘ K</kbd></label>
           <div className="portal-header-actions">
             <button className="notification-button" type="button" onClick={() => notify("You’re all caught up.")}><Icon name="bell" /><i></i></button>
-            <button className="account-button" type="button" onClick={() => navigatePanel("workspace")}><span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div><b>⌄</b></button>
+            <div className="portal-account-menu-wrap">
+              <button className="account-button" type="button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu">
+                <span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
+                <div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div>
+                <b>{accountMenuOpen ? "⌃" : "⌄"}</b>
+              </button>
+              {accountMenuOpen && (
+                <div className="portal-account-dropdown" role="menu">
+                  <div className="account-dropdown-head"><span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><div><strong>{user.fullName}</strong><small>{user.email}</small></div></div>
+                  <button type="button" role="menuitem" onClick={() => navigatePanel("workspace", "workspace-company")}><Icon name="user" /><span>Company profile</span><b>→</b></button>
+                  <button type="button" role="menuitem" onClick={() => navigatePanel("workspace", "workspace-pickups")}><Icon name="settings" /><span>Account settings</span><b>→</b></button>
+                  <button type="button" role="menuitem" onClick={() => navigatePanel("support", "support-contact")}><Icon name="support" /><span>Help & support</span><b>→</b></button>
+                  <button className="account-logout-action" type="button" role="menuitem" onClick={logout}><span>←</span><span>Log out</span></button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
-        <main className="portal-content">{panels[active]()}</main>
+        <main className="portal-content">{renderActiveTool()}</main>
         <footer className="portal-footer"><span>© 2026 Pax Logistics</span><span>Hyderabad · Telangana · India</span><a href="https://searchcraftdigital.com/" target="_blank" rel="noreferrer">Crafted by SearchCraft Digital</a></footer>
       </div>
       {shipmentModal && (

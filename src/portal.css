@@ -2022,6 +2022,509 @@
   }
 }
 
+/* Portal interaction v4 — landing-blue menus, functional flyouts and account controls */
+.portal-sidebar {
+  border-right-color: #dce5f2;
+  background:
+    linear-gradient(180deg, rgba(238, 244, 255, .72), transparent 18%),
+    #fff;
+}
+
+.portal-sidebar nav button {
+  color: #294264;
+}
+
+.portal-sidebar nav button > svg {
+  background: #edf3ff;
+  color: #4b69cc;
+}
+
+.portal-sidebar nav button:hover,
+.portal-sidebar nav button.is-open:not(.is-active) {
+  background: #edf3ff;
+  color: #294fc2;
+}
+
+.portal-sidebar nav button.is-open:not(.is-active) > svg {
+  background: #dfe9ff;
+  color: #3454d1;
+}
+
+.portal-sidebar nav button.is-active {
+  background: linear-gradient(145deg, #4c70e2, #2f50bd);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(52, 84, 209, .24);
+}
+
+.portal-sidebar nav button.is-active > svg {
+  background: rgba(255, 255, 255, .18);
+  color: #fff;
+}
+
+.portal-sidebar nav button em {
+  background: #c8dcff;
+  color: #27469f;
+}
+
+.portal-submenu-scrim {
+  position: fixed;
+  z-index: 28;
+  inset: 0;
+  border: 0;
+  background: rgba(27, 51, 93, .035);
+  cursor: default;
+}
+
+.portal-submenu {
+  position: fixed;
+  z-index: 45;
+  left: 126px;
+  display: grid;
+  width: 292px;
+  gap: 4px;
+  border: 1px solid #dce5f2;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 25px 70px rgba(37, 64, 112, .2);
+  padding: 12px;
+  animation: portal-submenu-in .18s ease both;
+  backdrop-filter: blur(18px);
+}
+
+.portal-submenu::before {
+  position: absolute;
+  top: 24px;
+  left: -7px;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  border-bottom: 1px solid #dce5f2;
+  border-left: 1px solid #dce5f2;
+  background: #fff;
+  content: "";
+}
+
+.portal-submenu > p {
+  margin: 2px 8px 7px;
+  color: #8190a7;
+  font-size: .49rem;
+  font-weight: 950;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.portal-submenu > button {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 51px;
+  grid-template-columns: 34px 1fr auto;
+  gap: 11px;
+  align-items: center;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  padding: 7px 9px;
+  color: #5c6d87;
+  cursor: pointer;
+  text-align: left;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
+}
+
+.portal-submenu > button:hover,
+.portal-submenu > button.is-active {
+  transform: translateX(2px);
+  background: #edf3ff;
+  color: #294fc2;
+}
+
+.portal-submenu > button > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 9px;
+  background: #f0f4fa;
+  color: #5e7393;
+}
+
+.portal-submenu > button:hover > span,
+.portal-submenu > button.is-active > span {
+  background: #dce8ff;
+  color: #3454d1;
+}
+
+.portal-submenu svg {
+  width: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.portal-submenu b {
+  font-size: .67rem;
+  font-weight: 760;
+}
+
+.portal-submenu i {
+  color: #9ca8b9;
+  font-size: .66rem;
+  font-style: normal;
+}
+
+@keyframes portal-submenu-in {
+  from { transform: translateX(-7px) scale(.98); opacity: 0; }
+}
+
+.portal-account-menu-wrap {
+  position: relative;
+}
+
+.portal-account-dropdown {
+  position: absolute;
+  z-index: 55;
+  top: calc(100% + 14px);
+  right: 0;
+  display: grid;
+  width: 270px;
+  gap: 3px;
+  border: 1px solid #dce5f2;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 24px 65px rgba(37, 64, 112, .2);
+  padding: 10px;
+  animation: account-menu-in .18s ease both;
+}
+
+.portal-account-dropdown::before {
+  position: absolute;
+  top: -7px;
+  right: 31px;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  border-top: 1px solid #dce5f2;
+  border-left: 1px solid #dce5f2;
+  background: #fff;
+  content: "";
+}
+
+.account-dropdown-head {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  margin-bottom: 5px;
+  border-radius: 11px;
+  background: #f3f7ff;
+  padding: 11px;
+}
+
+.account-dropdown-head > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: #b7d9f5;
+  color: #244d9d;
+  font-size: .62rem;
+  font-weight: 950;
+}
+
+.account-dropdown-head strong,
+.account-dropdown-head small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-dropdown-head strong {
+  color: #1e3354;
+  font-size: .65rem;
+}
+
+.account-dropdown-head small {
+  margin-top: 4px;
+  color: #8391a5;
+  font-size: .47rem;
+}
+
+.portal-account-dropdown > button {
+  display: grid;
+  min-height: 43px;
+  grid-template-columns: 19px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  padding: 0 10px;
+  color: #52657f;
+  cursor: pointer;
+  text-align: left;
+}
+
+.portal-account-dropdown > button:hover {
+  background: #edf3ff;
+  color: #294fc2;
+}
+
+.portal-account-dropdown > button svg {
+  width: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.portal-account-dropdown > button span {
+  font-size: .59rem;
+  font-weight: 800;
+}
+
+.portal-account-dropdown > button b {
+  color: #a0aabb;
+  font-size: .58rem;
+}
+
+.portal-account-dropdown > button.account-logout-action {
+  grid-template-columns: 19px 1fr;
+  margin-top: 5px;
+  border-top: 1px solid #e6ebf2;
+  border-radius: 0 0 9px 9px;
+  padding-top: 5px;
+  color: #cf4e59;
+}
+
+@keyframes account-menu-in {
+  from { transform: translateY(-7px) scale(.98); opacity: 0; }
+}
+
+.feature-function-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.feature-function-grid > button {
+  display: flex;
+  min-height: 150px;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid #dfe6f0;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(183, 217, 245, .35), transparent 33%),
+    #fff;
+  padding: 19px;
+  color: #1f3556;
+  cursor: pointer;
+  text-align: left;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.feature-function-grid > button:hover {
+  transform: translateY(-3px);
+  border-color: #b9caea;
+  box-shadow: 0 16px 35px rgba(37, 64, 112, .12);
+}
+
+.feature-function-grid > button > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: #e8efff;
+  color: #3454d1;
+  font-size: .52rem;
+  font-weight: 950;
+}
+
+.feature-function-grid > button > div {
+  margin-top: 20px;
+}
+
+.feature-function-grid strong,
+.feature-function-grid small {
+  display: block;
+}
+
+.feature-function-grid strong {
+  font-size: .67rem;
+}
+
+.feature-function-grid small {
+  margin-top: 6px;
+  color: #8693a5;
+  font-size: .49rem;
+  line-height: 1.45;
+}
+
+.feature-function-grid > button > b {
+  margin-top: auto;
+  align-self: flex-end;
+  color: #3454d1;
+}
+
+.feature-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.feature-activity-card {
+  padding-bottom: 8px;
+}
+
+.feature-activity-row {
+  display: grid;
+  min-height: 60px;
+  grid-template-columns: 30px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid #e9edf3;
+}
+
+.feature-activity-row:first-of-type {
+  margin-top: 17px;
+}
+
+.feature-activity-row > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  background: #eef2f7;
+  color: #75849a;
+  font-size: .51rem;
+  font-weight: 900;
+}
+
+.feature-activity-row > span.is-complete {
+  background: #e4f4ed;
+  color: #21805f;
+}
+
+.feature-activity-row strong,
+.feature-activity-row small {
+  display: block;
+}
+
+.feature-activity-row strong { font-size: .59rem; }
+.feature-activity-row small { margin-top: 4px; color: #919cab; font-size: .46rem; }
+
+.feature-activity-row button {
+  border: 0;
+  background: transparent;
+  color: #3454d1;
+  cursor: pointer;
+  font-size: .51rem;
+  font-weight: 900;
+}
+
+.feature-help-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 95% 5%, rgba(183, 217, 245, .35), transparent 34%),
+    linear-gradient(160deg, #f7faff, #edf3ff);
+  padding: 25px;
+}
+
+.feature-help-card > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-bottom: 27px;
+  border-radius: 12px;
+  background: #3454d1;
+  color: #fff;
+}
+
+.feature-help-card svg {
+  width: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.feature-help-card > small {
+  color: #71819a;
+  font-size: .47rem;
+  font-weight: 950;
+  letter-spacing: .09em;
+}
+
+.feature-help-card h2 {
+  margin: 8px 0 10px;
+  font-family: "Manrope", sans-serif;
+  font-size: 1.05rem;
+  letter-spacing: -.04em;
+  line-height: 1.3;
+}
+
+.feature-help-card p {
+  color: #7e8b9d;
+  font-size: .53rem;
+  line-height: 1.6;
+}
+
+.feature-help-card button {
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #3454d1;
+  cursor: pointer;
+  font-size: .55rem;
+  font-weight: 900;
+}
+
+@media (max-width: 1180px) {
+  .feature-function-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .portal-submenu {
+    left: 126px;
+  }
+
+  .feature-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .portal-submenu {
+    right: 14px;
+    left: 104px;
+    width: auto;
+  }
+
+  .feature-function-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-account-dropdown {
+    position: fixed;
+    top: 74px;
+    right: 13px;
+    left: 13px;
+    width: auto;
+  }
+}
+
 @media (max-width: 480px) {
   .signin-preview-labels,
   .signin-preview-stats small {
