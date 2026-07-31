@@ -2865,6 +2865,42 @@
   color: #294cc1;
 }
 
+.login-method-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 0 24px;
+  overflow: hidden;
+  border-radius: 11px;
+  background: #f2f5fb;
+}
+
+.login-method-tabs button {
+  position: relative;
+  min-height: 52px;
+  border: 0;
+  background: transparent;
+  color: #596582;
+  cursor: pointer;
+  font-size: .68rem;
+  font-weight: 850;
+}
+
+.login-method-tabs button.is-active {
+  background: #fff;
+  color: #ef6c00;
+}
+
+.login-method-tabs button.is-active::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: #ef6c00;
+  content: "";
+}
+
 .auth-page-v2 .auth-section-title span {
   background: #3454d1;
 }
@@ -7000,6 +7036,68 @@
   color: #3157c8;
   font-size: 22px;
   font-weight: 900;
+}
+
+.auth-input-with-icon {
+  position: relative;
+  display: block;
+}
+
+.auth-input-with-icon > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 15px;
+  width: 20px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: #294277;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  pointer-events: none;
+}
+
+.auth-input-with-icon > input {
+  border: 2px solid #243c75;
+  padding-left: 46px;
+}
+
+.password-field.auth-input-with-icon > input {
+  padding-right: 65px;
+}
+
+.login-method-form .signin-options {
+  margin-top: 3px;
+}
+
+.login-method-form .auth-submit-button {
+  min-height: 56px;
+  background: #11275f;
+  font-size: .72rem;
+}
+
+.login-method-form .auth-submit-button:hover {
+  background: #0b1d4e;
+}
+
+.login-method-form .signin-note button {
+  border-bottom-color: #ef6c00;
+  color: #ef6c00;
+}
+
+.signup-auth-back {
+  margin-bottom: 17px;
+}
+
+.auth-page-v2 .otp-demo-box {
+  border-color: #f3d5ac;
+  background: #fff7eb;
+}
+
+.auth-page-v2 .otp-demo-box span,
+.auth-page-v2 .otp-demo-box strong {
+  color: #b65300;
 }
 
 .portal-tool-empty svg {

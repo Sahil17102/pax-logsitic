@@ -9,6 +9,10 @@ function goTo(path) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function createOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 function getSavedUsers() {
   try {
     const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
@@ -44,8 +48,11 @@ const defaultSignup = {
 
 export default function SignInPage() {
   const [mode, setMode] = useState("login");
+  const [loginMethod, setLoginMethod] = useState("otp");
   const [loginId, setLoginId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginOtp, setLoginOtp] = useState("");
+  const [loginCode, setLoginCode] = useState("");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [remember, setRemember] = useState(true);
@@ -57,7 +64,7 @@ export default function SignInPage() {
 
   const loginIdIsValid = useMemo(() => {
     const value = loginId.trim();
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || /^[6-9]\d{9}$/.test(value);
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }, [loginId]);
 
   useEffect(() => {
@@ -104,11 +111,51 @@ export default function SignInPage() {
     };
   }, [signup.pincode]);
 
-  const finishLogin = (event) => {
+  const findLoginUser = () => {
+    const normalizedId = loginId.trim().toLowerCase();
+    return getSavedUsers().find((user) => user.email?.toLowerCase() === normalizedId);
+  };
+
+  const requestLoginOtp = (event) => {
     event.preventDefault();
     setLoginError("");
     if (!loginIdIsValid) {
-      setLoginError("Enter a valid email address or 10-digit mobile number.");
+      setLoginError("Enter a valid email address.");
+      return;
+    }
+    if (!findLoginUser()) {
+      setLoginError("No Pax account found with this email. Create an account first.");
+      return;
+    }
+
+    setLoginCode(createOtp());
+    setLoginOtp("");
+  };
+
+  const finishOtpLogin = (event) => {
+    event.preventDefault();
+    setLoginError("");
+    if (!loginCode || loginOtp !== loginCode) {
+      setLoginError("That OTP does not match the on-screen code.");
+      return;
+    }
+
+    const savedUser = findLoginUser();
+    if (!savedUser) {
+      setLoginError("This account is no longer available. Please create it again.");
+      setLoginCode("");
+      return;
+    }
+
+    saveSession(savedUser, remember);
+    goTo("/dashboard");
+  };
+
+  const finishPasswordLogin = (event) => {
+    event.preventDefault();
+    setLoginError("");
+    if (!loginIdIsValid) {
+      setLoginError("Enter a valid email address.");
       return;
     }
     if (loginPassword.length < 8) {
@@ -116,10 +163,7 @@ export default function SignInPage() {
       return;
     }
 
-    const normalizedId = loginId.trim().toLowerCase();
-    const savedUser = getSavedUsers().find(
-      (user) => user.email?.toLowerCase() === normalizedId || user.phone === loginId.trim(),
-    );
+    const savedUser = findLoginUser();
 
     if (!savedUser) {
       setLoginError("No Pax account found with these details. Create an account first.");
@@ -226,6 +270,15 @@ export default function SignInPage() {
     setMode(nextMode);
     setLoginError("");
     setSignupError("");
+    setLoginCode("");
+    setLoginOtp("");
+  };
+
+  const switchLoginMethod = (nextMethod) => {
+    setLoginMethod(nextMethod);
+    setLoginError("");
+    setLoginCode("");
+    setLoginOtp("");
   };
 
   return (
@@ -264,57 +317,116 @@ export default function SignInPage() {
               <div className="signin-logo"><img src="/assets/pax-logo.png" alt="PAX — Reaching Further" /></div>
               <span className="auth-secure-pill"><i>✓</i> Customer portal</span>
             </div>
-            <div className="auth-tabs" role="tablist" aria-label="Account access">
-              <button className={mode === "login" ? "is-active" : ""} type="button" onClick={() => switchMode("login")}>Log in</button>
-              <button className={mode === "signup" ? "is-active" : ""} type="button" onClick={() => switchMode("signup")}>Create account</button>
-            </div>
-
             {mode === "login" ? (
-              <form className="auth-form" onSubmit={finishLogin} noValidate>
+              <form
+                className="auth-form login-method-form"
+                onSubmit={loginMethod === "otp"
+                  ? (loginCode ? finishOtpLogin : requestLoginOtp)
+                  : finishPasswordLogin}
+                noValidate
+              >
                 <p className="mini-label">Welcome to Pax</p>
                 <h2>Log in to your account.</h2>
-                <p className="auth-form-intro">Use the email or mobile number registered while creating your account.</p>
-                <label>
-                  Email or mobile number
-                  <input
-                    value={loginId}
-                    onChange={(event) => setLoginId(event.target.value)}
-                    type="text"
-                    autoComplete="username"
-                    placeholder="you@company.com or 9876543210"
-                    autoFocus
-                  />
-                </label>
-                <label>
-                  Password
-                  <span className="password-field">
-                    <input
-                      value={loginPassword}
-                      onChange={(event) => setLoginPassword(event.target.value)}
-                      type={showLoginPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      placeholder="Enter your password"
-                    />
-                    <button type="button" onClick={() => setShowLoginPassword((visible) => !visible)}>
-                      {showLoginPassword ? "Hide" : "Show"}
-                    </button>
-                  </span>
-                </label>
+                <p className="auth-form-intro">Choose a secure login method and use your registered email address.</p>
+                <div className="login-method-tabs" role="tablist" aria-label="Login method">
+                  <button
+                    className={loginMethod === "otp" ? "is-active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={loginMethod === "otp"}
+                    onClick={() => switchLoginMethod("otp")}
+                  >
+                    Email OTP
+                  </button>
+                  <button
+                    className={loginMethod === "password" ? "is-active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={loginMethod === "password"}
+                    onClick={() => switchLoginMethod("password")}
+                  >
+                    Email + Password
+                  </button>
+                </div>
+
+                {loginMethod === "otp" && loginCode ? (
+                  <>
+                    <div className="otp-demo-box">
+                      <span>YOUR ON-SCREEN EMAIL CODE</span>
+                      <strong>{loginCode}</strong>
+                      <small>Demo mode: enter this code below. It expires when you leave this screen.</small>
+                    </div>
+                    <label>
+                      6-digit OTP *
+                      <input
+                        value={loginOtp}
+                        onChange={(event) => setLoginOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="Enter 6-digit code"
+                        maxLength="6"
+                        autoFocus
+                      />
+                    </label>
+                    <button className="auth-back" type="button" onClick={() => setLoginCode("")}>← Change email address</button>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      Email address *
+                      <span className="auth-input-with-icon">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h17v11h-17zM4 7l8 6 8-6" /></svg>
+                        <input
+                          value={loginId}
+                          onChange={(event) => setLoginId(event.target.value)}
+                          type="email"
+                          autoComplete="username"
+                          placeholder="e.g., yourname@company.com"
+                          autoFocus
+                        />
+                      </span>
+                    </label>
+                    {loginMethod === "password" && (
+                      <label>
+                        Password *
+                        <span className="password-field auth-input-with-icon">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 10V7.5a5.5 5.5 0 0 1 11 0V10M4.5 10h15v10h-15z" /></svg>
+                          <input
+                            value={loginPassword}
+                            onChange={(event) => setLoginPassword(event.target.value)}
+                            type={showLoginPassword ? "text" : "password"}
+                            autoComplete="current-password"
+                            placeholder="Enter your password"
+                          />
+                          <button type="button" onClick={() => setShowLoginPassword((visible) => !visible)}>
+                            {showLoginPassword ? "Hide" : "Show"}
+                          </button>
+                        </span>
+                      </label>
+                    )}
+                  </>
+                )}
+
                 <div className="signin-options">
-                  <label><input checked={remember} onChange={(event) => setRemember(event.target.checked)} type="checkbox" /> Keep me signed in</label>
-                  <button type="button" onClick={() => setLoginError("Password recovery requires the registered email. Contact Pax support for assistance.")}>Forgot password?</button>
+                  <label><input checked={remember} onChange={(event) => setRemember(event.target.checked)} type="checkbox" /> Keep me signed in on this device</label>
+                  {loginMethod === "password" && (
+                    <button type="button" onClick={() => setLoginError("Password recovery requires the registered email. Contact Pax support for assistance.")}>Forgot password?</button>
+                  )}
                 </div>
                 <p className="form-error auth-error" role="alert">{loginError}</p>
-                <button className="button auth-submit-button full-button" type="submit">Log in <span>→</span></button>
+                <button className="button auth-submit-button full-button" type="submit">
+                  {loginMethod === "otp" && !loginCode ? "Send email OTP" : "Log in"} <span>→</span>
+                </button>
                 <p className="signin-note">
-                  New to Pax? <button type="button" onClick={() => switchMode("signup")}>Create your account first</button>
+                  New user? <button type="button" onClick={() => switchMode("signup")}>Create account here</button>
                 </p>
               </form>
             ) : (
               <form className="auth-form signup-form" onSubmit={finishSignup} noValidate>
+                <button className="auth-back signup-auth-back" type="button" onClick={() => switchMode("login")}>← Back to login</button>
                 <p className="mini-label">New Pax account</p>
                 <h2>Create your workspace.</h2>
-                <p className="auth-form-intro">Complete these details once, then use your email/mobile and password to log in.</p>
+                <p className="auth-form-intro">Complete these details once, then log in with email OTP or your password.</p>
                 <div className="auth-section-title"><span>01</span><b>Account details</b></div>
                 <div className="signup-grid">
                   <label>Full name *<input name="fullName" value={signup.fullName} onChange={updateSignup} autoComplete="name" placeholder="Your full name" /></label>
