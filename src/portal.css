@@ -8015,3 +8015,184 @@
   max-height: none;
   overflow: visible;
 }
+
+/* Subtle 3D motion for the courier network visual. */
+.auth-page-v2--login .auth-visual {
+  isolation: isolate;
+  perspective: 900px;
+  transform-style: preserve-3d;
+  transition: transform .65s cubic-bezier(.2, .75, .25, 1), box-shadow .65s ease;
+}
+
+.auth-page-v2--login .auth-visual > img {
+  transition: transform 1.1s cubic-bezier(.2, .75, .25, 1), filter .65s ease;
+}
+
+.auth-page-v2--login .auth-visual:hover {
+  transform: translateY(-4px) rotateX(1.2deg) rotateY(-1.8deg);
+  box-shadow: 0 36px 75px rgba(37, 64, 112, .3);
+}
+
+.auth-page-v2--login .auth-visual:hover > img {
+  transform: scale(1.055) translateX(-.6%);
+  filter: saturate(1.08) contrast(1.03);
+}
+
+.auth-page-v2--login .auth-visual-top {
+  transform: translateZ(24px);
+}
+
+.auth-page-v2--login .auth-visual-card {
+  transform: translateZ(38px);
+  animation: auth-card-float 4.4s ease-in-out infinite;
+  box-shadow: 0 18px 34px rgba(9, 28, 62, .22);
+}
+
+.auth-page-v2--login .auth-visual-route {
+  transform: translateZ(30px);
+  animation: auth-route-float 4.4s ease-in-out infinite .45s;
+}
+
+.auth-parcel-scene {
+  position: absolute;
+  z-index: 4;
+  top: 76px;
+  right: 76px;
+  width: 58px;
+  height: 82px;
+  perspective: 520px;
+  animation: auth-parcel-float 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.auth-parcel-cube {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  transform: rotateX(-14deg) rotateY(-28deg);
+  transform-style: preserve-3d;
+  animation: auth-parcel-turn 8s ease-in-out infinite;
+}
+
+.parcel-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .42);
+  background: linear-gradient(145deg, #f5a64d, #d97927);
+  color: #fff;
+  box-shadow: inset 0 0 18px rgba(92, 42, 8, .12);
+  backface-visibility: hidden;
+}
+
+.parcel-face::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 9px;
+  transform: translateX(-50%);
+  background: rgba(255, 230, 178, .72);
+  content: "";
+}
+
+.parcel-front {
+  transform: translateZ(27px);
+}
+
+.parcel-front b {
+  z-index: 1;
+  border-radius: 3px;
+  background: #17326b;
+  padding: 3px 5px;
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+
+.parcel-back {
+  transform: rotateY(180deg) translateZ(27px);
+}
+
+.parcel-right {
+  transform: rotateY(90deg) translateZ(27px);
+  background: linear-gradient(145deg, #df812d, #bd641d);
+}
+
+.parcel-left {
+  transform: rotateY(-90deg) translateZ(27px);
+  background: linear-gradient(145deg, #f2a24a, #cf7124);
+}
+
+.parcel-top {
+  transform: rotateX(90deg) translateZ(27px);
+  background: linear-gradient(145deg, #ffc06e, #e18a35);
+}
+
+.parcel-bottom {
+  transform: rotateX(-90deg) translateZ(27px);
+  background: #b65a19;
+}
+
+.auth-parcel-shadow {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  left: 0;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(7, 24, 52, .34);
+  filter: blur(5px);
+  animation: auth-parcel-shadow 3.8s ease-in-out infinite;
+}
+
+@keyframes auth-parcel-turn {
+  0%, 100% { transform: rotateX(-14deg) rotateY(-28deg); }
+  50% { transform: rotateX(-5deg) rotateY(148deg); }
+}
+
+@keyframes auth-parcel-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes auth-parcel-shadow {
+  0%, 100% { transform: scale(.82); opacity: .7; }
+  50% { transform: scale(.58); opacity: .38; }
+}
+
+@keyframes auth-card-float {
+  0%, 100% { transform: translateZ(38px) translateY(0); }
+  50% { transform: translateZ(46px) translateY(-4px); }
+}
+
+@keyframes auth-route-float {
+  0%, 100% { transform: translateZ(30px) translateY(0); }
+  50% { transform: translateZ(38px) translateY(-3px); }
+}
+
+@media (max-height: 620px) {
+  .auth-parcel-scene {
+    top: 58px;
+    right: 58px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-page-v2--login .auth-visual,
+  .auth-page-v2--login .auth-visual > img,
+  .auth-page-v2--login .auth-visual-card,
+  .auth-page-v2--login .auth-visual-route,
+  .auth-parcel-scene,
+  .auth-parcel-cube,
+  .auth-parcel-shadow {
+    animation: none;
+    transition: none;
+  }
+
+  .auth-page-v2--login .auth-visual:hover,
+  .auth-page-v2--login .auth-visual:hover > img {
+    transform: none;
+    filter: none;
+  }
+}
