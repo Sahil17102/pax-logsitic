@@ -297,6 +297,17 @@ export default function SignInPage() {
             <div className="auth-visual">
               <img src="/assets/pax-real-courier.jpg" alt="Pax courier delivering a parcel" />
               <div className="auth-visual-shade"></div>
+              <div className="auth-parcel-scene" aria-hidden="true">
+                <div className="auth-parcel-cube">
+                  <span className="parcel-face parcel-front"><b>PAX</b></span>
+                  <span className="parcel-face parcel-back"></span>
+                  <span className="parcel-face parcel-right"></span>
+                  <span className="parcel-face parcel-left"></span>
+                  <span className="parcel-face parcel-top"></span>
+                  <span className="parcel-face parcel-bottom"></span>
+                </div>
+                <i className="auth-parcel-shadow"></i>
+              </div>
               <div className="auth-visual-top"><span><i></i> Deliveries live</span><b>PAX CONTROL DESK</b></div>
               <div className="auth-visual-card">
                 <small>TODAY'S NETWORK</small>
