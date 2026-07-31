@@ -283,7 +283,7 @@ export default function SignInPage() {
 
   return (
     <main id="main">
-      <section className="signin-page auth-page-v2">
+      <section className={`signin-page auth-page-v2 auth-page-v2--${mode}`}>
         <div className="auth-page-orbit auth-page-orbit-one" aria-hidden="true"></div>
         <div className="auth-page-orbit auth-page-orbit-two" aria-hidden="true"></div>
         <div className="shell signin-layout">
@@ -312,7 +312,7 @@ export default function SignInPage() {
             </div>
           </div>
 
-          <div className={`signin-card${mode === "signup" ? " signin-card--wide" : ""}`}>
+          <div className={`signin-card${mode === "signup" ? " signin-card--wide" : " signin-card--login"}`}>
             <div className="auth-brand-row">
               <div className="signin-logo"><img src="/assets/pax-logo.png" alt="PAX — Reaching Further" /></div>
               <span className="auth-secure-pill"><i>✓</i> Customer portal</span>

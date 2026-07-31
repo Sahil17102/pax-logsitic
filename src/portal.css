@@ -7698,3 +7698,213 @@
     gap: 10px;
   }
 }
+
+/* Login viewport lock: keep the complete access form visible without nested scrolling. */
+.auth-page-v2--login {
+  height: calc(100svh - 108px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.auth-page-v2--login .signin-layout {
+  height: 100%;
+  min-height: 0;
+  padding-block: clamp(16px, 3vh, 34px);
+}
+
+.auth-page-v2--login .signin-card--login {
+  max-height: none;
+  overflow: visible;
+  padding: clamp(22px, 2.8vw, 34px);
+}
+
+.auth-page-v2--login .auth-brand-row {
+  margin-bottom: 18px;
+}
+
+.auth-page-v2--login .auth-form h2 {
+  margin-bottom: 19px;
+  font-size: clamp(1.8rem, 2.5vw, 2.35rem);
+}
+
+.auth-page-v2--login .auth-form-intro {
+  margin-bottom: 17px;
+}
+
+.auth-page-v2--login .login-method-tabs {
+  margin-bottom: 17px;
+}
+
+.auth-page-v2--login .auth-form > label {
+  margin-bottom: 12px;
+}
+
+.auth-page-v2--login .signin-options input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+}
+
+.auth-page-v2--login .auth-storage-note {
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+@media (max-width: 1050px) {
+  .auth-page-v2--login {
+    height: calc(100svh - 74px);
+  }
+}
+
+@media (max-width: 960px) {
+  .auth-page-v2--login .signin-copy {
+    display: none;
+  }
+
+  .auth-page-v2--login .signin-layout {
+    display: grid;
+    place-items: center;
+  }
+
+  .auth-page-v2--login .signin-card--login {
+    width: min(100%, 620px);
+  }
+}
+
+@media (max-width: 700px) {
+  .auth-page-v2--login {
+    height: calc(100svh - 70px);
+  }
+
+  .auth-page-v2--login .signin-layout {
+    width: min(100% - 24px, 620px);
+    padding-block: 12px;
+  }
+
+  .auth-page-v2--login .signin-card--login {
+    border-radius: 18px;
+    padding: 20px;
+  }
+}
+
+@media (max-height: 760px) {
+  .auth-page-v2--login .signin-copy .auth-visual,
+  .auth-page-v2--login .signin-copy .signin-points,
+  .auth-page-v2--login .auth-brand-row,
+  .auth-page-v2--login .mini-label,
+  .auth-page-v2--login .auth-form-intro,
+  .auth-page-v2--login .auth-storage-note {
+    display: none;
+  }
+
+  .auth-page-v2--login .signin-copy h1 {
+    margin-block: 14px;
+    font-size: clamp(2.7rem, 5vw, 4.2rem);
+  }
+
+  .auth-page-v2--login .signin-layout {
+    padding-block: 12px;
+  }
+
+  .auth-page-v2--login .signin-card--login {
+    padding: 18px 24px;
+  }
+
+  .auth-page-v2--login .auth-form h2 {
+    margin: 0 0 12px;
+    font-size: 1.55rem;
+  }
+
+  .auth-page-v2--login .login-method-tabs {
+    margin-bottom: 10px;
+  }
+
+  .auth-page-v2--login .login-method-tabs button {
+    min-height: 40px;
+  }
+
+  .auth-page-v2--login .auth-form > label {
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+
+  .auth-page-v2--login .auth-form input {
+    height: 42px;
+  }
+
+  .auth-page-v2--login .signin-options {
+    margin-block: 2px;
+  }
+
+  .auth-page-v2--login .auth-error {
+    min-height: 12px;
+    margin: 3px 0;
+  }
+
+  .auth-page-v2--login .auth-submit-button {
+    min-height: 46px;
+  }
+
+  .auth-page-v2--login .signin-note {
+    margin-top: 8px;
+  }
+}
+
+@media (max-height: 520px) {
+  .auth-page-v2--login .auth-form h2 {
+    display: none;
+  }
+
+  .auth-page-v2--login .signin-card--login {
+    padding-block: 12px;
+  }
+
+  .auth-page-v2--login .login-method-tabs {
+    margin-bottom: 7px;
+  }
+
+  .auth-page-v2--login .login-method-tabs button {
+    min-height: 34px;
+  }
+
+  .auth-page-v2--login .auth-form > label {
+    margin-bottom: 5px;
+  }
+
+  .auth-page-v2--login .auth-form input {
+    height: 38px;
+  }
+
+  .auth-page-v2--login .auth-submit-button {
+    min-height: 42px;
+  }
+
+  .auth-page-v2--login .otp-demo-box {
+    margin-bottom: 7px;
+    padding: 8px;
+  }
+
+  .auth-page-v2--login .otp-demo-box strong {
+    margin-block: 3px;
+    font-size: 1.45rem;
+  }
+
+  .auth-page-v2--login .otp-demo-box small {
+    font-size: .48rem;
+  }
+}
+
+.auth-page-v2--signup,
+.auth-page-v2--signup .signin-layout {
+  min-height: calc(100svh - 108px);
+}
+
+.auth-page-v2--signup {
+  overflow: visible;
+}
+
+.auth-page-v2--signup .signin-card--wide {
+  max-height: none;
+  overflow: visible;
+}
