@@ -22,7 +22,6 @@ const starterNotifications = [
 const navItems = [
   { id: "overview", icon: "home", label: "Overview", children: [
     ["overview-home", "home", "Overview Home"],
-    ["overview-actions", "plus", "Quick Actions"],
   ] },
   { id: "dashboard", icon: "grid", label: "Dashboard", children: [
     ["dashboard-operations", "grid", "Operations Dashboard"],
@@ -83,7 +82,6 @@ const navItems = [
 ];
 
 const featureDetails = {
-  "overview-actions": ["WORKSPACE SHORTCUTS", "Quick Actions", "Start the most common shipping jobs without leaving this screen.", ["Create shipment", "Track shipment", "Add wallet money", "Raise support ticket"]],
   "dashboard-performance": ["DELIVERY CONTROL", "Delivery Performance", "Review service success, delivery speed and destination health.", ["96.4% success rate", "2.8 day average", "3.6% RTO", "24 delivered today"]],
   "dashboard-pickups": ["PICKUP CONTROL", "Pickup Schedule", "Plan today’s handovers and confirm what the courier desk will collect.", ["4 pickups today", "12 parcels ready", "Next run 2:30 PM", "1 address pending"]],
   "shipments-create": ["NEW ORDER", "Create Shipment", "Add a receiver, parcel and payment mode to schedule a pickup.", ["Receiver details", "Delivery address", "Parcel weight", "Payment mode"]],
