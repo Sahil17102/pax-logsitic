@@ -235,6 +235,14 @@ export default function DashboardPage() {
   const [trackId, setTrackId] = useState("PAX-260728");
   const [trackResult, setTrackResult] = useState("PAX-260728");
   const [ticket, setTicket] = useState({ subject: "", message: "" });
+  const [rateForm, setRateForm] = useState({ pickup: "500029", delivery: "400001", weight: "2", speed: "standard", payment: "Prepaid" });
+  const [rateQuote, setRateQuote] = useState(null);
+  const [weightForm, setWeightForm] = useState({ actual: "2.5", length: "40", width: "30", height: "25", divisor: "5000" });
+  const [weightResult, setWeightResult] = useState(null);
+  const [servicePin, setServicePin] = useState("560001");
+  const [serviceResult, setServiceResult] = useState(null);
+  const [labelShipmentId, setLabelShipmentId] = useState(() => shipments[0]?.id || "");
+  const [generatedLabel, setGeneratedLabel] = useState(null);
   const [newShipment, setNewShipment] = useState({
     customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "",
   });
@@ -379,6 +387,86 @@ export default function DashboardPage() {
       return;
     }
     setTrackResult(normalized);
+  };
+
+  const calculateRate = (event) => {
+    event.preventDefault();
+    const pickup = rateForm.pickup.trim();
+    const delivery = rateForm.delivery.trim();
+    const weight = Number(rateForm.weight);
+    const validPin = (value) => /^[1-9]\d{5}$/.test(value);
+    if (!validPin(pickup) || !validPin(delivery) || !Number.isFinite(weight) || weight <= 0) {
+      setRateQuote({ error: "Enter two valid 6-digit PIN codes and a valid parcel weight." });
+      return;
+    }
+
+    const sameZone = pickup.slice(0, 2) === delivery.slice(0, 2);
+    const sameRegion = pickup[0] === delivery[0];
+    const routeBase = sameZone ? 74 : sameRegion ? 112 : 148;
+    const weightCharge = Math.ceil(weight * (sameZone ? 20 : 31));
+    const codCharge = rateForm.payment === "COD" ? 45 : 0;
+    const base = routeBase + weightCharge + codCharge;
+    const services = [
+      { name: "Pax Standard", eta: sameZone ? "1–2 days" : "3–5 days", amount: Math.max(79, Math.round(base / 10) * 10), tone: "standard" },
+      { name: "Pax Express", eta: sameZone ? "Next day" : "1–2 days", amount: Math.round((base * 1.48) / 10) * 10, tone: "express" },
+    ];
+    if (rateForm.speed === "express") services.reverse();
+    setRateQuote({ pickup, delivery, weight, payment: rateForm.payment, services });
+  };
+
+  const calculateWeight = (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(Object.entries(weightForm).map(([key, value]) => [key, Number(value)]));
+    if (!Object.values(values).every((value) => Number.isFinite(value) && value > 0)) {
+      setWeightResult({ error: "Enter valid actual weight, dimensions and divisor." });
+      return;
+    }
+    const volumetric = (values.length * values.width * values.height) / values.divisor;
+    setWeightResult({ actual: values.actual, volumetric, chargeable: Math.max(values.actual, volumetric) });
+  };
+
+  const checkServiceability = (event) => {
+    event.preventDefault();
+    const pin = servicePin.trim();
+    if (!/^[1-9]\d{5}$/.test(pin)) {
+      setServiceResult({ error: "Enter a valid 6-digit Indian PIN code." });
+      return;
+    }
+    const regions = { 1: "North", 2: "North", 3: "West", 4: "West", 5: "South", 6: "South", 7: "East", 8: "East", 9: "Central" };
+    const lastDigit = Number(pin.at(-1));
+    setServiceResult({
+      pin,
+      region: regions[pin[0]] || "Domestic",
+      standard: true,
+      express: lastDigit !== 9,
+      cod: lastDigit % 2 === 0,
+      eta: lastDigit < 4 ? "2–3 business days" : "3–5 business days",
+    });
+  };
+
+  const generateShippingLabel = (event) => {
+    event.preventDefault();
+    const shipment = shipments.find((item) => item.id === labelShipmentId);
+    setGeneratedLabel(shipment ? { ...shipment, barcode: shipment.id.replace(/\D/g, "").padEnd(12, "0") } : { error: "Select a valid shipment." });
+  };
+
+  const downloadShippingLabel = () => {
+    if (!generatedLabel || generatedLabel.error) return;
+    const content = [
+      "PAX LOGISTICS — SHIPPING LABEL",
+      `Shipment: ${generatedLabel.id}`,
+      `Customer: ${generatedLabel.customer}`,
+      `Destination: ${generatedLabel.destination}`,
+      `Payment: ${generatedLabel.payment}`,
+      `Barcode: ${generatedLabel.barcode}`,
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${generatedLabel.id}-shipping-label.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+    notify(`${generatedLabel.id} label downloaded.`);
   };
 
   const saveProfile = (event) => {
@@ -745,9 +833,9 @@ export default function DashboardPage() {
       <section className="utility-grid">
         {[
           ["route", "Track shipment", "Open the live movement timeline", () => document.querySelector(".utility-tracker")?.scrollIntoView({ behavior: "smooth" })],
-          ["wallet", "Rate calculator", "Estimate a route before booking", () => goTo("/rate-calculator")],
-          ["box", "Weight calculator", "Check volumetric chargeable weight", () => goTo("/weight-calculator")],
-          ["support", "Serviceability", "Confirm delivery PIN support", () => notify("500029 is serviceable for standard and express delivery.")],
+          ["wallet", "Rate calculator", "Estimate a route before booking", () => navigatePanel("utilities", "utilities-rate")],
+          ["box", "Weight calculator", "Check volumetric chargeable weight", () => navigatePanel("utilities", "utilities-weight")],
+          ["support", "Serviceability", "Confirm delivery PIN support", () => navigatePanel("utilities", "utilities-pincode")],
         ].map(([icon, title, copy, action]) => <button type="button" onClick={action} key={title}><span><Icon name={icon} /></span><strong>{title}</strong><small>{copy}</small><b>Open →</b></button>)}
       </section>
       <section className="tracking-workspace utility-tracker">
@@ -760,6 +848,112 @@ export default function DashboardPage() {
           <div className="tracking-result-head"><div><small>{trackResult}</small><h2>Moving to destination hub</h2></div><StatusBadge status="In transit" /></div>
           <div className="tracking-route-names"><span><small>FROM</small>Hyderabad, TS</span><i>→</i><span><small>TO</small>Bengaluru, KA</span></div>
           <div className="utility-track-steps"><span className="done">Booked</span><span className="done">Picked up</span><span className="current">In transit</span><span>Delivery</span></div>
+        </article>
+      </section>
+    </>
+  );
+
+  const renderRateCalculator = () => (
+    <>
+      <section className="section-title-row"><div><p>SHIPPING RATE TOOL</p><h1>Rate calculator</h1><span>Compare indicative services without leaving your Pax workspace.</span></div></section>
+      <section className="portal-tool-layout">
+        <form className="portal-card portal-tool-form" onSubmit={calculateRate}>
+          <div className="portal-card-head"><div><small>ROUTE &amp; PARCEL</small><h2>Calculate shipping rates</h2></div><span className="tool-live-badge">Live tool</span></div>
+          <div className="portal-tool-fields two-column">
+            <label>Pickup PIN<input value={rateForm.pickup} onChange={(event) => setRateForm({ ...rateForm, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="500029" /></label>
+            <label>Delivery PIN<input value={rateForm.delivery} onChange={(event) => setRateForm({ ...rateForm, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="400001" /></label>
+            <label>Chargeable weight (kg)<input value={rateForm.weight} onChange={(event) => setRateForm({ ...rateForm, weight: event.target.value })} type="number" min="0.1" step="0.1" /></label>
+            <label>Preferred speed<select value={rateForm.speed} onChange={(event) => setRateForm({ ...rateForm, speed: event.target.value })}><option value="standard">Standard</option><option value="express">Express</option></select></label>
+            <label className="span-two">Payment mode<select value={rateForm.payment} onChange={(event) => setRateForm({ ...rateForm, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label>
+          </div>
+          <button className="portal-primary portal-tool-submit" type="submit"><Icon name="wallet" /> Calculate available rates</button>
+          <p className="portal-tool-note">Indicative rates include route, weight and payment handling. Final courier allocation happens while booking.</p>
+        </form>
+        <article className="portal-card portal-tool-result" aria-live="polite">
+          {!rateQuote && <div className="portal-tool-empty"><span><Icon name="route" /></span><h2>Your rate options appear here</h2><p>Enter the pickup, destination and parcel details to compare Standard and Express.</p></div>}
+          {rateQuote?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Check the shipment details</h2><p>{rateQuote.error}</p></div>}
+          {rateQuote && !rateQuote.error && <>
+            <div className="tool-result-route"><span><small>PICKUP</small><strong>{rateQuote.pickup}</strong></span><i>→</i><span><small>DELIVERY</small><strong>{rateQuote.delivery}</strong></span></div>
+            <div className="tool-result-meta"><span>{rateQuote.weight} kg</span><span>{rateQuote.payment}</span><span>Indicative</span></div>
+            <div className="rate-option-list">
+              {rateQuote.services.map((service) => <div className={`rate-option-row is-${service.tone}`} key={service.name}><span><Icon name={service.tone === "express" ? "route" : "box"} /></span><div><strong>{service.name}</strong><small>{service.eta} estimated delivery</small></div><b>₹{service.amount}–₹{Math.round((service.amount * 1.18) / 10) * 10}</b><button type="button" onClick={openShipment}>Book</button></div>)}
+            </div>
+          </>}
+        </article>
+      </section>
+    </>
+  );
+
+  const renderWeightCalculator = () => (
+    <>
+      <section className="section-title-row"><div><p>PARCEL WEIGHT TOOL</p><h1>Weight calculator</h1><span>Compare actual and volumetric weight inside the dashboard.</span></div></section>
+      <section className="portal-tool-layout">
+        <form className="portal-card portal-tool-form" onSubmit={calculateWeight}>
+          <div className="portal-card-head"><div><small>PACKED PARCEL</small><h2>Find chargeable weight</h2></div><span className="tool-live-badge">L × W × H</span></div>
+          <div className="portal-tool-fields two-column">
+            <label>Actual weight (kg)<input value={weightForm.actual} onChange={(event) => setWeightForm({ ...weightForm, actual: event.target.value })} type="number" min="0.1" step="0.1" /></label>
+            <label>Courier divisor<select value={weightForm.divisor} onChange={(event) => setWeightForm({ ...weightForm, divisor: event.target.value })}><option value="5000">5000 — air</option><option value="6000">6000 — selected services</option></select></label>
+            <label>Length (cm)<input value={weightForm.length} onChange={(event) => setWeightForm({ ...weightForm, length: event.target.value })} type="number" min="1" step="0.1" /></label>
+            <label>Width (cm)<input value={weightForm.width} onChange={(event) => setWeightForm({ ...weightForm, width: event.target.value })} type="number" min="1" step="0.1" /></label>
+            <label className="span-two">Height (cm)<input value={weightForm.height} onChange={(event) => setWeightForm({ ...weightForm, height: event.target.value })} type="number" min="1" step="0.1" /></label>
+          </div>
+          <button className="portal-primary portal-tool-submit" type="submit"><Icon name="box" /> Calculate chargeable weight</button>
+        </form>
+        <article className="portal-card portal-tool-result" aria-live="polite">
+          {!weightResult && <div className="portal-tool-empty"><span><Icon name="box" /></span><h2>Measure the packed parcel</h2><p>The higher of actual and volumetric weight becomes chargeable.</p></div>}
+          {weightResult?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Check the measurements</h2><p>{weightResult.error}</p></div>}
+          {weightResult && !weightResult.error && <div className="weight-result-panel">
+            <div><small>ACTUAL</small><strong>{weightResult.actual.toFixed(2)} kg</strong></div>
+            <div><small>VOLUMETRIC</small><strong>{weightResult.volumetric.toFixed(2)} kg</strong></div>
+            <div className="is-chargeable"><small>CHARGEABLE WEIGHT</small><strong>{weightResult.chargeable.toFixed(2)} kg</strong><span>{weightResult.chargeable === weightResult.actual ? "Actual weight applies" : "Volumetric weight applies"}</span></div>
+            <button className="portal-primary" type="button" onClick={() => { setRateForm((current) => ({ ...current, weight: String(Math.ceil(weightResult.chargeable * 2) / 2) })); navigatePanel("utilities", "utilities-rate"); }}>Use in rate calculator <Icon name="arrow" /></button>
+          </div>}
+        </article>
+      </section>
+    </>
+  );
+
+  const renderPincodeServiceability = () => (
+    <>
+      <section className="section-title-row"><div><p>DELIVERY COVERAGE</p><h1>Pincode serviceability</h1><span>Check delivery speed and COD support before creating a shipment.</span></div></section>
+      <section className="portal-tool-layout">
+        <form className="portal-card portal-tool-form pincode-tool-form" onSubmit={checkServiceability}>
+          <div className="portal-card-head"><div><small>DESTINATION CHECK</small><h2>Where are you shipping?</h2></div><span className="tool-live-badge">India</span></div>
+          <div className="portal-tool-fields"><label>Delivery PIN code<input value={servicePin} onChange={(event) => setServicePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="560001" /></label></div>
+          <button className="portal-primary portal-tool-submit" type="submit"><Icon name="search" /> Check serviceability</button>
+        </form>
+        <article className="portal-card portal-tool-result" aria-live="polite">
+          {!serviceResult && <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>Coverage details appear here</h2><p>Check Standard, Express and COD availability for any valid PIN.</p></div>}
+          {serviceResult?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>PIN code required</h2><p>{serviceResult.error}</p></div>}
+          {serviceResult && !serviceResult.error && <div className="serviceability-result">
+            <div className="serviceability-head"><span>✓</span><div><small>{serviceResult.region.toUpperCase()} REGION</small><h2>{serviceResult.pin} is serviceable</h2><p>Estimated delivery: {serviceResult.eta}</p></div></div>
+            {[['Standard delivery', serviceResult.standard], ['Express delivery', serviceResult.express], ['Cash on delivery', serviceResult.cod]].map(([label, available]) => <div className="serviceability-row" key={label}><span>{label}</span><b className={available ? "is-available" : "is-unavailable"}>{available ? "Available" : "Unavailable"}</b></div>)}
+            <button className="portal-primary" type="button" onClick={openShipment}>Create shipment <Icon name="arrow" /></button>
+          </div>}
+        </article>
+      </section>
+    </>
+  );
+
+  const renderLabelGenerator = () => (
+    <>
+      <section className="section-title-row"><div><p>SHIPPING DOCUMENT</p><h1>Label generator</h1><span>Select a booked shipment and generate its dispatch label.</span></div></section>
+      <section className="portal-tool-layout">
+        <form className="portal-card portal-tool-form" onSubmit={generateShippingLabel}>
+          <div className="portal-card-head"><div><small>SELECT ORDER</small><h2>Prepare shipping label</h2></div><span className="tool-live-badge">A6 format</span></div>
+          <div className="portal-tool-fields"><label>Shipment<select value={labelShipmentId} onChange={(event) => { setLabelShipmentId(event.target.value); setGeneratedLabel(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label></div>
+          <button className="portal-primary portal-tool-submit" type="submit"><Icon name="audit" /> Generate label</button>
+        </form>
+        <article className="portal-card portal-tool-result label-result-card" aria-live="polite">
+          {!generatedLabel && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Your A6 label preview</h2><p>Choose an order to create a printable dispatch label.</p></div>}
+          {generatedLabel?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Label unavailable</h2><p>{generatedLabel.error}</p></div>}
+          {generatedLabel && !generatedLabel.error && <div className="shipping-label-preview">
+            <div className="shipping-label-head"><strong>PAX</strong><span>PREPAID / COD</span></div>
+            <small>SHIP TO</small><h2>{generatedLabel.customer}</h2><p>{generatedLabel.destination}</p>
+            <div className="shipping-label-meta"><span><small>SHIPMENT</small><b>{generatedLabel.id}</b></span><span><small>PAYMENT</small><b>{generatedLabel.payment}</b></span></div>
+            <div className="shipping-label-bars" aria-label={`Barcode ${generatedLabel.barcode}`}></div><b>{generatedLabel.barcode}</b>
+            <button className="portal-primary" type="button" onClick={downloadShippingLabel}>Download label <Icon name="arrow" /></button>
+          </div>}
         </article>
       </section>
     </>
@@ -840,11 +1034,11 @@ export default function DashboardPage() {
       return;
     }
     if (toolId === "utilities-rate") {
-      goTo("/rate-calculator");
+      navigatePanel("utilities", "utilities-rate");
       return;
     }
     if (toolId === "utilities-weight") {
-      goTo("/weight-calculator");
+      navigatePanel("utilities", "utilities-weight");
       return;
     }
     if (toolId === "shipments-track") {
@@ -918,6 +1112,10 @@ export default function DashboardPage() {
     "exceptions-ndr": renderExceptions,
     "finance-cod": renderFinance,
     "audits-weight": renderAudits,
+    "utilities-rate": renderRateCalculator,
+    "utilities-weight": renderWeightCalculator,
+    "utilities-pincode": renderPincodeServiceability,
+    "utilities-labels": renderLabelGenerator,
     "insights-shipments": renderInsights,
     "channels-connected": renderChannels,
     "workspace-company": renderWorkspace,
