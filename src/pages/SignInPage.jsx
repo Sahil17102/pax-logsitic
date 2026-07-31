@@ -288,27 +288,27 @@ export default function SignInPage() {
         <div className="auth-page-orbit auth-page-orbit-two" aria-hidden="true"></div>
         <div className="shell signin-layout">
           <div className="signin-copy">
-            <p className="reference-kicker"><span></span> Pax customer workspace</p>
-            <h1>Your deliveries.<br /><em>One clear view.</em></h1>
+            <p className="reference-kicker"><span></span> Pax delivery network</p>
+            <h1>Move every parcel.<br /><em>Know every step.</em></h1>
             <p>
-              The same straightforward Pax experience—now for bookings, shipment
-              movement, payments, reports and support.
+              Book pickups, track every handoff and keep courier operations moving
+              from one dependable workspace.
             </p>
             <div className="auth-visual">
-              <img src="/assets/pax-domestic-sort-v2.jpg" alt="Pax Logistics domestic parcel operations" />
+              <img src="/assets/pax-real-courier.jpg" alt="Pax courier delivering a parcel" />
               <div className="auth-visual-shade"></div>
-              <div className="auth-visual-top"><span><i></i> Network active</span><b>HYDERABAD DESK</b></div>
+              <div className="auth-visual-top"><span><i></i> Deliveries live</span><b>PAX CONTROL DESK</b></div>
               <div className="auth-visual-card">
-                <small>TODAY’S MOVEMENT</small>
-                <strong>38 shipments</strong>
-                <div><span><i></i> Booked</span><span><i></i> Moving</span><span><i></i> Delivered</span></div>
+                <small>TODAY'S NETWORK</small>
+                <strong>38 shipments moving</strong>
+                <div><span><i></i> Picked up</span><span><i></i> In transit</span><span><i></i> Delivered</span></div>
               </div>
               <div className="auth-visual-route"><span>HYD</span><i></i><b>→</b><i></i><span>INDIA</span></div>
             </div>
             <div className="signin-points">
-              <span><i>01</i> Create shipments</span>
-              <span><i>02</i> Resolve exceptions</span>
-              <span><i>03</i> Review finance</span>
+              <span><i>01</i> Doorstep pickup</span>
+              <span><i>02</i> Live shipment tracking</span>
+              <span><i>03</i> Pan-India delivery</span>
             </div>
           </div>
 

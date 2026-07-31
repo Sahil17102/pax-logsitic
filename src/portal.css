@@ -7709,12 +7709,18 @@
 .auth-page-v2--login .signin-layout {
   height: 100%;
   min-height: 0;
+  grid-template-columns: minmax(300px, .82fr) minmax(520px, 1fr);
+  gap: clamp(28px, 4vw, 64px);
   padding-block: clamp(16px, 3vh, 34px);
+}
+
+.auth-page-v2--login .signin-copy {
+  min-width: 0;
 }
 
 .auth-page-v2--login .signin-card--login {
   width: 100%;
-  max-width: 720px;
+  max-width: 640px;
   max-height: none;
   overflow: visible;
   border-radius: 28px;
@@ -7787,9 +7793,15 @@
   .auth-page-v2--login {
     height: 100svh;
   }
+
+  .auth-page-v2--login .signin-layout {
+    width: min(100% - 32px, 1120px);
+    grid-template-columns: minmax(270px, .76fr) minmax(500px, 1fr);
+    gap: 24px;
+  }
 }
 
-@media (max-width: 960px) {
+@media (max-width: 880px) {
   .auth-page-v2--login .signin-copy {
     display: none;
   }
@@ -7821,7 +7833,6 @@
 }
 
 @media (max-height: 820px) {
-  .auth-page-v2--login .signin-copy,
   .auth-page-v2--login .auth-brand-row,
   .auth-page-v2--login .mini-label,
   .auth-page-v2--login .auth-form-intro,
@@ -7830,14 +7841,51 @@
   }
 
   .auth-page-v2--login .signin-layout {
-    grid-template-columns: 1fr;
-    place-items: center;
+    grid-template-columns: minmax(280px, .78fr) minmax(500px, 1fr);
+    gap: 24px;
+    align-items: center;
     padding-block: 18px;
   }
 
   .auth-page-v2--login .signin-card--login {
-    width: min(100%, 720px);
-    padding: 28px 34px;
+    width: 100%;
+    max-width: 620px;
+    padding: 26px 30px;
+  }
+
+  .auth-page-v2--login .signin-copy h1 {
+    margin: 14px 0 12px;
+    font-size: clamp(2.7rem, 4.7vw, 4.2rem);
+    line-height: .92;
+  }
+
+  .auth-page-v2--login .signin-copy > p:not(.reference-kicker) {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .auth-page-v2--login .auth-visual {
+    height: 210px;
+    margin-top: 17px;
+    border-width: 5px;
+    border-radius: 20px;
+  }
+
+  .auth-page-v2--login .auth-visual-card {
+    bottom: 14px;
+    left: 14px;
+    min-width: 210px;
+    padding: 12px;
+  }
+
+  .auth-page-v2--login .auth-visual-route {
+    right: 15px;
+    bottom: 23px;
+  }
+
+  .auth-page-v2--login .signin-points {
+    gap: 10px 16px;
+    margin-top: 13px;
   }
 
   .auth-page-v2--login .auth-form h2 {
@@ -7889,6 +7937,21 @@
     padding-block: 12px;
   }
 
+  .auth-page-v2--login .signin-copy > p:not(.reference-kicker),
+  .auth-page-v2--login .signin-copy .signin-points {
+    display: none;
+  }
+
+  .auth-page-v2--login .signin-copy h1 {
+    margin-block: 10px;
+    font-size: 2.25rem;
+  }
+
+  .auth-page-v2--login .auth-visual {
+    height: 180px;
+    margin-top: 12px;
+  }
+
   .auth-page-v2--login .login-method-tabs {
     margin-bottom: 7px;
   }
@@ -7921,6 +7984,21 @@
 
   .auth-page-v2--login .otp-demo-box small {
     font-size: .48rem;
+  }
+}
+
+@media (max-width: 880px) {
+  .auth-page-v2--login .signin-copy {
+    display: none;
+  }
+
+  .auth-page-v2--login .signin-layout {
+    grid-template-columns: 1fr;
+    place-items: center;
+  }
+
+  .auth-page-v2--login .signin-card--login {
+    width: min(100%, 720px);
   }
 }
 
