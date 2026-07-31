@@ -8,6 +8,7 @@ const routes = [
   "track",
   "contact",
   "sign-in",
+  "dashboard",
 ];
 
 for (const route of routes) {

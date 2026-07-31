@@ -141,24 +141,6 @@ export function usePageInteractions(location, navigate) {
       result.classList.add("is-visible");
     });
 
-    const signInForm = document.querySelector("#signin-form");
-    listen(signInForm, "submit", (event) => {
-      event.preventDefault();
-      const email = document.querySelector("#signin-email")?.value.trim() || "";
-      const password = document.querySelector("#signin-password")?.value || "";
-      const error = document.querySelector("#signin-error");
-      const status = document.querySelector("#signin-status");
-
-      error.textContent = "";
-      status.textContent = "";
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
-        error.textContent = "Enter a valid email and a password of at least 6 characters.";
-        return;
-      }
-
-      status.textContent = "Account interface is ready. Connect your authentication service to enable secure customer sign-in.";
-    });
-
     const contactForm = document.querySelector("#contact-form");
     listen(contactForm, "submit", (event) => {
       event.preventDefault();

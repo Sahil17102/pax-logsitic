@@ -6,6 +6,7 @@ import WeightCalculatorPage from "./pages/WeightCalculatorPage.jsx";
 import TrackPage from "./pages/TrackPage.jsx";
 import ContactPage from "./pages/ContactPage.jsx";
 import SignInPage from "./pages/SignInPage.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
 import { usePageInteractions } from "./usePageInteractions.js";
 import { API_BASE_URL } from "./config.js";
 
@@ -161,6 +162,7 @@ function SiteRoutes({ location }) {
       "/track": "Track a Shipment — Pax Logistics",
       "/contact": "Contact — Pax Logistics",
       "/sign-in": "Sign In — Pax Logistics",
+      "/dashboard": "Customer Dashboard — Pax Logistics",
     };
     document.title = titles[location.pathname] || titles["/"];
   }, [location.pathname]);
@@ -174,6 +176,7 @@ function SiteRoutes({ location }) {
     "/track": <TrackPage />,
     "/contact": <ContactPage />,
     "/sign-in": <SignInPage />,
+    "/dashboard": <DashboardPage />,
   };
 
   return pages[location.pathname] || <HomePage />;
@@ -197,9 +200,9 @@ export default function App() {
   return (
     <div data-api-base={API_BASE_URL}>
       <a className="skip-link" href="#main">Skip to content</a>
-      <Header pathname={location.pathname} />
+      {location.pathname !== "/dashboard" && <Header pathname={location.pathname} />}
       <SiteRoutes location={location} />
-      <Footer />
+      {location.pathname !== "/dashboard" && <Footer />}
     </div>
   );
 }
