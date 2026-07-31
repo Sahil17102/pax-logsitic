@@ -57,6 +57,7 @@ export default function SignInPage() {
   const [loginError, setLoginError] = useState("");
   const [remember, setRemember] = useState(true);
   const [signup, setSignup] = useState(defaultSignup);
+  const [signupStep, setSignupStep] = useState(1);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [signupError, setSignupError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -197,48 +198,65 @@ export default function SignInPage() {
     setSignup((current) => ({ ...current, [name]: value }));
   };
 
+  const getSignupStepError = (step) => {
+    if (step === 1) {
+      if ([signup.fullName, signup.businessName, signup.email, signup.phone].some((value) => !value.trim())) {
+        return "Complete all contact details to continue.";
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signup.email)) {
+        return "Enter a valid business email address.";
+      }
+      if (!/^[6-9]\d{9}$/.test(signup.phone)) {
+        return "Enter a valid 10-digit Indian mobile number.";
+      }
+    }
+
+    if (step === 2) {
+      if (!signup.password || !signup.confirmPassword) {
+        return "Enter and confirm your password.";
+      }
+      if (signup.password.length < 8 || !/[A-Za-z]/.test(signup.password) || !/\d/.test(signup.password)) {
+        return "Password must be at least 8 characters and include a letter and number.";
+      }
+      if (signup.password !== signup.confirmPassword) {
+        return "Passwords do not match.";
+      }
+      if (signup.gstin && !/^[0-9A-Z]{15}$/i.test(signup.gstin)) {
+        return "GSTIN should contain 15 characters, or leave it blank.";
+      }
+    }
+
+    if (step === 3) {
+      if ([signup.address, signup.city, signup.state, signup.pincode].some((value) => !value.trim())) {
+        return "Complete the primary pickup address.";
+      }
+      if (!/^[1-9]\d{5}$/.test(signup.pincode)) {
+        return "Enter a valid 6-digit PIN code.";
+      }
+      if (!acceptedTerms) {
+        return "Please accept the account terms to continue.";
+      }
+    }
+
+    return "";
+  };
+
+  const advanceSignup = () => {
+    const error = getSignupStepError(signupStep);
+    setSignupError(error);
+    if (!error) setSignupStep((current) => Math.min(current + 1, 3));
+  };
+
   const finishSignup = (event) => {
     event.preventDefault();
     setSignupError("");
-    const required = [
-      signup.fullName,
-      signup.businessName,
-      signup.email,
-      signup.phone,
-      signup.password,
-      signup.confirmPassword,
-      signup.address,
-      signup.city,
-      signup.state,
-      signup.pincode,
-    ];
-    if (required.some((value) => !value.trim())) {
-      setSignupError("Please complete all required account and pickup-address fields.");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signup.email)) {
-      setSignupError("Enter a valid business email address.");
-      return;
-    }
-    if (!/^[6-9]\d{9}$/.test(signup.phone) || !/^[1-9]\d{5}$/.test(signup.pincode)) {
-      setSignupError("Enter a valid Indian mobile number and 6-digit PIN code.");
-      return;
-    }
-    if (signup.password.length < 8 || !/[A-Za-z]/.test(signup.password) || !/\d/.test(signup.password)) {
-      setSignupError("Password must be at least 8 characters and include a letter and number.");
-      return;
-    }
-    if (signup.password !== signup.confirmPassword) {
-      setSignupError("Passwords do not match.");
-      return;
-    }
-    if (signup.gstin && !/^[0-9A-Z]{15}$/i.test(signup.gstin)) {
-      setSignupError("GSTIN should contain 15 characters, or leave it blank.");
-      return;
-    }
-    if (!acceptedTerms) {
-      setSignupError("Please accept the account terms to continue.");
-      return;
+    for (let step = 1; step <= 3; step += 1) {
+      const error = getSignupStepError(step);
+      if (error) {
+        setSignupStep(step);
+        setSignupError(error);
+        return;
+      }
     }
 
     const users = getSavedUsers();
@@ -266,12 +284,22 @@ export default function SignInPage() {
     goTo("/dashboard");
   };
 
+  const handleSignupSubmit = (event) => {
+    if (signupStep === 3) {
+      finishSignup(event);
+      return;
+    }
+    event.preventDefault();
+    advanceSignup();
+  };
+
   const switchMode = (nextMode) => {
     setMode(nextMode);
     setLoginError("");
     setSignupError("");
     setLoginCode("");
     setLoginOtp("");
+    if (nextMode === "signup") setSignupStep(1);
   };
 
   const switchLoginMethod = (nextMethod) => {
@@ -433,39 +461,70 @@ export default function SignInPage() {
                 </p>
               </form>
             ) : (
-              <form className="auth-form signup-form" onSubmit={finishSignup} noValidate>
+              <form className="auth-form signup-form" onSubmit={handleSignupSubmit} noValidate>
                 <button className="auth-back signup-auth-back" type="button" onClick={() => switchMode("login")}>← Back to login</button>
                 <p className="mini-label">New Pax account</p>
                 <h2>Create your workspace.</h2>
-                <p className="auth-form-intro">Complete these details once, then log in with email OTP or your password.</p>
-                <div className="auth-section-title"><span>01</span><b>Account details</b></div>
-                <div className="signup-grid">
-                  <label>Full name *<input name="fullName" value={signup.fullName} onChange={updateSignup} autoComplete="name" placeholder="Your full name" /></label>
-                  <label>Business name *<input name="businessName" value={signup.businessName} onChange={updateSignup} autoComplete="organization" placeholder="Company or store name" /></label>
-                  <label>Email address *<input name="email" value={signup.email} onChange={updateSignup} type="email" autoComplete="email" placeholder="you@company.com" /></label>
-                  <label>Mobile number *<input name="phone" value={signup.phone} onChange={updateSignup} inputMode="numeric" autoComplete="tel" placeholder="10-digit number" maxLength="10" /></label>
-                  <label>Password *<span className="password-field"><input name="password" value={signup.password} onChange={updateSignup} type={showSignupPassword ? "text" : "password"} autoComplete="new-password" placeholder="8+ characters" /><button type="button" onClick={() => setShowSignupPassword((visible) => !visible)}>{showSignupPassword ? "Hide" : "Show"}</button></span></label>
-                  <label>Confirm password *<input name="confirmPassword" value={signup.confirmPassword} onChange={updateSignup} type={showSignupPassword ? "text" : "password"} autoComplete="new-password" placeholder="Repeat password" /></label>
-                  <label>Account type<select name="accountType" value={signup.accountType} onChange={updateSignup}><option>Business</option><option>Individual</option><option>E-commerce seller</option></select></label>
-                  <label>Monthly shipments<select name="monthlyShipments" value={signup.monthlyShipments} onChange={updateSignup}><option>1–50</option><option>51–250</option><option>251–1,000</option><option>1,000+</option></select></label>
-                  <label className="span-two">GSTIN <small>(optional)</small><input name="gstin" value={signup.gstin} onChange={updateSignup} maxLength="15" placeholder="15-character GSTIN" /></label>
+                <p className="auth-form-intro">Three short steps—no long form or page scrolling.</p>
+                <div className="signup-progress" aria-label={`Account setup step ${signupStep} of 3`}>
+                  {[[1, "Contact"], [2, "Security"], [3, "Pickup"]].map(([step, label]) => (
+                    <span key={step} className={`${signupStep === step ? "is-active" : ""}${signupStep > step ? " is-complete" : ""}`}>
+                      <i>{signupStep > step ? "✓" : step}</i><b>{label}</b>
+                    </span>
+                  ))}
                 </div>
-                <div className="auth-section-title"><span>02</span><b>Primary pickup address</b></div>
-                <div className="signup-grid">
-                  <label className="span-two">Address *<textarea name="address" value={signup.address} onChange={updateSignup} rows="2" placeholder="House/building, street, area" /></label>
-                  <label>PIN code *<input name="pincode" value={signup.pincode} onChange={updateSignup} inputMode="numeric" autoComplete="postal-code" maxLength="6" placeholder="Enter 6-digit PIN" /></label>
-                  <label>City *<input name="city" value={signup.city} onChange={updateSignup} autoComplete="address-level2" placeholder="Auto-filled from PIN" /></label>
-                  <label>State *<input name="state" value={signup.state} onChange={updateSignup} autoComplete="address-level1" placeholder="Auto-filled from PIN" /></label>
-                  <p className={`pin-lookup-status pin-lookup-${pinLookup.status} span-two`} aria-live="polite">
-                    {pinLookup.status === "loading" && <i aria-hidden="true"></i>}
-                    {pinLookup.status === "success" && <b aria-hidden="true">✓</b>}
-                    {pinLookup.status === "error" && <b aria-hidden="true">!</b>}
-                    {pinLookup.message || "City and state will fill automatically after a valid PIN code."}
-                  </p>
-                </div>
-                <label className="auth-consent"><input checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" /> <span>I agree to the account terms and consent to shipment-related communication.</span></label>
+
+                {signupStep === 1 && (
+                  <div className="signup-step-panel">
+                    <div className="auth-section-title"><span>01</span><b>Contact details</b></div>
+                    <div className="signup-grid">
+                      <label>Full name *<input name="fullName" value={signup.fullName} onChange={updateSignup} autoComplete="name" placeholder="Your full name" autoFocus /></label>
+                      <label>Business name *<input name="businessName" value={signup.businessName} onChange={updateSignup} autoComplete="organization" placeholder="Company or store name" /></label>
+                      <label>Email address *<input name="email" value={signup.email} onChange={updateSignup} type="email" autoComplete="email" placeholder="you@company.com" /></label>
+                      <label>Mobile number *<input name="phone" value={signup.phone} onChange={updateSignup} inputMode="numeric" autoComplete="tel" placeholder="10-digit number" maxLength="10" /></label>
+                    </div>
+                  </div>
+                )}
+
+                {signupStep === 2 && (
+                  <div className="signup-step-panel">
+                    <div className="auth-section-title"><span>02</span><b>Security & business profile</b></div>
+                    <div className="signup-grid">
+                      <label>Password *<span className="password-field"><input name="password" value={signup.password} onChange={updateSignup} type={showSignupPassword ? "text" : "password"} autoComplete="new-password" placeholder="8+ characters" autoFocus /><button type="button" onClick={() => setShowSignupPassword((visible) => !visible)}>{showSignupPassword ? "Hide" : "Show"}</button></span></label>
+                      <label>Confirm password *<input name="confirmPassword" value={signup.confirmPassword} onChange={updateSignup} type={showSignupPassword ? "text" : "password"} autoComplete="new-password" placeholder="Repeat password" /></label>
+                      <label>Account type<select name="accountType" value={signup.accountType} onChange={updateSignup}><option>Business</option><option>Individual</option><option>E-commerce seller</option></select></label>
+                      <label>Monthly shipments<select name="monthlyShipments" value={signup.monthlyShipments} onChange={updateSignup}><option>1–50</option><option>51–250</option><option>251–1,000</option><option>1,000+</option></select></label>
+                      <label className="span-two">GSTIN <small>(optional)</small><input name="gstin" value={signup.gstin} onChange={updateSignup} maxLength="15" placeholder="15-character GSTIN" /></label>
+                    </div>
+                  </div>
+                )}
+
+                {signupStep === 3 && (
+                  <div className="signup-step-panel">
+                    <div className="auth-section-title"><span>03</span><b>Primary pickup address</b></div>
+                    <div className="signup-grid">
+                      <label className="span-two">Address *<textarea name="address" value={signup.address} onChange={updateSignup} rows="2" placeholder="House/building, street, area" autoFocus /></label>
+                      <label>PIN code *<input name="pincode" value={signup.pincode} onChange={updateSignup} inputMode="numeric" autoComplete="postal-code" maxLength="6" placeholder="Enter 6-digit PIN" /></label>
+                      <label>City *<input name="city" value={signup.city} onChange={updateSignup} autoComplete="address-level2" placeholder="Auto-filled from PIN" /></label>
+                      <label>State *<input name="state" value={signup.state} onChange={updateSignup} autoComplete="address-level1" placeholder="Auto-filled from PIN" /></label>
+                      <p className={`pin-lookup-status pin-lookup-${pinLookup.status} span-two`} aria-live="polite">
+                        {pinLookup.status === "loading" && <i aria-hidden="true"></i>}
+                        {pinLookup.status === "success" && <b aria-hidden="true">✓</b>}
+                        {pinLookup.status === "error" && <b aria-hidden="true">!</b>}
+                        {pinLookup.message || "City and state will fill automatically after a valid PIN code."}
+                      </p>
+                    </div>
+                    <label className="auth-consent"><input checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" /> <span>I agree to the account terms and consent to shipment-related communication.</span></label>
+                  </div>
+                )}
+
                 <p className="form-error auth-error" role="alert">{signupError}</p>
-                <button className="button auth-submit-button full-button" type="submit">Create account & continue <span>→</span></button>
+                <div className="signup-step-actions">
+                  {signupStep > 1 && <button className="signup-previous" type="button" onClick={() => { setSignupStep((current) => current - 1); setSignupError(""); }}>← Back</button>}
+                  <button className="button auth-submit-button" type="submit">
+                    {signupStep === 3 ? "Create account & continue" : "Next step"} <span>→</span>
+                  </button>
+                </div>
                 <p className="signin-note">Already registered? <button type="button" onClick={() => switchMode("login")}>Log in instead</button></p>
               </form>
             )}
