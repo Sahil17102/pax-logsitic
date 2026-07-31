@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
@@ -238,6 +238,32 @@ export default function DashboardPage() {
   const [newShipment, setNewShipment] = useState({
     customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "",
   });
+  const notificationMenuRef = useRef(null);
+  const walletMenuRef = useRef(null);
+  const accountMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!notificationsOpen && !walletMenuOpen && !accountMenuOpen) return undefined;
+
+    const closeMenusOutside = (event) => {
+      if (notificationsOpen && !notificationMenuRef.current?.contains(event.target)) setNotificationsOpen(false);
+      if (walletMenuOpen && !walletMenuRef.current?.contains(event.target)) setWalletMenuOpen(false);
+      if (accountMenuOpen && !accountMenuRef.current?.contains(event.target)) setAccountMenuOpen(false);
+    };
+    const closeMenusOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setNotificationsOpen(false);
+      setWalletMenuOpen(false);
+      setAccountMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeMenusOutside);
+    document.addEventListener("keydown", closeMenusOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenusOutside);
+      document.removeEventListener("keydown", closeMenusOnEscape);
+    };
+  }, [notificationsOpen, walletMenuOpen, accountMenuOpen]);
 
   const filteredShipments = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -963,7 +989,7 @@ export default function DashboardPage() {
             <span className="portal-live-pill"><i></i> Network live</span>
           </div>
           <div className="portal-header-actions">
-            <div className="portal-notification-menu-wrap">
+            <div className="portal-notification-menu-wrap" ref={notificationMenuRef}>
               <button
                 className={`notification-button${unreadNotificationCount ? " has-unread" : ""}`}
                 type="button"
@@ -1000,7 +1026,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-            <div className="portal-wallet-menu-wrap">
+            <div className="portal-wallet-menu-wrap" ref={walletMenuRef}>
               <button
                 className="wallet-header-button"
                 type="button"
@@ -1027,7 +1053,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-            <div className="portal-account-menu-wrap">
+            <div className="portal-account-menu-wrap" ref={accountMenuRef}>
               <button className="account-button" type="button" onClick={() => { setAccountMenuOpen((open) => !open); setNotificationsOpen(false); setWalletMenuOpen(false); }} aria-expanded={accountMenuOpen} aria-haspopup="menu">
                 <span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
                 <div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div>
