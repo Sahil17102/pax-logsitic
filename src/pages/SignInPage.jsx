@@ -322,34 +322,78 @@ export default function SignInPage() {
               Book pickups, track every handoff and keep courier operations moving
               from one dependable workspace.
             </p>
-            <div className="auth-visual">
-              <img src="/assets/pax-courier-hero.png" alt="Pax courier scanning a parcel beside a delivery van" />
-              <div className="auth-visual-shade"></div>
-              <div className="auth-parcel-scene" aria-hidden="true">
-                <div className="auth-parcel-cube">
-                  <span className="parcel-face parcel-front"><b>PAX</b></span>
-                  <span className="parcel-face parcel-back"></span>
-                  <span className="parcel-face parcel-right"></span>
-                  <span className="parcel-face parcel-left"></span>
-                  <span className="parcel-face parcel-top"></span>
-                  <span className="parcel-face parcel-bottom"></span>
-                </div>
-                <i className="auth-parcel-shadow"></i>
+            <div
+              className="auth-visual auth-logistics-motion"
+              role="img"
+              aria-label="Animated Pax delivery route from pickup through the Hyderabad hub to the customer"
+            >
+              <div className="motion-scene-grid" aria-hidden="true"></div>
+              <div className="motion-scene-orb motion-scene-orb-one" aria-hidden="true"></div>
+              <div className="motion-scene-orb motion-scene-orb-two" aria-hidden="true"></div>
+              <div className="motion-scene-head">
+                <span><i></i> Live operations</span>
+                <b>38 ACTIVE SHIPMENTS</b>
               </div>
-              <div className="auth-visual-top"><span><i></i> Network live</span><b>HYDERABAD HUB</b></div>
-              <div className="auth-delivery-ticket">
-                <span aria-hidden="true">✓</span>
+              <svg className="motion-route-map" viewBox="0 0 640 260" aria-hidden="true">
+                <defs>
+                  <linearGradient id="paxRouteGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#68e4bd" />
+                    <stop offset="48%" stopColor="#70a0ff" />
+                    <stop offset="100%" stopColor="#ff9d4d" />
+                  </linearGradient>
+                  <filter id="paxRouteGlow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feGaussianBlur stdDeviation="7" />
+                  </filter>
+                </defs>
+                <path
+                  className="motion-route-glow"
+                  d="M64 188 C148 92 235 222 330 142 C416 70 493 72 576 112"
+                />
+                <path
+                  className="motion-route-line"
+                  d="M64 188 C148 92 235 222 330 142 C416 70 493 72 576 112"
+                />
+                <g className="motion-route-node motion-route-node--pickup" transform="translate(64 188)">
+                  <circle className="motion-node-pulse" r="24" />
+                  <circle className="motion-node-ring" r="13" />
+                  <circle className="motion-node-core" r="5" />
+                  <text x="0" y="43" textAnchor="middle">PICKUP</text>
+                </g>
+                <g className="motion-route-node motion-route-node--hub" transform="translate(330 142)">
+                  <circle className="motion-node-pulse" r="30" />
+                  <circle className="motion-node-ring" r="16" />
+                  <circle className="motion-node-core" r="6" />
+                  <text x="0" y="47" textAnchor="middle">HYD HUB</text>
+                </g>
+                <g className="motion-route-node motion-route-node--delivery" transform="translate(576 112)">
+                  <circle className="motion-node-pulse" r="24" />
+                  <circle className="motion-node-ring" r="13" />
+                  <path className="motion-node-check" d="M-5 0 -1 4 7 -5" />
+                  <text x="0" y="43" textAnchor="middle">DELIVERY</text>
+                </g>
+                <g className="motion-van">
+                  <animateMotion
+                    dur="6.5s"
+                    repeatCount="indefinite"
+                    rotate="auto"
+                    path="M64 188 C148 92 235 222 330 142 C416 70 493 72 576 112"
+                  />
+                  <ellipse className="motion-van-shadow" cx="0" cy="14" rx="27" ry="6" />
+                  <path className="motion-van-body" d="M-30-12H8V11H-30Z" />
+                  <path className="motion-van-cab" d="M8-8H20L29 1V11H8Z" />
+                  <path className="motion-van-window" d="M12-5H19L24 1H12Z" />
+                  <circle className="motion-van-wheel" cx="-18" cy="12" r="5" />
+                  <circle className="motion-van-wheel" cx="19" cy="12" r="5" />
+                  <text className="motion-van-mark" x="-20" y="3">PAX</text>
+                </g>
+              </svg>
+              <div className="motion-scene-status">
+                <span className="motion-status-icon" aria-hidden="true">→</span>
                 <div>
-                  <small>LATEST UPDATE</small>
-                  <strong>Out for delivery</strong>
-                  <em>Hyderabad · arriving today</em>
+                  <small>NOW MOVING</small>
+                  <strong>Hyderabad → Customer</strong>
                 </div>
-                <b aria-hidden="true">→</b>
-              </div>
-              <div className="auth-network-strip">
-                <span><small>PICKED UP</small><b>12</b></span>
-                <span><small>IN TRANSIT</small><b>18</b></span>
-                <span><small>DELIVERED</small><b>08</b></span>
+                <b>ETA TODAY</b>
               </div>
             </div>
             <div className="signin-points">
