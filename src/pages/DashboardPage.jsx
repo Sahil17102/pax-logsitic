@@ -397,6 +397,45 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        <section className="overview-quick-panel" aria-label="Quick actions">
+          <div className="overview-quick-heading">
+            <div><small>WORK FASTER</small><h2>Quick actions</h2><p>Start your most-used shipping tasks directly from Overview.</p></div>
+            <span>6 shortcuts</span>
+          </div>
+          <div className="overview-quick-grid">
+            <button type="button" onClick={openShipment}>
+              <span className="quick-tone-blue"><Icon name="plus" /></span>
+              <div><strong>Create shipment</strong><small>Book a new customer order</small></div>
+              <b>→</b>
+            </button>
+            <button type="button" onClick={() => navigatePanel("shipments", "shipments-track")}>
+              <span className="quick-tone-purple"><Icon name="route" /></span>
+              <div><strong>Track shipment</strong><small>Check live parcel movement</small></div>
+              <b>→</b>
+            </button>
+            <button type="button" onClick={() => navigatePanel("utilities", "utilities-rate")}>
+              <span className="quick-tone-green"><Icon name="wallet" /></span>
+              <div><strong>Rate calculator</strong><small>Estimate shipping charges</small></div>
+              <b>→</b>
+            </button>
+            <button type="button" onClick={() => navigatePanel("utilities", "utilities-pincode")}>
+              <span className="quick-tone-amber"><Icon name="home" /></span>
+              <div><strong>Check PIN code</strong><small>Verify delivery serviceability</small></div>
+              <b>→</b>
+            </button>
+            <button type="button" onClick={() => navigatePanel("finance", "finance-cod")}>
+              <span className="quick-tone-cyan"><Icon name="wallet" /></span>
+              <div><strong>COD settlement</strong><small>Review available remittance</small></div>
+              <b>→</b>
+            </button>
+            <button type="button" onClick={() => navigatePanel("support", "support-raise")}>
+              <span className="quick-tone-coral"><Icon name="support" /></span>
+              <div><strong>Raise ticket</strong><small>Get help from the Pax team</small></div>
+              <b>→</b>
+            </button>
+          </div>
+        </section>
+
         <section className="overview-signal-bar" aria-label="Network health">
           <div><span className="signal-live"><i></i> Live network</span><strong>All systems operational</strong></div>
           <div><small>ACTIVE LANES</small><strong>12</strong><span>5 priority routes</span></div>
