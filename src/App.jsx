@@ -203,12 +203,15 @@ export default function App() {
     return () => window.removeEventListener("popstate", updateLocation);
   }, []);
 
+  const isDashboard = location.pathname === "/dashboard";
+  const isSignIn = location.pathname === "/sign-in";
+
   return (
-    <div data-api-base={API_BASE_URL}>
+    <div className={isSignIn ? "app-signin-route" : ""} data-api-base={API_BASE_URL}>
       <a className="skip-link" href="#main">Skip to content</a>
-      {location.pathname !== "/dashboard" && <Header pathname={location.pathname} />}
+      {!isDashboard && <Header pathname={location.pathname} />}
       <SiteRoutes location={location} />
-      {location.pathname !== "/dashboard" && <Footer />}
+      {!isDashboard && !isSignIn && <Footer />}
     </div>
   );
 }
