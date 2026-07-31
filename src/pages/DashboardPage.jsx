@@ -306,6 +306,10 @@ export default function DashboardPage() {
   };
 
   const toggleSubmenu = (event, item) => {
+    if (item.children.length === 1) {
+      navigatePanel(item.id, item.children[0][0]);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     const estimatedHeight = item.children.length * 54 + 28;
     const availableTop = Math.max(12, window.innerHeight - estimatedHeight - 12);
