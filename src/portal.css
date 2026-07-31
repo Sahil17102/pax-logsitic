@@ -2093,7 +2093,7 @@
 
 .portal-submenu::before {
   position: absolute;
-  top: 24px;
+  top: clamp(14px, var(--submenu-pointer-top, 24px), calc(100% - 27px));
   left: -7px;
   width: 13px;
   height: 13px;

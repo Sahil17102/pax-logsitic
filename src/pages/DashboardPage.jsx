@@ -217,6 +217,7 @@ export default function DashboardPage() {
   const [activeTool, setActiveTool] = useState("overview-home");
   const [openMenu, setOpenMenu] = useState(null);
   const [submenuTop, setSubmenuTop] = useState(110);
+  const [submenuPointerTop, setSubmenuPointerTop] = useState(24);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState(readNotifications);
@@ -313,7 +314,10 @@ export default function DashboardPage() {
     const rect = event.currentTarget.getBoundingClientRect();
     const estimatedHeight = item.children.length * 54 + 28;
     const availableTop = Math.max(12, window.innerHeight - estimatedHeight - 12);
-    setSubmenuTop(Math.min(rect.top - 3, availableTop));
+    const nextTop = Math.min(rect.top - 3, availableTop);
+    const pointerSize = 13;
+    setSubmenuTop(nextTop);
+    setSubmenuPointerTop(rect.top + (rect.height / 2) - nextTop - (pointerSize / 2));
     setOpenMenu((current) => current === item.id ? null : item.id);
   };
 
@@ -924,7 +928,12 @@ export default function DashboardPage() {
       {openNavItem && (
         <>
           <button className="portal-submenu-scrim" type="button" aria-label="Close submenu" onClick={() => setOpenMenu(null)}></button>
-          <div className="portal-submenu" style={{ top: `${submenuTop}px` }} role="menu" aria-label={`${openNavItem.label} options`}>
+          <div
+            className="portal-submenu"
+            style={{ top: `${submenuTop}px`, "--submenu-pointer-top": `${submenuPointerTop}px` }}
+            role="menu"
+            aria-label={`${openNavItem.label} options`}
+          >
             <p>{openNavItem.label}</p>
             {openNavItem.children.map(([toolId, icon, label]) => (
               <button
