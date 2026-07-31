@@ -501,6 +501,25 @@ export default function DashboardPage() {
       cost: "₹46.2K",
       aov: "₹642",
       growth: "+18.2%",
+      inTransit: 8,
+      delivered: 24,
+      codAvailable: "₹18.4K",
+      avgDelivery: "2.6 days",
+      firstAttempt: "95.8%",
+      rto: "4.1%",
+      codShare: "36.5%",
+      peak: "18 orders",
+      dailyAverage: "6 orders",
+      bestLane: "HYD → BLR",
+      contribution: "₹38.4K",
+      margin: "45.4% margin",
+      costShare: "54.6% of revenue",
+      aovGrowth: "+4.8%",
+      codOrders: 12,
+      sla: 93.6,
+      pickupSla: 97.4,
+      transitSla: 93.6,
+      ndrSla: 86.2,
       bars: [48, 61, 52, 76, 68, 88, 96],
       labels: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
     },
@@ -511,6 +530,25 @@ export default function DashboardPage() {
       cost: "₹1.86L",
       aov: "₹688",
       growth: "+24.8%",
+      inTransit: 31,
+      delivered: 142,
+      codAvailable: "₹72.8K",
+      avgDelivery: "2.8 days",
+      firstAttempt: "96.4%",
+      rto: "3.6%",
+      codShare: "38.2%",
+      peak: "42 orders",
+      dailyAverage: "27 orders",
+      bestLane: "HYD → BLR",
+      contribution: "₹1.56L",
+      margin: "45.6% margin",
+      costShare: "54.4% of revenue",
+      aovGrowth: "+7.2%",
+      codOrders: 24,
+      sla: 94.8,
+      pickupSla: 98.2,
+      transitSla: 94.8,
+      ndrSla: 88.6,
       bars: [42, 57, 69, 64, 78, 83, 94],
       labels: ["01", "05", "10", "15", "20", "25", "30"],
     },
@@ -521,6 +559,25 @@ export default function DashboardPage() {
       cost: "₹5.72L",
       aov: "₹704",
       growth: "+31.4%",
+      inTransit: 74,
+      delivered: 451,
+      codAvailable: "₹2.18L",
+      avgDelivery: "2.7 days",
+      firstAttempt: "96.9%",
+      rto: "3.1%",
+      codShare: "40.1%",
+      peak: "58 orders",
+      dailyAverage: "34 orders",
+      bestLane: "HYD → MUM",
+      contribution: "₹5.08L",
+      margin: "47.0% margin",
+      costShare: "53.0% of revenue",
+      aovGrowth: "+9.6%",
+      codOrders: 82,
+      sla: 95.7,
+      pickupSla: 98.7,
+      transitSla: 95.7,
+      ndrSla: 91.3,
       bars: [36, 48, 55, 67, 72, 86, 98],
       labels: ["May", "W2", "Jun", "W2", "Jul", "W3", "Now"],
     },
@@ -588,23 +645,23 @@ export default function DashboardPage() {
         <section className="overview-signal-bar" aria-label="Network health">
           <div><span className="signal-live"><i></i> Live network</span><strong>All systems operational</strong></div>
           <div><small>ACTIVE LANES</small><strong>12</strong><span>5 priority routes</span></div>
-          <div><small>AVG. DELIVERY</small><strong>2.8 days</strong><span>0.4 day faster</span></div>
-          <div><small>FIRST ATTEMPT</small><strong>96.4%</strong><span>Top 8% benchmark</span></div>
-          <div><small>RTO RATE</small><strong>3.6%</strong><span>↓ 0.8% this month</span></div>
+          <div><small>AVG. DELIVERY</small><strong>{analytics.avgDelivery}</strong><span>Across {analytics.label.toLowerCase()}</span></div>
+          <div><small>FIRST ATTEMPT</small><strong>{analytics.firstAttempt}</strong><span>Successful deliveries</span></div>
+          <div><small>RTO RATE</small><strong>{analytics.rto}</strong><span>Return-to-origin share</span></div>
         </section>
 
         <section className="portal-kpis overview-kpis" aria-label="Shipment summary">
           <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>TOTAL SHIPMENTS</small><strong>{analytics.shipments}</strong><p><b>↑ 12%</b> from previous period</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
-          <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN TRANSIT</small><strong>{shipments.filter((item) => item.status.includes("transit") || item.status.includes("delivery")).length + 6}</strong><p>Across 5 active lanes</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
-          <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="box" /></span><small>DELIVERED TODAY</small><strong>{shipments.filter((item) => item.status === "Delivered").length + 23}</strong><p><b>96.4%</b> first-attempt success</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
-          <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="wallet" /></span><small>COD AVAILABLE</small><strong>₹18.4K</strong><p>Next settlement: 03 Aug</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN TRANSIT</small><strong>{analytics.inTransit}</strong><p>Across 5 active lanes</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="box" /></span><small>DELIVERED</small><strong>{analytics.delivered}</strong><p><b>{analytics.firstAttempt}</b> first-attempt success</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="wallet" /></span><small>COD AVAILABLE</small><strong>{analytics.codAvailable}</strong><p>{analytics.codOrders} COD orders</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
         </section>
 
         <section className="overview-finance-strip" aria-label="Commercial analytics">
           <article><span><Icon name="wallet" /></span><div><small>GROSS REVENUE</small><strong>{analytics.revenue}</strong></div><b>{analytics.growth}</b></article>
-          <article><span><Icon name="insights" /></span><div><small>SHIPPING COST</small><strong>{analytics.cost}</strong></div><b className="is-neutral">54.6% of revenue</b></article>
-          <article><span><Icon name="box" /></span><div><small>AVG. ORDER VALUE</small><strong>{analytics.aov}</strong></div><b>+7.2%</b></article>
-          <article><span><Icon name="route" /></span><div><small>COD SHARE</small><strong>38.2%</strong></div><b className="is-neutral">24 orders</b></article>
+          <article><span><Icon name="insights" /></span><div><small>SHIPPING COST</small><strong>{analytics.cost}</strong></div><b className="is-neutral">{analytics.costShare}</b></article>
+          <article><span><Icon name="box" /></span><div><small>AVG. ORDER VALUE</small><strong>{analytics.aov}</strong></div><b>{analytics.aovGrowth}</b></article>
+          <article><span><Icon name="route" /></span><div><small>COD SHARE</small><strong>{analytics.codShare}</strong></div><b className="is-neutral">{analytics.codOrders} orders</b></article>
         </section>
 
         <section className="portal-main-grid overview-primary-grid">
@@ -622,7 +679,7 @@ export default function DashboardPage() {
               </svg>
               <div className="chart-days">{analytics.labels.map((label) => <span key={label}>{label}</span>)}</div>
             </div>
-            <div className="overview-chart-summary"><span><small>PEAK VOLUME</small><strong>42 orders</strong></span><span><small>DAILY AVERAGE</small><strong>27 orders</strong></span><span><small>BEST LANE</small><strong>HYD → BLR</strong></span></div>
+            <div className="overview-chart-summary"><span><small>PEAK VOLUME</small><strong>{analytics.peak}</strong></span><span><small>DAILY AVERAGE</small><strong>{analytics.dailyAverage}</strong></span><span><small>BEST LANE</small><strong>{analytics.bestLane}</strong></span></div>
           </article>
           <article className="portal-card status-card overview-status-card">
             <div className="portal-card-head"><div><small>LIVE STATUS</small><h2>Delivery mix</h2></div><button type="button" onClick={() => navigatePanel("shipments")}>View all</button></div>
@@ -642,7 +699,7 @@ export default function DashboardPage() {
         <section className="overview-analytics-grid">
           <article className="portal-card overview-revenue-card">
             <div className="portal-card-head"><div><small>COMMERCIAL PERFORMANCE</small><h2>Revenue vs shipping cost</h2></div><button type="button" onClick={() => notify("Finance report prepared for export.")}>Export report ↗</button></div>
-            <div className="overview-revenue-head"><div><small>NET CONTRIBUTION</small><strong>₹38.4K</strong><span>45.4% margin</span></div><p>Revenue is growing faster than shipping spend across the selected period.</p></div>
+            <div className="overview-revenue-head"><div><small>NET CONTRIBUTION</small><strong>{analytics.contribution}</strong><span>{analytics.margin}</span></div><p>Revenue is growing faster than shipping spend across the selected period.</p></div>
             <div className="overview-bars">
               {analytics.bars.map((height, index) => <div key={`${overviewRange}-${index}`}><span style={{ height: `${height}%` }}><i style={{ height: `${Math.max(25, height * .55)}%` }}></i></span><small>{analytics.labels[index]}</small></div>)}
             </div>
@@ -651,12 +708,12 @@ export default function DashboardPage() {
 
           <article className="portal-card overview-sla-card">
             <div className="portal-card-head"><div><small>SERVICE QUALITY</small><h2>SLA health</h2></div><span className="trend-pill">Excellent</span></div>
-            <div className="overview-sla-score"><div className="sla-gauge"><span><strong>94.8</strong><small>/100</small></span></div><div><strong>On-time performance</strong><p>3.2 points above your 30-day average.</p></div></div>
+            <div className="overview-sla-score"><div className="sla-gauge" style={{ background: `conic-gradient(#3157c8 0 ${analytics.sla}%, #e9eef6 ${analytics.sla}%)` }}><span><strong>{analytics.sla}</strong><small>/100</small></span></div><div><strong>On-time performance</strong><p>Calculated for {analytics.label.toLowerCase()}.</p></div></div>
             <div className="overview-sla-list">
-              <div><span>Pickup SLA</span><b>98.2%</b><i><em style={{ width: "98.2%" }}></em></i></div>
-              <div><span>In-transit SLA</span><b>94.8%</b><i><em style={{ width: "94.8%" }}></em></i></div>
-              <div><span>First attempt</span><b>96.4%</b><i><em style={{ width: "96.4%" }}></em></i></div>
-              <div><span>NDR resolution</span><b>88.6%</b><i><em style={{ width: "88.6%" }}></em></i></div>
+              <div><span>Pickup SLA</span><b>{analytics.pickupSla}%</b><i><em style={{ width: `${analytics.pickupSla}%` }}></em></i></div>
+              <div><span>In-transit SLA</span><b>{analytics.transitSla}%</b><i><em style={{ width: `${analytics.transitSla}%` }}></em></i></div>
+              <div><span>First attempt</span><b>{analytics.firstAttempt}</b><i><em style={{ width: analytics.firstAttempt }}></em></i></div>
+              <div><span>NDR resolution</span><b>{analytics.ndrSla}%</b><i><em style={{ width: `${analytics.ndrSla}%` }}></em></i></div>
             </div>
           </article>
         </section>
