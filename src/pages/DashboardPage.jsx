@@ -3,12 +3,20 @@ import { useMemo, useState } from "react";
 const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
 const SHIPMENTS_KEY = "pax-demo-shipments";
+const NOTIFICATIONS_KEY = "pax-demo-notifications";
 
 const starterShipments = [
   { id: "PAX-260731", customer: "Aarav Retail", destination: "Mumbai, MH", amount: 1240, payment: "Prepaid", status: "In transit", date: "31 Jul 2026" },
   { id: "PAX-260728", customer: "Nila Studios", destination: "Bengaluru, KA", amount: 860, payment: "COD", status: "Out for delivery", date: "30 Jul 2026" },
   { id: "PAX-260724", customer: "Kite Office", destination: "Pune, MH", amount: 590, payment: "Prepaid", status: "Delivered", date: "29 Jul 2026" },
   { id: "PAX-260719", customer: "Rohan Mehta", destination: "Chennai, TN", amount: 1720, payment: "COD", status: "Pickup scheduled", date: "28 Jul 2026" },
+];
+
+const starterNotifications = [
+  { id: "shipment-moving", icon: "route", tone: "blue", title: "Shipment is out for delivery", detail: "PAX-260728 reached the Bengaluru delivery centre.", time: "8 min ago", section: "shipments", tool: "shipments-track", unread: true },
+  { id: "cod-ready", icon: "wallet", tone: "green", title: "COD settlement is ready", detail: "₹18,420 from 24 orders is available for remittance.", time: "32 min ago", section: "finance", tool: "finance-cod", unread: true },
+  { id: "sla-warning", icon: "alert", tone: "amber", title: "2 shipments need attention", detail: "The Hyderabad to Mumbai lane may breach its SLA.", time: "1 hr ago", section: "exceptions", tool: "exceptions-delayed", unread: true },
+  { id: "weekly-report", icon: "insights", tone: "purple", title: "Weekly report is available", detail: "Delivery success improved by 2.4% this week.", time: "Yesterday", section: "insights", tool: "insights-shipments", unread: false },
 ];
 
 const navItems = [
@@ -166,6 +174,19 @@ function readShipments() {
   }
 }
 
+function readNotifications() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || "null");
+    if (!Array.isArray(saved)) return starterNotifications;
+    return starterNotifications.map((notification) => ({
+      ...notification,
+      unread: saved.find((item) => item.id === notification.id)?.unread ?? notification.unread,
+    }));
+  } catch {
+    return starterNotifications;
+  }
+}
+
 function goTo(path) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -193,6 +214,8 @@ export default function DashboardPage() {
   const [openMenu, setOpenMenu] = useState(null);
   const [submenuTop, setSubmenuTop] = useState(110);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState(readNotifications);
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
@@ -213,6 +236,7 @@ export default function DashboardPage() {
       [shipment.id, shipment.customer, shipment.destination, shipment.status].some((value) => value.toLowerCase().includes(query)),
     );
   }, [search, shipments]);
+  const unreadNotificationCount = notifications.filter((notification) => notification.unread).length;
 
   if (!user) return <EmptyAuth />;
 
@@ -233,7 +257,26 @@ export default function DashboardPage() {
     setActiveTool(tool);
     setOpenMenu(null);
     setAccountMenuOpen(false);
+    setNotificationsOpen(false);
     setMobileNav(false);
+  };
+
+  const openNotification = (notification) => {
+    setNotifications((current) => {
+      const next = current.map((item) => item.id === notification.id ? { ...item, unread: false } : item);
+      localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(next));
+      return next;
+    });
+    navigatePanel(notification.section, notification.tool);
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((current) => {
+      const next = current.map((notification) => ({ ...notification, unread: false }));
+      localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(next));
+      return next;
+    });
+    notify("All notifications marked as read.");
   };
 
   const toggleSubmenu = (event, item) => {
@@ -832,9 +875,45 @@ export default function DashboardPage() {
             <span className="portal-live-pill"><i></i> Network live</span>
           </div>
           <div className="portal-header-actions">
-            <button className="notification-button" type="button" onClick={() => notify("You’re all caught up.")} aria-label="Open notifications"><Icon name="bell" /><i></i></button>
+            <div className="portal-notification-menu-wrap">
+              <button
+                className={`notification-button${unreadNotificationCount ? " has-unread" : ""}`}
+                type="button"
+                onClick={() => { setNotificationsOpen((open) => !open); setAccountMenuOpen(false); }}
+                aria-label={`Open notifications, ${unreadNotificationCount} unread`}
+                aria-expanded={notificationsOpen}
+                aria-haspopup="menu"
+              >
+                <Icon name="bell" />
+                {unreadNotificationCount > 0 && <i>{unreadNotificationCount}</i>}
+              </button>
+              {notificationsOpen && (
+                <div className="portal-notification-dropdown" role="menu" aria-label="Notifications">
+                  <div className="notification-dropdown-head">
+                    <div><span>NOTIFICATION CENTRE</span><h2>What’s new</h2></div>
+                    {unreadNotificationCount > 0 && <button type="button" onClick={markAllNotificationsRead}>Mark all read</button>}
+                  </div>
+                  <div className="notification-list">
+                    {notifications.map((notification) => (
+                      <button
+                        className={notification.unread ? "is-unread" : ""}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => openNotification(notification)}
+                        key={notification.id}
+                      >
+                        <span className={`notification-tone-${notification.tone}`}><Icon name={notification.icon} /></span>
+                        <div><strong>{notification.title}</strong><p>{notification.detail}</p><small>{notification.time}</small></div>
+                        {notification.unread && <b aria-label="Unread"></b>}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="notification-view-all" type="button" onClick={() => navigatePanel("overview", "overview-home")}>View notification overview <span>→</span></button>
+                </div>
+              )}
+            </div>
             <div className="portal-account-menu-wrap">
-              <button className="account-button" type="button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu">
+              <button className="account-button" type="button" onClick={() => { setAccountMenuOpen((open) => !open); setNotificationsOpen(false); }} aria-expanded={accountMenuOpen} aria-haspopup="menu">
                 <span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
                 <div><strong>{user.fullName}</strong><small>{user.accountType || "Business"} account</small></div>
                 <b>{accountMenuOpen ? "⌃" : "⌄"}</b>
