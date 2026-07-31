@@ -89,6 +89,12 @@ function Header({ pathname }) {
               {label}
             </AppLink>
           ))}
+          <AppLink
+            to="/sign-in"
+            className={({ isActive }) => `nav-signin${isActive ? " is-active" : ""}`}
+          >
+            Log In <span aria-hidden="true">→</span>
+          </AppLink>
         </nav>
         {isHome ? (
           <AppLink className="home-quote-button" to="/rate-calculator">

@@ -1,4 +1,38 @@
 /* Pax customer access and portal */
+.site-header--home .desktop-nav .nav-signin,
+.desktop-nav .nav-signin {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #294cc1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 16px;
+  color: #294cc1;
+  box-shadow: 0 8px 20px rgba(52, 84, 209, .1);
+  font-weight: 850;
+  transition: transform .2s ease, background .2s ease, color .2s ease;
+}
+
+.site-header--home .desktop-nav .nav-signin::after,
+.desktop-nav .nav-signin::after {
+  display: none;
+}
+
+.site-header--home .desktop-nav .nav-signin:hover,
+.site-header--home .desktop-nav .nav-signin.is-active,
+.desktop-nav .nav-signin:hover,
+.desktop-nav .nav-signin.is-active {
+  transform: translateY(-1px);
+  background: #294cc1;
+  color: #fff;
+}
+
+.desktop-nav .nav-signin span {
+  font-size: .8rem;
+}
+
 .signin-page {
   min-height: calc(100svh - 122px);
   background:
