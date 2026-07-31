@@ -5003,3 +5003,663 @@
     width: 18px;
   }
 }
+
+/* Premium user-panel polish */
+.portal-shell {
+  --panel-surface: rgba(255, 255, 255, .94);
+  --panel-border: #dfe6f0;
+  --panel-shadow: 0 16px 44px rgba(34, 57, 92, .075);
+  --panel-shadow-hover: 0 22px 55px rgba(34, 57, 92, .12);
+  background:
+    radial-gradient(circle at 18% 8%, rgba(75, 112, 216, .065), transparent 25%),
+    radial-gradient(circle at 96% 88%, rgba(72, 173, 131, .06), transparent 24%),
+    #f5f7fb;
+}
+
+.portal-shell * {
+  scrollbar-color: #c7d2e5 transparent;
+  scrollbar-width: thin;
+}
+
+.portal-shell *::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.portal-shell *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.portal-shell *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: #c7d2e5;
+  background-clip: padding-box;
+}
+
+.portal-sidebar {
+  width: 148px;
+  border-right: 1px solid rgba(199, 211, 230, .9);
+  background:
+    linear-gradient(180deg, rgba(235, 241, 255, .98), rgba(255, 255, 255, .98) 25%),
+    #fff;
+  padding: 13px 10px 12px;
+  box-shadow: 7px 0 35px rgba(39, 62, 99, .045);
+}
+
+.portal-logo {
+  width: 118px;
+  height: 48px;
+  border-radius: 12px;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.portal-logo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 20px rgba(35, 59, 98, .08);
+}
+
+.portal-sidebar nav {
+  gap: 5px;
+  padding: 4px 0;
+}
+
+.portal-sidebar nav button {
+  min-height: 67px;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  transition: color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.portal-sidebar nav button > svg {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  transition: transform .2s ease, background .2s ease, color .2s ease;
+}
+
+.portal-sidebar nav button:hover {
+  border-color: #dbe5f7;
+  background: rgba(242, 246, 255, .95);
+  box-shadow: 0 8px 18px rgba(44, 70, 112, .06);
+}
+
+.portal-sidebar nav button:hover > svg {
+  transform: translateY(-1px);
+}
+
+.portal-sidebar nav button.is-active {
+  border-color: #c6d5f7;
+  background:
+    radial-gradient(circle at 80% 0, rgba(102, 136, 228, .15), transparent 42%),
+    linear-gradient(145deg, #f4f7ff, #e8efff);
+  box-shadow: 0 11px 26px rgba(49, 87, 200, .14);
+}
+
+.portal-sidebar nav button.is-active::before {
+  position: absolute;
+  top: 15px;
+  bottom: 15px;
+  left: -10px;
+  width: 4px;
+  border-radius: 0 5px 5px 0;
+  background: var(--portal-blue);
+  content: "";
+}
+
+.portal-sidebar nav button.is-active > svg {
+  background: linear-gradient(145deg, #5375df, #2d52be);
+  box-shadow: 0 7px 15px rgba(49, 87, 200, .24);
+}
+
+.portal-sidebar nav button em {
+  top: 4px;
+  right: 5px;
+  min-width: 19px;
+  height: 19px;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(40, 73, 152, .16);
+}
+
+.portal-logout {
+  min-height: 42px;
+  border: 1px solid #e1e7f0;
+  border-radius: 12px;
+  background: #f8faff;
+  transition: color .2s ease, background .2s ease, border-color .2s ease;
+}
+
+.portal-logout:hover {
+  border-color: #cbd8ef;
+  background: #edf3ff;
+  color: var(--portal-blue-dark);
+}
+
+.portal-body {
+  margin-left: 148px;
+}
+
+.portal-header {
+  min-height: 86px;
+  border-bottom: 1px solid rgba(206, 216, 232, .82);
+  background: rgba(250, 252, 255, .84);
+  padding: 0 clamp(22px, 3vw, 48px);
+  box-shadow: 0 8px 30px rgba(33, 56, 92, .045);
+  backdrop-filter: blur(22px) saturate(150%);
+}
+
+.portal-header-start {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 13px;
+  align-items: center;
+}
+
+.portal-search {
+  width: min(500px, 45vw);
+  height: 46px;
+  border-color: #dce4ef;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: inset 0 1px 0 #fff, 0 7px 20px rgba(40, 64, 101, .045);
+  transition: width .25s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.portal-search:focus-within {
+  width: min(550px, 48vw);
+  border-color: #9fb4e8;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(49, 87, 200, .09), 0 12px 26px rgba(40, 64, 101, .08);
+}
+
+.portal-search svg {
+  color: #6f7f96;
+}
+
+.portal-search kbd {
+  border-color: #dae3f0;
+  background: #f4f7fc;
+  color: #7e8ca0;
+}
+
+.portal-live-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #d8ebe3;
+  border-radius: 99px;
+  background: #f0faf6;
+  padding: 7px 10px;
+  color: #34745e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.portal-live-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #42af83;
+  box-shadow: 0 0 0 4px rgba(66, 175, 131, .13);
+}
+
+.portal-header-actions {
+  gap: 12px;
+}
+
+.notification-button {
+  width: 43px;
+  height: 43px;
+  border-color: #dbe3ee;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 7px 18px rgba(40, 64, 101, .05);
+  color: #526681;
+  transition: transform .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.notification-button:hover {
+  transform: translateY(-2px);
+  border-color: #b9c9e9;
+  color: var(--portal-blue);
+  box-shadow: 0 11px 24px rgba(40, 64, 101, .1);
+}
+
+.notification-button i {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #fff;
+  background: #4d73dc;
+  box-shadow: 0 0 0 3px rgba(77, 115, 220, .1);
+}
+
+.account-button {
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 5px 8px 5px 6px;
+  transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.account-button:hover,
+.account-button[aria-expanded="true"] {
+  border-color: #d8e1ef;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: 0 8px 22px rgba(40, 64, 101, .07);
+}
+
+.account-button > span {
+  background: linear-gradient(145deg, #dce7ff, #c8d7fb);
+  box-shadow: inset 0 0 0 1px rgba(72, 105, 190, .1);
+}
+
+.portal-account-dropdown {
+  top: calc(100% + 16px);
+  border-color: #d9e2ef;
+  border-radius: 19px;
+  box-shadow: 0 28px 75px rgba(32, 53, 87, .2);
+  padding: 11px;
+}
+
+.portal-account-dropdown > button {
+  border-radius: 11px;
+  transition: transform .18s ease, background .18s ease, color .18s ease;
+}
+
+.portal-account-dropdown > button:hover {
+  transform: translateX(2px);
+}
+
+.account-dropdown-head {
+  border: 1px solid #e1e8f4;
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at 90% 0, rgba(100, 135, 230, .13), transparent 40%),
+    #f5f8ff;
+}
+
+.portal-content {
+  width: min(100%, 1680px);
+  padding: 34px clamp(22px, 3vw, 50px) 55px;
+}
+
+.portal-view {
+  animation: portal-view-enter .38s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes portal-view-enter {
+  from {
+    transform: translateY(9px);
+    opacity: 0;
+  }
+}
+
+.section-title-row:not(.feature-title-row) {
+  position: relative;
+  min-height: 145px;
+  overflow: hidden;
+  align-items: center;
+  margin-bottom: 20px;
+  border: 1px solid #dce5f2;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(80, 118, 222, .15), transparent 28%),
+    radial-gradient(circle at 72% 120%, rgba(74, 177, 141, .1), transparent 32%),
+    linear-gradient(125deg, #fff, #f5f8ff);
+  padding: clamp(24px, 2.8vw, 38px);
+  box-shadow: 0 16px 42px rgba(37, 61, 99, .06);
+}
+
+.section-title-row:not(.feature-title-row)::after {
+  position: absolute;
+  right: -80px;
+  bottom: -185px;
+  width: 340px;
+  height: 340px;
+  border: 1px solid rgba(49, 87, 200, .1);
+  border-radius: 50%;
+  content: "";
+}
+
+.section-title-row:not(.feature-title-row) > * {
+  position: relative;
+  z-index: 1;
+}
+
+.section-title-row h1 {
+  font-size: clamp(2.15rem, 3.4vw, 3.15rem);
+}
+
+.portal-card,
+.tracking-result-card,
+.track-search-card,
+.profile-form,
+.support-contact-card,
+.shipment-modal {
+  border-color: var(--panel-border);
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+}
+
+.portal-card {
+  border-radius: 19px;
+  transition: border-color .22s ease, box-shadow .22s ease;
+}
+
+.portal-card:hover {
+  border-color: #d3deed;
+  box-shadow: var(--panel-shadow-hover);
+}
+
+.portal-card-head h2 {
+  color: #1f3452;
+}
+
+.portal-card-head small,
+.kpi-card > small,
+.track-search-card > small,
+.tracking-result-head small,
+.finance-hero small,
+.settlement-card > small,
+.support-form > small {
+  color: #7d8ba0;
+}
+
+.portal-primary {
+  min-height: 45px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4e70db, #294db9);
+  box-shadow: 0 11px 25px rgba(49, 87, 200, .22);
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.portal-primary:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #4367d3, #2144a9);
+  box-shadow: 0 16px 30px rgba(49, 87, 200, .28);
+}
+
+.portal-secondary {
+  min-height: 45px;
+  border-color: #d7e0eb;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 7px 18px rgba(36, 59, 94, .045);
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.portal-secondary:hover {
+  transform: translateY(-1px);
+  border-color: #b8c9e7;
+  box-shadow: 0 10px 22px rgba(36, 59, 94, .08);
+}
+
+.kpi-card {
+  border-color: var(--panel-border);
+  border-radius: 19px;
+  box-shadow: 0 13px 34px rgba(35, 58, 93, .055);
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-4px);
+  border-color: #cfdbec;
+  box-shadow: 0 20px 44px rgba(35, 58, 93, .11);
+}
+
+.kpi-icon {
+  box-shadow: inset 0 0 0 1px rgba(31, 53, 86, .035);
+}
+
+.dashboard-action-grid > button,
+.utility-grid > button,
+.feature-function-grid > button,
+.channel-card,
+.exception-card {
+  box-shadow: 0 12px 30px rgba(35, 58, 93, .05);
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+}
+
+.dashboard-action-grid > button:hover,
+.utility-grid > button:hover,
+.feature-function-grid > button:hover,
+.channel-card:hover,
+.exception-card:hover {
+  transform: translateY(-4px);
+  border-color: #cbd8ea;
+  box-shadow: 0 19px 42px rgba(35, 58, 93, .11);
+}
+
+.table-toolbar label,
+.track-search-card input,
+.support-form input,
+.support-form textarea,
+.profile-form input,
+.profile-form select,
+.shipment-modal input,
+.shipment-modal select,
+.shipment-modal textarea {
+  border-color: #dce4ef;
+  border-radius: 11px;
+  background: #fbfcfe;
+  transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+
+.table-toolbar label:focus-within,
+.track-search-card input:focus,
+.support-form input:focus,
+.support-form textarea:focus,
+.profile-form input:focus,
+.profile-form select:focus,
+.shipment-modal input:focus,
+.shipment-modal select:focus,
+.shipment-modal textarea:focus {
+  border-color: #9fb4e8;
+  background: #fff;
+  outline: 0;
+  box-shadow: 0 0 0 4px rgba(49, 87, 200, .09);
+}
+
+.shipment-table-wrap {
+  border-top-color: #e5ebf3;
+}
+
+.shipment-table th {
+  background: #f6f8fc;
+  color: #718096;
+}
+
+.shipment-table tbody tr {
+  transition: background .18s ease;
+}
+
+.shipment-table tbody tr:hover {
+  background: #f7f9fd;
+}
+
+.shipment-table td {
+  border-top-color: #e8edf4;
+}
+
+.status-badge {
+  border: 1px solid currentColor;
+  border-color: color-mix(in srgb, currentColor 18%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+.portal-submenu {
+  left: 138px;
+  border-color: #d8e2f0;
+  border-radius: 20px;
+  box-shadow: 0 28px 75px rgba(31, 52, 86, .21);
+  padding: 13px;
+}
+
+.portal-submenu > button {
+  min-height: 54px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+
+.portal-submenu > button:hover,
+.portal-submenu > button.is-active {
+  border-color: #d8e3f7;
+  background:
+    linear-gradient(90deg, #eef3ff, #f7f9ff);
+}
+
+.portal-submenu > button > span {
+  box-shadow: inset 0 0 0 1px rgba(53, 80, 128, .04);
+}
+
+.portal-footer {
+  min-height: 68px;
+  border-top: 1px solid #dce4ee;
+  background: rgba(255, 255, 255, .64);
+  color: #748297;
+}
+
+.shipment-modal {
+  border-radius: 22px;
+  box-shadow: 0 35px 95px rgba(20, 38, 68, .26);
+}
+
+.modal-backdrop {
+  background: rgba(17, 31, 54, .52);
+  backdrop-filter: blur(7px);
+}
+
+.portal-toast {
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 15px;
+  background: rgba(25, 48, 83, .96);
+  box-shadow: 0 22px 55px rgba(20, 38, 68, .26);
+  backdrop-filter: blur(14px);
+}
+
+.portal-toast > span {
+  background: #54c193;
+  color: #fff;
+}
+
+@media (max-width: 1180px) {
+  .portal-live-pill {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .portal-sidebar {
+    width: 148px;
+  }
+
+  .portal-sidebar.is-open {
+    box-shadow: 18px 0 60px rgba(25, 44, 76, .22);
+  }
+
+  .portal-body {
+    margin-left: 0;
+  }
+
+  .portal-submenu {
+    left: 138px;
+  }
+
+  .portal-header {
+    min-height: 78px;
+  }
+}
+
+@media (max-width: 700px) {
+  .portal-header {
+    gap: 10px;
+    padding: 0 14px;
+  }
+
+  .portal-header-start {
+    gap: 9px;
+  }
+
+  .portal-search {
+    width: min(100%, 390px);
+  }
+
+  .portal-search:focus-within {
+    width: min(100%, 390px);
+  }
+
+  .portal-search kbd,
+  .account-button > div,
+  .account-button > b {
+    display: none;
+  }
+
+  .account-button {
+    grid-template-columns: 36px;
+    padding: 4px;
+  }
+
+  .portal-content {
+    padding: 22px 14px 40px;
+  }
+
+  .section-title-row:not(.feature-title-row) {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 22px;
+  }
+
+  .portal-submenu {
+    right: 12px;
+    left: 106px;
+  }
+}
+
+@media (max-width: 480px) {
+  .portal-header-actions {
+    gap: 6px;
+  }
+
+  .notification-button {
+    width: 39px;
+    height: 39px;
+  }
+
+  .account-button > span {
+    width: 35px;
+    height: 35px;
+  }
+
+  .portal-search input {
+    font-size: 12px;
+  }
+
+  .portal-search input::placeholder {
+    color: transparent;
+  }
+
+  .portal-card,
+  .overview-latest-card {
+    border-radius: 16px;
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-view,
+  .signal-live i {
+    animation: none;
+  }
+
+  .portal-card,
+  .kpi-card,
+  .dashboard-action-grid > button,
+  .utility-grid > button,
+  .feature-function-grid > button {
+    transition: none;
+  }
+}

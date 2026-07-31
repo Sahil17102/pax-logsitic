@@ -826,10 +826,13 @@ export default function DashboardPage() {
       {mobileNav && <button className="portal-scrim" type="button" aria-label="Close menu" onClick={() => setMobileNav(false)}></button>}
       <div className="portal-body">
         <header className="portal-header">
-          <button className="portal-menu" type="button" onClick={() => setMobileNav(true)} aria-label="Open portal menu"><Icon name="menu" /></button>
-          <label className="portal-search"><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => navigatePanel("shipments", "shipments-all")} placeholder="Search shipments..." /><kbd>⌘ K</kbd></label>
+          <div className="portal-header-start">
+            <button className="portal-menu" type="button" onClick={() => setMobileNav(true)} aria-label="Open portal menu"><Icon name="menu" /></button>
+            <label className="portal-search"><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => navigatePanel("shipments", "shipments-all")} placeholder="Search shipments, orders and customers..." /><kbd>⌘ K</kbd></label>
+            <span className="portal-live-pill"><i></i> Network live</span>
+          </div>
           <div className="portal-header-actions">
-            <button className="notification-button" type="button" onClick={() => notify("You’re all caught up.")}><Icon name="bell" /><i></i></button>
+            <button className="notification-button" type="button" onClick={() => notify("You’re all caught up.")} aria-label="Open notifications"><Icon name="bell" /><i></i></button>
             <div className="portal-account-menu-wrap">
               <button className="account-button" type="button" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-haspopup="menu">
                 <span>{(user.fullName || "PC").split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span>
@@ -848,7 +851,9 @@ export default function DashboardPage() {
             </div>
           </div>
         </header>
-        <main className="portal-content">{renderActiveTool()}</main>
+        <main className={`portal-content portal-content--${active}`}>
+          <div className="portal-view" key={activeTool}>{renderActiveTool()}</div>
+        </main>
         <footer className="portal-footer"><span>© 2026 Pax Logistics</span><span>Hyderabad · Telangana · India</span><a href="https://searchcraftdigital.com/" target="_blank" rel="noreferrer">Crafted by SearchCraft Digital</a></footer>
       </div>
       {shipmentModal && (
