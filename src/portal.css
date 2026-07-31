@@ -7701,7 +7701,7 @@
 
 /* Login viewport lock: keep the complete access form visible without nested scrolling. */
 .auth-page-v2--login {
-  height: calc(100svh - 108px);
+  height: 100svh;
   min-height: 0;
   overflow: hidden;
 }
@@ -7713,9 +7713,13 @@
 }
 
 .auth-page-v2--login .signin-card--login {
+  width: 100%;
+  max-width: 720px;
   max-height: none;
   overflow: visible;
-  padding: clamp(22px, 2.8vw, 34px);
+  border-radius: 28px;
+  padding: clamp(30px, 3.2vw, 42px);
+  box-shadow: 0 38px 90px rgba(32, 61, 111, .2);
 }
 
 .auth-page-v2--login .auth-brand-row {
@@ -7736,7 +7740,35 @@
 }
 
 .auth-page-v2--login .auth-form > label {
+  gap: 8px;
   margin-bottom: 12px;
+  color: #34435e;
+  font-size: 14px;
+}
+
+.auth-page-v2--login .login-method-tabs button {
+  min-height: 56px;
+  font-size: 15px;
+}
+
+.auth-page-v2--login .auth-form input {
+  height: 56px;
+  font-size: 15px;
+}
+
+.auth-page-v2--login .signin-options {
+  margin-block: 8px 10px;
+  font-size: 13px;
+}
+
+.auth-page-v2--login .auth-submit-button {
+  min-height: 58px;
+  font-size: 16px;
+}
+
+.auth-page-v2--login .signin-note {
+  margin-top: 14px;
+  font-size: 13px;
 }
 
 .auth-page-v2--login .signin-options input[type="checkbox"] {
@@ -7753,7 +7785,7 @@
 
 @media (max-width: 1050px) {
   .auth-page-v2--login {
-    height: calc(100svh - 74px);
+    height: 100svh;
   }
 }
 
@@ -7768,13 +7800,13 @@
   }
 
   .auth-page-v2--login .signin-card--login {
-    width: min(100%, 620px);
+    width: min(100%, 720px);
   }
 }
 
 @media (max-width: 700px) {
   .auth-page-v2--login {
-    height: calc(100svh - 70px);
+    height: 100svh;
   }
 
   .auth-page-v2--login .signin-layout {
@@ -7788,9 +7820,8 @@
   }
 }
 
-@media (max-height: 760px) {
-  .auth-page-v2--login .signin-copy .auth-visual,
-  .auth-page-v2--login .signin-copy .signin-points,
+@media (max-height: 820px) {
+  .auth-page-v2--login .signin-copy,
   .auth-page-v2--login .auth-brand-row,
   .auth-page-v2--login .mini-label,
   .auth-page-v2--login .auth-form-intro,
@@ -7798,56 +7829,54 @@
     display: none;
   }
 
-  .auth-page-v2--login .signin-copy h1 {
-    margin-block: 14px;
-    font-size: clamp(2.7rem, 5vw, 4.2rem);
-  }
-
   .auth-page-v2--login .signin-layout {
-    padding-block: 12px;
+    grid-template-columns: 1fr;
+    place-items: center;
+    padding-block: 18px;
   }
 
   .auth-page-v2--login .signin-card--login {
-    padding: 18px 24px;
+    width: min(100%, 720px);
+    padding: 28px 34px;
   }
 
   .auth-page-v2--login .auth-form h2 {
-    margin: 0 0 12px;
-    font-size: 1.55rem;
+    margin: 0 0 16px;
+    font-size: 2rem;
   }
 
   .auth-page-v2--login .login-method-tabs {
-    margin-bottom: 10px;
+    margin-bottom: 16px;
   }
 
   .auth-page-v2--login .login-method-tabs button {
-    min-height: 40px;
+    min-height: 50px;
   }
 
   .auth-page-v2--login .auth-form > label {
-    gap: 5px;
-    margin-bottom: 8px;
+    gap: 7px;
+    margin-bottom: 12px;
   }
 
   .auth-page-v2--login .auth-form input {
-    height: 42px;
+    height: 52px;
   }
 
   .auth-page-v2--login .signin-options {
-    margin-block: 2px;
+    margin-block: 7px;
   }
 
   .auth-page-v2--login .auth-error {
-    min-height: 12px;
-    margin: 3px 0;
+    min-height: 16px;
+    margin: 5px 0;
   }
 
   .auth-page-v2--login .auth-submit-button {
-    min-height: 46px;
+    min-height: 54px;
   }
 
   .auth-page-v2--login .signin-note {
-    margin-top: 8px;
+    margin-top: 12px;
   }
 }
 
@@ -7897,7 +7926,7 @@
 
 .auth-page-v2--signup,
 .auth-page-v2--signup .signin-layout {
-  min-height: calc(100svh - 108px);
+  min-height: 100svh;
 }
 
 .auth-page-v2--signup {

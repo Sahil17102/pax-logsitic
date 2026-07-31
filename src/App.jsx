@@ -209,7 +209,7 @@ export default function App() {
   return (
     <div className={isSignIn ? "app-signin-route" : ""} data-api-base={API_BASE_URL}>
       <a className="skip-link" href="#main">Skip to content</a>
-      {!isDashboard && <Header pathname={location.pathname} />}
+      {!isDashboard && !isSignIn && <Header pathname={location.pathname} />}
       <SiteRoutes location={location} />
       {!isDashboard && !isSignIn && <Footer />}
     </div>
