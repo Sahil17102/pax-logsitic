@@ -3607,3 +3607,339 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Portal typography and colour lock — readable Express-style type with one blue nav palette */
+.portal-shell {
+  --portal-blue: #3157c8;
+  --portal-blue-dark: #2447a8;
+  --portal-blue-soft: #eaf0ff;
+  --portal-blue-pale: #f5f8ff;
+  font-family: "DM Sans", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.portal-shell h1,
+.portal-shell h2,
+.portal-shell h3,
+.portal-shell .kpi-card > strong,
+.portal-shell .finance-hero > strong,
+.portal-shell .audit-score strong {
+  font-family: "Manrope", sans-serif;
+}
+
+.portal-sidebar {
+  border-right-color: #dce5f2;
+  background:
+    linear-gradient(180deg, rgba(234, 240, 255, .94), rgba(255, 255, 255, 0) 22%),
+    #fff;
+}
+
+.portal-sidebar nav button {
+  color: #314766;
+}
+
+.portal-sidebar nav button span {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.portal-sidebar nav button > svg {
+  background: var(--portal-blue-pale);
+  color: #5a72a8;
+}
+
+.portal-sidebar nav button:hover,
+.portal-sidebar nav button.is-open:not(.is-active) {
+  background: var(--portal-blue-pale);
+  color: var(--portal-blue-dark);
+}
+
+.portal-sidebar nav button:hover > svg,
+.portal-sidebar nav button.is-open:not(.is-active) > svg {
+  background: #dfe8ff;
+  color: var(--portal-blue);
+}
+
+.portal-sidebar nav button.is-active {
+  border: 1px solid #cbd9fb;
+  background: var(--portal-blue-soft);
+  color: var(--portal-blue-dark);
+  box-shadow: 0 9px 22px rgba(49, 87, 200, .14);
+}
+
+.portal-sidebar nav button.is-active > svg {
+  background: var(--portal-blue);
+  color: #fff;
+}
+
+.portal-sidebar nav button em {
+  background: #dce7ff;
+  color: var(--portal-blue-dark);
+  font-size: 10px;
+}
+
+.portal-logout {
+  background: var(--portal-blue-pale);
+  color: #526885;
+}
+
+.portal-logout span {
+  font-size: 12px;
+}
+
+.portal-submenu > p {
+  color: #71829a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.portal-submenu > button {
+  color: #53657f;
+}
+
+.portal-submenu > button:hover,
+.portal-submenu > button.is-active {
+  background: var(--portal-blue-soft);
+  color: var(--portal-blue-dark);
+}
+
+.portal-submenu b {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-submenu i {
+  font-size: 13px;
+}
+
+.portal-search input {
+  font-size: 13px;
+}
+
+.portal-search kbd {
+  font-size: 10px;
+}
+
+.account-button > span,
+.profile-avatar {
+  background: #dce7ff;
+  color: var(--portal-blue-dark);
+  font-size: 12px;
+}
+
+.account-button strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.account-button small {
+  font-size: 11px;
+}
+
+.account-button b {
+  color: #71829a;
+  font-size: 13px;
+}
+
+.portal-account-dropdown {
+  width: 292px;
+}
+
+.account-dropdown-head {
+  background: var(--portal-blue-pale);
+}
+
+.account-dropdown-head > span {
+  background: #dce7ff;
+  color: var(--portal-blue-dark);
+  font-size: 12px;
+}
+
+.account-dropdown-head strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.account-dropdown-head small {
+  font-size: 12px;
+}
+
+.portal-account-dropdown > button {
+  min-height: 48px;
+  color: #4c607d;
+}
+
+.portal-account-dropdown > button:hover {
+  background: var(--portal-blue-soft);
+  color: var(--portal-blue-dark);
+}
+
+.portal-account-dropdown > button span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-account-dropdown > button b {
+  font-size: 13px;
+}
+
+.portal-account-dropdown > button.account-logout-action {
+  color: #4c607d;
+}
+
+.portal-account-dropdown > button.account-logout-action:hover {
+  color: var(--portal-blue-dark);
+}
+
+.portal-welcome p,
+.section-title-row p {
+  font-size: 11px;
+}
+
+.portal-welcome h1,
+.section-title-row h1 {
+  font-size: clamp(2rem, 3vw, 2.7rem);
+  font-weight: 700;
+}
+
+.portal-welcome > div > span,
+.section-title-row > div > span {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.portal-primary,
+.portal-secondary {
+  font-size: 13px;
+}
+
+.portal-primary {
+  background: var(--portal-blue);
+  box-shadow: 0 10px 24px rgba(49, 87, 200, .18);
+}
+
+.portal-primary:hover {
+  background: var(--portal-blue-dark);
+}
+
+.portal-content small {
+  font-size: 11px;
+}
+
+.portal-content p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.portal-content label,
+.portal-content input,
+.portal-content select,
+.portal-content textarea {
+  font-size: 13px;
+}
+
+.portal-content button,
+.portal-content a {
+  font-size: 12px;
+}
+
+.kpi-card > strong {
+  font-size: 2rem;
+}
+
+.kpi-card > small,
+.portal-card-head small,
+.track-search-card > small,
+.tracking-result-head small,
+.finance-hero small,
+.settlement-card > small,
+.support-form > small {
+  font-size: 11px;
+}
+
+.kpi-card p {
+  font-size: 12px;
+}
+
+.portal-card-head h2,
+.tracking-result-head h2,
+.settlement-card h2,
+.channel-card h2,
+.support-contact-card h2 {
+  font-size: 18px;
+}
+
+.portal-card-head button,
+.table-toolbar button,
+.shipment-table,
+.invoice-row,
+.tracking-route-names,
+.tracking-timeline,
+.support-form,
+.profile-form {
+  font-size: 13px;
+}
+
+.status-badge,
+.trend-pill,
+.section-count-pill,
+.channel-status,
+.invoice-row em {
+  font-size: 11px;
+}
+
+.dashboard-action-grid strong,
+.utility-grid > button > strong,
+.feature-function-grid strong,
+.feature-activity-row strong,
+.audit-row strong {
+  font-size: 14px;
+}
+
+.dashboard-action-grid small,
+.utility-grid > button > small,
+.feature-function-grid small,
+.feature-activity-row small,
+.audit-row small,
+.channel-card p,
+.feature-help-card p {
+  font-size: 12px;
+}
+
+.feature-help-card > small,
+.audit-score-card > small,
+.insight-summary > small {
+  font-size: 11px;
+}
+
+.feature-help-card h2,
+.insight-summary h2,
+.exception-card h2 {
+  font-size: 18px;
+}
+
+.feature-function-grid > button > span,
+.feature-activity-row > span,
+.utility-grid > button > b,
+.feature-help-card button,
+.feature-activity-row button,
+.audit-row button,
+.channel-card > button {
+  font-size: 12px;
+}
+
+.portal-footer {
+  font-size: 12px;
+}
+
+@media (max-width: 700px) {
+  .portal-sidebar nav button span {
+    font-size: 11px;
+  }
+
+  .portal-account-dropdown {
+    width: auto;
+  }
+}
