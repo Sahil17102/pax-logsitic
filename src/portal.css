@@ -6722,3 +6722,137 @@
     animation: none;
   }
 }
+
+/* Fit every sidebar destination without an internal scrollbar */
+.portal-sidebar {
+  overflow: hidden;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.portal-logo {
+  height: 42px;
+  margin-bottom: 3px;
+}
+
+.portal-sidebar nav {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-rows: repeat(11, minmax(0, 1fr));
+  gap: 2px;
+  overflow: visible;
+  padding: 1px 0;
+}
+
+.portal-sidebar nav button {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  gap: 2px;
+  border-radius: 12px;
+  padding: 2px 3px;
+}
+
+.portal-sidebar nav button > svg {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 9px;
+  padding: 6px;
+}
+
+.portal-sidebar nav button span {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.portal-sidebar nav button em {
+  top: 2px;
+  right: 4px;
+}
+
+.portal-sidebar nav button.is-active::before {
+  top: 10px;
+  bottom: 10px;
+}
+
+.portal-logout {
+  min-height: 35px;
+  margin-top: 3px;
+}
+
+@media (max-height: 760px) {
+  .portal-sidebar {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .portal-logo {
+    height: 38px;
+    margin-bottom: 1px;
+  }
+
+  .portal-sidebar nav {
+    gap: 1px;
+  }
+
+  .portal-sidebar nav button {
+    gap: 1px;
+    border-radius: 10px;
+    padding-block: 1px;
+  }
+
+  .portal-sidebar nav button > svg {
+    width: 27px;
+    height: 27px;
+    flex-basis: 27px;
+    border-radius: 8px;
+    padding: 5px;
+  }
+
+  .portal-sidebar nav button span {
+    font-size: 10px;
+  }
+
+  .portal-sidebar nav button em {
+    min-width: 16px;
+    height: 16px;
+    border-width: 1px;
+    font-size: 8px;
+  }
+
+  .portal-logout {
+    min-height: 31px;
+    margin-top: 1px;
+  }
+
+  .portal-logout span {
+    font-size: 10px;
+  }
+}
+
+@media (max-height: 620px) {
+  .portal-logo {
+    height: 32px;
+  }
+
+  .portal-sidebar nav button > svg {
+    width: 23px;
+    height: 23px;
+    flex-basis: 23px;
+    padding: 4px;
+  }
+
+  .portal-sidebar nav button span {
+    font-size: 9px;
+  }
+
+  .portal-sidebar nav button em {
+    display: none;
+  }
+
+  .portal-logout {
+    min-height: 27px;
+  }
+}
