@@ -2430,6 +2430,68 @@
   text-align: center;
 }
 
+.pin-lookup-status {
+  display: flex;
+  min-height: 36px;
+  gap: 8px;
+  align-items: center;
+  margin: -4px 0 16px;
+  border-radius: 9px;
+  background: #f3f6fb;
+  padding: 9px 11px;
+  color: #77869a;
+  font-size: .52rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pin-lookup-status b,
+.pin-lookup-status i {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  border-radius: 50%;
+  font-size: .48rem;
+  font-style: normal;
+}
+
+.pin-lookup-loading {
+  background: #edf2ff;
+  color: #536b9a;
+}
+
+.pin-lookup-loading i {
+  border: 2px solid #b7c5e4;
+  border-top-color: #3454d1;
+  animation: pin-lookup-spin .7s linear infinite;
+}
+
+.pin-lookup-success {
+  background: #e8f6ef;
+  color: #21765b;
+}
+
+.pin-lookup-success b {
+  background: #37a579;
+  color: #fff;
+}
+
+.pin-lookup-error {
+  background: #fff0f1;
+  color: #a9434b;
+}
+
+.pin-lookup-error b {
+  background: #e05a64;
+  color: #fff;
+}
+
+@keyframes pin-lookup-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Exact full operations navigation from the supplied panel */
 .portal-sidebar {
   width: 136px;
