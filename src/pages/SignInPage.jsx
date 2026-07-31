@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
+const PINCODE_LOOKUP_URL = "https://api.postalpincode.in/pincode";
 
 function goTo(path) {
   window.history.pushState({}, "", path);
@@ -36,8 +37,8 @@ const defaultSignup = {
   gstin: "",
   monthlyShipments: "1–50",
   address: "",
-  city: "Hyderabad",
-  state: "Telangana",
+  city: "",
+  state: "",
   pincode: "",
 };
 
@@ -52,11 +53,56 @@ export default function SignInPage() {
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [signupError, setSignupError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [pinLookup, setPinLookup] = useState({ status: "idle", message: "" });
 
   const loginIdIsValid = useMemo(() => {
     const value = loginId.trim();
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || /^[6-9]\d{9}$/.test(value);
   }, [loginId]);
+
+  useEffect(() => {
+    const pincode = signup.pincode;
+    if (!/^[1-9]\d{5}$/.test(pincode)) {
+      setPinLookup({ status: "idle", message: "" });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const lookupTimer = window.setTimeout(async () => {
+      setPinLookup({ status: "loading", message: "Finding city and state…" });
+      try {
+        const response = await fetch(`${PINCODE_LOOKUP_URL}/${pincode}`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error("PIN lookup request failed");
+        const payload = await response.json();
+        const result = payload?.[0];
+        const office = result?.PostOffice?.[0];
+        if (result?.Status !== "Success" || !office?.District || !office?.State) {
+          setPinLookup({ status: "error", message: "PIN code not found. Enter city and state manually." });
+          return;
+        }
+
+        setSignup((current) => current.pincode === pincode
+          ? { ...current, city: office.District, state: office.State }
+          : current);
+        setPinLookup({
+          status: "success",
+          message: `${office.District}, ${office.State} found automatically.`,
+        });
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          setPinLookup({ status: "error", message: "Could not look up this PIN right now. Enter city and state manually." });
+        }
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(lookupTimer);
+      controller.abort();
+    };
+  }, [signup.pincode]);
 
   const finishLogin = (event) => {
     event.preventDefault();
@@ -94,6 +140,16 @@ export default function SignInPage() {
 
   const updateSignup = (event) => {
     const { name, value } = event.target;
+    if (name === "pincode") {
+      const pincode = value.replace(/\D/g, "").slice(0, 6);
+      setSignup((current) => ({
+        ...current,
+        pincode,
+        city: current.pincode === pincode ? current.city : "",
+        state: current.pincode === pincode ? current.state : "",
+      }));
+      return;
+    }
     setSignup((current) => ({ ...current, [name]: value }));
   };
 
@@ -274,9 +330,15 @@ export default function SignInPage() {
                 <div className="auth-section-title"><span>02</span><b>Primary pickup address</b></div>
                 <div className="signup-grid">
                   <label className="span-two">Address *<textarea name="address" value={signup.address} onChange={updateSignup} rows="2" placeholder="House/building, street, area" /></label>
-                  <label>City *<input name="city" value={signup.city} onChange={updateSignup} autoComplete="address-level2" /></label>
-                  <label>State *<input name="state" value={signup.state} onChange={updateSignup} autoComplete="address-level1" /></label>
-                  <label>PIN code *<input name="pincode" value={signup.pincode} onChange={updateSignup} inputMode="numeric" autoComplete="postal-code" maxLength="6" placeholder="500029" /></label>
+                  <label>PIN code *<input name="pincode" value={signup.pincode} onChange={updateSignup} inputMode="numeric" autoComplete="postal-code" maxLength="6" placeholder="Enter 6-digit PIN" /></label>
+                  <label>City *<input name="city" value={signup.city} onChange={updateSignup} autoComplete="address-level2" placeholder="Auto-filled from PIN" /></label>
+                  <label>State *<input name="state" value={signup.state} onChange={updateSignup} autoComplete="address-level1" placeholder="Auto-filled from PIN" /></label>
+                  <p className={`pin-lookup-status pin-lookup-${pinLookup.status} span-two`} aria-live="polite">
+                    {pinLookup.status === "loading" && <i aria-hidden="true"></i>}
+                    {pinLookup.status === "success" && <b aria-hidden="true">✓</b>}
+                    {pinLookup.status === "error" && <b aria-hidden="true">!</b>}
+                    {pinLookup.message || "City and state will fill automatically after a valid PIN code."}
+                  </p>
                 </div>
                 <label className="auth-consent"><input checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" /> <span>I agree to the account terms and consent to shipment-related communication.</span></label>
                 <p className="form-error auth-error" role="alert">{signupError}</p>
