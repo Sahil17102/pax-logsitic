@@ -69,7 +69,7 @@ Customer bootstrap and shipment creation require a customer bearer token. Bootst
 
 The admin dashboard is always sourced from the backend: if only a Sahil Mittal account exists, only that customer is returned and displayed. Legacy browser-only accounts are promoted to the backend once when the customer signs in with the matching existing password; the local password copy is removed after migration.
 
-The frontend normalizes common camelCase and snake_case response fields, so a future logistics provider adapter can map into the same UI contract without changing page components. Empty arrays are valid API responses and are shown as empty states, never replaced with fake records. Admin credentials and database secrets must stay on the backend; never expose them through `VITE_*` variables.
+The frontend normalizes common camelCase and snake_case response fields, so a future logistics provider adapter can map into the same UI contract without changing page components. Empty arrays are valid API responses and are shown as empty states, never replaced with fake records. Admin credentials and database secrets must stay on the backend; never expose them through `VITE_*` variables. Production accepts `ADMIN_PASSWORD` first and can use `ADMIN_PASSWORD_SHA256` as a non-plaintext deployment fallback when the password secret has not been provisioned yet.
 
 For local preview only, `admin` / `Pax@1234` is available when `VITE_ENABLE_PREVIEW_MODE=true`. It is disabled in production builds by default.
 
@@ -89,4 +89,4 @@ Admin controls currently propagate:
 - courier enable/disable to customer rate options;
 - plans, pricing, providers, billing, reconciliation, support and page-content configuration through the shared control document.
 
-Run the API locally with `npm start` (or `npm run start:api`). Render Blueprint creates separate client/admin static services, the Node API service and PostgreSQL database. Set a strong `ADMIN_PASSWORD` in Render before using production authentication.
+Run the API locally with `npm start` (or `npm run start:api`). Render Blueprint creates separate client/admin static services, the Node API service and PostgreSQL database. Set a strong `ADMIN_PASSWORD` in Render to override the hashed bootstrap credential and rotate production access.

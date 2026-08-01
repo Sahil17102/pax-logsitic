@@ -50,6 +50,8 @@ services:
         value: admin
       - key: ADMIN_PASSWORD
         sync: false
+      - key: ADMIN_PASSWORD_SHA256
+        value: d3471dde926ef8d5d96a61f5fe9e43627b5fb1b433ddd39f4b03739f3a7485cd
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
