@@ -31,7 +31,7 @@ services:
     name: pax-logistic
     runtime: node
     buildCommand: npm ci
-    startCommand: npm run start:api
+    startCommand: npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION

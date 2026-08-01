@@ -70,4 +70,4 @@ Admin controls currently propagate:
 - courier enable/disable to customer rate options;
 - plans, pricing, providers, billing, reconciliation, support and page-content configuration through the shared control document.
 
-Run the API locally with `npm run start:api`. Render Blueprint creates separate client/admin static services, the Node API service and PostgreSQL database. Set a strong `ADMIN_PASSWORD` in Render before using production authentication.
+Run the API locally with `npm start` (or `npm run start:api`). Render Blueprint creates separate client/admin static services, the Node API service and PostgreSQL database. Set a strong `ADMIN_PASSWORD` in Render before using production authentication.

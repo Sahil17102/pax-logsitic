@@ -9,7 +9,7 @@
     "prebuild": "node scripts/prepare-public.mjs",
     "build": "vite build && node scripts/prepare-spa-routes.mjs",
     "preview": "vite preview",
-    "start": "vite preview",
+    "start": "node server/index.js",
     "start:api": "node server/index.js"
   },
   "dependencies": {
