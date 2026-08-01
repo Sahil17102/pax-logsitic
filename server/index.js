@@ -339,6 +339,95 @@ function manifestPiece(body, piece, user, orderId, paymentMode) {
   };
 }
 
+const shipmentEditKeys = new Set([
+  "waybill", "name", "customer", "phone", "paymentMode", "pt", "codAmount", "cod", "address", "add",
+  "productsDescription", "products_desc", "weightGrams", "gm", "heightCm", "shipment_height", "widthCm",
+  "shipment_width", "lengthCm", "shipment_length",
+]);
+
+function shipmentEditValue(body, keys) {
+  const supplied = keys.filter((key) => body[key] !== undefined);
+  if (supplied.length > 1) {
+    throw new DelhiveryError(`Use only one field name for ${keys[0]}.`, { code: "DUPLICATE_EDIT_FIELD", status: 400 });
+  }
+  return supplied.length ? body[supplied[0]] : undefined;
+}
+
+function normalizeShipmentEdit(body, shipment, waybill) {
+  const unsupported = Object.keys(body).filter((key) => !shipmentEditKeys.has(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported shipment edit field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_EDIT_FIELD", status: 400 });
+  }
+  return {
+    waybill,
+    currentPaymentMode: shipment.payment,
+    name: shipmentEditValue(body, ["name", "customer"]),
+    phone: body.phone,
+    paymentMode: shipmentEditValue(body, ["paymentMode", "pt"]),
+    codAmount: shipmentEditValue(body, ["codAmount", "cod"]),
+    address: shipmentEditValue(body, ["address", "add"]),
+    productsDescription: shipmentEditValue(body, ["productsDescription", "products_desc"]),
+    weightGrams: shipmentEditValue(body, ["weightGrams", "gm"]),
+    heightCm: shipmentEditValue(body, ["heightCm", "shipment_height"]),
+    widthCm: shipmentEditValue(body, ["widthCm", "shipment_width"]),
+    lengthCm: shipmentEditValue(body, ["lengthCm", "shipment_length"]),
+  };
+}
+
+function ensureShipmentEditAllowed(shipment) {
+  if (shipment.productType === "Heavy") {
+    throw new DelhiveryError("The supplied B2C edit contract does not cover Heavy shipments.", { code: "UNSUPPORTED_HEAVY_EDIT", status: 400 });
+  }
+  const status = String(shipment.status || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  const allowed = shipment.payment === "Pickup"
+    ? new Set(["scheduled", "pickup scheduled"])
+    : new Set(["manifested", "in transit", "pending"]);
+  if (!allowed.has(status)) {
+    throw new DelhiveryError(`Shipment cannot be edited while its status is ${shipment.status || "unknown"}.`, {
+      code: "SHIPMENT_EDIT_NOT_ALLOWED",
+      status: 409,
+    });
+  }
+}
+
+function editTargetWaybill(shipment, requestedWaybill) {
+  const available = Array.isArray(shipment.waybills) && shipment.waybills.length
+    ? shipment.waybills.map(String)
+    : [String(shipment.waybill || "")].filter(Boolean);
+  const requested = String(requestedWaybill || "").trim();
+  if (requested && !available.includes(requested)) {
+    throw new DelhiveryError("The requested waybill does not belong to this shipment.", { code: "SHIPMENT_WAYBILL_MISMATCH", status: 400 });
+  }
+  if (!requested && available.length > 1) {
+    throw new DelhiveryError("Select the MPS box waybill that needs to be edited.", { code: "MPS_EDIT_WAYBILL_REQUIRED", status: 400 });
+  }
+  return requested || available[0];
+}
+
+function applyShipmentEdit(shipment, edit, providerResult) {
+  if (edit.name !== undefined) shipment.customer = String(edit.name).trim();
+  if (edit.phone !== undefined) {
+    const phones = Array.isArray(edit.phone) ? edit.phone : [edit.phone];
+    shipment.phone = String(phones[0] || "").replace(/\D/g, "");
+  }
+  if (edit.address !== undefined) shipment.address = String(edit.address).trim();
+  if (edit.productsDescription !== undefined) shipment.productsDescription = String(edit.productsDescription).trim();
+  if (edit.weightGrams !== undefined) {
+    shipment.weightGrams = Number(edit.weightGrams);
+    shipment.weight = Number(edit.weightGrams) / 1000;
+  }
+  if (edit.heightCm !== undefined) shipment.heightCm = Number(edit.heightCm);
+  if (edit.widthCm !== undefined) shipment.widthCm = Number(edit.widthCm);
+  if (edit.lengthCm !== undefined) shipment.lengthCm = Number(edit.lengthCm);
+  if (edit.paymentMode !== undefined) {
+    shipment.payment = /^cod$/i.test(String(edit.paymentMode).trim()) ? "COD" : "Prepaid";
+    if (shipment.payment === "Prepaid") delete shipment.codAmount;
+  }
+  if (edit.codAmount !== undefined) shipment.codAmount = Number(edit.codAmount);
+  shipment.lastEditedAt = new Date().toISOString();
+  shipment.lastEditedWaybill = providerResult.waybill;
+}
+
 function findUserByIdentifier(state, value) {
   const identifier = normalizeLoginIdentifier(value);
   return state.users.find((item) => item.email === identifier || item.phone === identifier);
@@ -501,6 +590,37 @@ app.get("/api/admin/delhivery/waybills", requireRole("admin"), async (request, r
   const inventory = await readWaybillInventory({ status, limit, offset });
   response.json({ data: { ...inventory, pagination: { limit, offset, returned: inventory.items.length } } });
 });
+
+async function handleShipmentEdit(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  ensureShipmentEditAllowed(shipment);
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const waybill = editTargetWaybill(shipment, body.waybill);
+  const edit = normalizeShipmentEdit(body, shipment, waybill);
+  const providerResult = await delhivery.editShipment(edit);
+  applyShipmentEdit(shipment, edit, providerResult);
+  state.activities.unshift({
+    title: `${shipment.id} edited`,
+    detail: `Delhivery waybill ${providerResult.waybill}`,
+    tone: "blue",
+    createdAt: shipment.lastEditedAt,
+  });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "shipment.edited");
+  response.json({ data: shipment, provider: providerResult });
+}
+
+app.patch("/api/admin/shipments/:id", requireRole("admin"), handleShipmentEdit);
+app.patch("/api/client/shipments/:id", requireRole("customer"), handleShipmentEdit);
 
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();

@@ -53,6 +53,7 @@ Production mode expects these authenticated backend endpoints at `VITE_API_URL`:
 POST  /api/admin/auth/login
 GET   /api/admin/dashboard
 PATCH /api/admin/shipments/:id/status
+PATCH /api/admin/shipments/:id
 PUT   /api/admin/configuration
 PATCH /api/admin/customers/:id/access
 GET   /api/client/bootstrap
@@ -61,6 +62,7 @@ POST  /api/client/auth/login
 POST  /api/client/auth/otp/request
 POST  /api/client/auth/otp/verify
 POST  /api/client/shipments
+PATCH /api/client/shipments/:id
 GET   /api/client/serviceability/:pincode
 GET   /api/admin/serviceability/:pincode
 GET   /api/client/heavy-serviceability/:pincode
@@ -115,6 +117,8 @@ DELHIVERY_SINGLE_WAYBILL_PATH=/waybill/api/fetch/json/
 DELHIVERY_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS=675
 DELHIVERY_MANIFEST_PATH=/api/cmu/create.json
 DELHIVERY_MANIFEST_RATE_LIMIT_REQUESTS=18000
+DELHIVERY_EDIT_PATH=/api/p/edit
+DELHIVERY_EDIT_RATE_LIMIT_REQUESTS=11000
 DELHIVERY_PICKUP_LOCATION=<exact registered warehouse name>
 DELHIVERY_CLIENT_NAME=<exact registered Delhivery client name>
 ```
@@ -139,6 +143,10 @@ Forward (`Prepaid`/`COD`), reverse (`Pickup`) and replacement (`REPL`) flows are
 
 Values at or above INR 50,000 require `ewbn`. Provider failures, incomplete package lists and malformed responses do not create a local shipment. A manifested shipment receives `status: "Manifested"`, `shipmentType`, `waybill`, `waybills`, `packageCount`, `manifestedAt`, and for MPS, `masterWaybill` plus `mpsAmount`; this does not imply that a physical pickup request has been scheduled.
 
+Shipment editing is available through authenticated customer and admin `PATCH /api/*/shipments/:id` routes. Pax derives the provider waybill from the stored shipment, verifies customer ownership, and posts only Delhivery's documented JSON keys to `/api/p/edit`: `name`, `phone`, `pt`, `cod`, `add`, `products_desc`, `gm`, `shipment_height`, `shipment_width` and `shipment_length`. For MPS, the caller must select a waybill already belonging to that shipment. Unsupported keys and unrelated waybills are rejected before any provider request.
+
+Forward COD/Prepaid and REPL shipments can be edited only in Manifested, In Transit or Pending state; reverse Pickup shipments can be edited only in Scheduled/Pickup scheduled state. Dispatched and terminal shipments are blocked. Payment conversion is restricted to COD to Prepaid or Prepaid to COD, and the latter requires `cod`/`codAmount`. The backend reserves an independent 11,000-request window below Delhivery's 12,200-request limit. Local shipment data and audit activity are changed only after Delhivery accepts the update; provider rejection leaves local data untouched. The supplied B2C edit contract does not cover Heavy shipments, so Pax rejects those rather than guessing a provider contract.
+
 The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
 
 ```bash
@@ -146,9 +154,9 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
 
-Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, shipment updates/cancellation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, cancellation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 
 ## Database seeds
 

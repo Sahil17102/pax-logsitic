@@ -14,6 +14,7 @@ const DEFAULT_WAYBILL_RATE_LIMIT_REQUESTS = 5;
 const DEFAULT_WAYBILL_WINDOW_COUNT = 50000;
 const DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS = 675;
 const DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS = 18000;
+const DEFAULT_EDIT_RATE_LIMIT_REQUESTS = 11000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
   ["prepaid", "Prepaid"],
@@ -231,6 +232,113 @@ export function normalizeDelhiveryShipmentCreation(payload, expectedCount) {
     uploadWaybill: String(firstDefined(payload, ["upload_wbn", "uploadWaybill"]) || "").trim(),
     packages: normalized,
   };
+}
+
+function editPaymentMode(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[ _]+/g, "-");
+  if (["prepaid", "pre-paid"].includes(normalized)) return "Prepaid";
+  if (normalized === "cod") return "COD";
+  return "";
+}
+
+function editNumber(value, field, { allowZero = false } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || (allowZero ? number < 0 : number <= 0)) {
+    throw new DelhiveryError(`${field} must be ${allowZero ? "a non-negative" : "a positive"} number.`, {
+      code: "INVALID_SHIPMENT_EDIT",
+      status: 400,
+    });
+  }
+  return number;
+}
+
+export function buildDelhiveryShipmentEditPayload(input = {}) {
+  const waybill = String(input.waybill || "").trim();
+  if (!/^\d{8,20}$/.test(waybill)) {
+    throw new DelhiveryError("A valid waybill is required to edit a shipment.", { code: "INVALID_WAYBILL", status: 400 });
+  }
+
+  const payload = { waybill };
+  let changedFields = 0;
+  const hasValue = (key) => input[key] !== undefined && input[key] !== null && input[key] !== "";
+  const setText = (inputKey, providerKey, label) => {
+    if (!hasValue(inputKey)) return;
+    payload[providerKey] = requiredText(input[inputKey], label);
+    changedFields += 1;
+  };
+  const setNumber = (inputKey, providerKey, label) => {
+    if (!hasValue(inputKey)) return;
+    payload[providerKey] = editNumber(input[inputKey], label);
+    changedFields += 1;
+  };
+
+  setText("name", "name", "Consignee name");
+  setText("address", "add", "Consignee address");
+  setText("productsDescription", "products_desc", "Product description");
+  setNumber("weightGrams", "gm", "Shipment weight");
+  setNumber("heightCm", "shipment_height", "Shipment height");
+  setNumber("widthCm", "shipment_width", "Shipment width");
+  setNumber("lengthCm", "shipment_length", "Shipment length");
+
+  if (hasValue("phone")) {
+    const phones = [...new Set((Array.isArray(input.phone) ? input.phone : [input.phone])
+      .map((phone) => String(phone || "").replace(/\D/g, "")))];
+    if (!phones.length || phones.some((phone) => !/^\d{10}$/.test(phone))) {
+      throw new DelhiveryError("Consignee phone must contain valid 10-digit numbers.", { code: "INVALID_SHIPMENT_EDIT", status: 400 });
+    }
+    payload.phone = phones;
+    changedFields += 1;
+  }
+
+  const currentPaymentMode = editPaymentMode(input.currentPaymentMode);
+  const targetPaymentMode = hasValue("paymentMode") ? editPaymentMode(input.paymentMode) : "";
+  if (hasValue("paymentMode")) {
+    if (!targetPaymentMode) {
+      throw new DelhiveryError("Payment mode can only be changed to COD or Prepaid.", { code: "INVALID_PAYMENT_MODE", status: 400 });
+    }
+    if (!currentPaymentMode || currentPaymentMode === targetPaymentMode) {
+      throw new DelhiveryError("Only COD to Prepaid or Prepaid to COD conversion is allowed.", {
+        code: "INVALID_PAYMENT_MODE_CONVERSION",
+        status: 400,
+      });
+    }
+    payload.pt = targetPaymentMode === "Prepaid" ? "Pre-paid" : "COD";
+    changedFields += 1;
+  }
+
+  if (hasValue("codAmount")) {
+    if ((targetPaymentMode || currentPaymentMode) !== "COD") {
+      throw new DelhiveryError("COD amount can only be updated for a COD shipment.", { code: "INVALID_COD_AMOUNT", status: 400 });
+    }
+    payload.cod = editNumber(input.codAmount, "COD amount", { allowZero: true });
+    changedFields += 1;
+  }
+  if (targetPaymentMode === "COD" && !hasValue("codAmount")) {
+    throw new DelhiveryError("COD amount is required when converting a Prepaid shipment to COD.", { code: "COD_AMOUNT_REQUIRED", status: 400 });
+  }
+  if (!changedFields) {
+    throw new DelhiveryError("Provide at least one supported shipment field to update.", { code: "NO_SHIPMENT_CHANGES", status: 400 });
+  }
+  return payload;
+}
+
+export function normalizeDelhiveryShipmentEdit(payload, waybill) {
+  const record = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+  const status = firstDefined(record, ["success", "status", "updated"]);
+  const remark = String(firstDefined(record, ["message", "remark", "remarks", "error", "detail"])
+    ?? firstDefined(payload, ["message", "remark", "remarks", "error", "detail"])
+    ?? "").trim();
+  const rejected = status === false
+    || status === 0
+    || /^(false|failure|failed|error|rejected)$/i.test(String(status ?? "").trim())
+    || /incorrect status|not allowed|cannot update|invalid waybill|no such waybill/i.test(remark);
+  if (rejected) {
+    throw new DelhiveryError(remark || "Delhivery rejected the shipment update.", {
+      code: "DELHIVERY_EDIT_REJECTED",
+      status: 422,
+    });
+  }
+  return { provider: "delhivery", updated: true, waybill, remark };
 }
 
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
@@ -514,6 +622,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredManifestRateLimit, 20000)
     : DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS;
   const manifestPath = validateProviderPath(process.env.DELHIVERY_MANIFEST_PATH || "/api/cmu/create.json", "DELHIVERY_MANIFEST_PATH");
+  const configuredEditRateLimit = Number(process.env.DELHIVERY_EDIT_RATE_LIMIT_REQUESTS);
+  const editRateLimitRequests = Number.isInteger(configuredEditRateLimit) && configuredEditRateLimit > 0
+    ? Math.min(configuredEditRateLimit, 12200)
+    : DEFAULT_EDIT_RATE_LIMIT_REQUESTS;
+  const editPath = validateProviderPath(process.env.DELHIVERY_EDIT_PATH || "/api/p/edit", "DELHIVERY_EDIT_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -700,6 +813,18 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryShipmentCreation(payload, manifest.shipments.length);
   }
 
+  async function editShipment(input) {
+    ensureConfigured();
+    const edit = buildDelhiveryShipmentEditPayload(input);
+    const endpoint = new URL(editPath, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "shipment-edit", editRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(edit),
+    });
+    return normalizeDelhiveryShipmentEdit(payload, edit.waybill);
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -779,5 +904,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     fetchWaybills,
     fetchSingleWaybill,
     createShipment,
+    editShipment,
   };
 }

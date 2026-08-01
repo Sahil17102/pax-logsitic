@@ -10,6 +10,7 @@ const SERVICEABILITY_FIXTURES = {
 export async function startDelhiveryStub(port, token = "postman-delhivery-token") {
   let manifestSequence = 0;
   const manifestedOrders = new Set();
+  const manifestedWaybills = new Set();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
@@ -26,6 +27,32 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
     if (request.headers.authorization !== `Token ${token}`) {
       response.statusCode = 401;
       response.end(JSON.stringify({ detail: "Invalid token" }));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/p/edit") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      let edit;
+      try {
+        if (!String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")) throw new Error("JSON required");
+        edit = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ status: false, message: "Invalid JSON edit payload" }));
+        return;
+      }
+      const editableKeys = ["name", "phone", "pt", "cod", "add", "products_desc", "gm", "shipment_height", "shipment_width", "shipment_length"];
+      const invalidPhone = edit.phone !== undefined
+        && (!Array.isArray(edit.phone) || !edit.phone.length || edit.phone.some((phone) => !/^\d{10}$/.test(String(phone))));
+      if (!/^\d{8,20}$/.test(String(edit.waybill || "")) || !manifestedWaybills.has(String(edit.waybill))) {
+        response.end(JSON.stringify({ status: false, message: "No such waybill found" }));
+        return;
+      }
+      if (!editableKeys.some((key) => edit[key] !== undefined) || invalidPhone || (edit.pt !== undefined && !["COD", "Pre-paid"].includes(edit.pt))) {
+        response.end(JSON.stringify({ status: false, message: "Invalid shipment edit payload" }));
+        return;
+      }
+      response.end(JSON.stringify({ status: true, message: "Shipment updated successfully", waybill: String(edit.waybill) }));
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/cmu/create.json") {
@@ -69,7 +96,9 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         }
         manifestedOrders.add(`${shipment.order}:${shipment.waybill || "dynamic"}`);
         manifestSequence += 1;
-        return { status: "Success", waybill: shipment.waybill || String(920000000000 + manifestSequence), refnum: shipment.order, remarks: "" };
+        const waybill = shipment.waybill || String(920000000000 + manifestSequence);
+        manifestedWaybills.add(String(waybill));
+        return { status: "Success", waybill, refnum: shipment.order, remarks: "" };
       });
       response.end(JSON.stringify({ packages, package_count: packages.length, upload_wbn: `UP-${manifestSequence}` }));
       return;

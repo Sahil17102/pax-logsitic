@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCreation, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
+import { buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
@@ -35,6 +35,37 @@ assert.equal(mpsManifestPayload.shipments[0].shipment_type, "MPS");
 assert.equal(mpsManifestPayload.shipments[0].master_id, "900000000002");
 assert.equal(mpsManifestPayload.shipments[1].mps_children, 2);
 assert.equal(mpsManifestPayload.shipments[1].mps_amount, 2400);
+
+const editInput = {
+  waybill: "920000000001",
+  currentPaymentMode: "COD",
+  paymentMode: "Prepaid",
+  name: "Edited Receiver",
+  phone: ["9234567890"],
+  address: "Edited delivery address",
+  productsDescription: "Edited products",
+  weightGrams: 1500,
+  heightCm: 40.2,
+  widthCm: 20,
+  lengthCm: 30,
+};
+const editPayload = buildDelhiveryShipmentEditPayload(editInput);
+assert.deepEqual(editPayload, {
+  waybill: "920000000001",
+  name: "Edited Receiver",
+  add: "Edited delivery address",
+  products_desc: "Edited products",
+  gm: 1500,
+  shipment_height: 40.2,
+  shipment_width: 20,
+  shipment_length: 30,
+  phone: ["9234567890"],
+  pt: "Pre-paid",
+});
+assert.throws(() => buildDelhiveryShipmentEditPayload({ waybill: "920000000001", currentPaymentMode: "COD", paymentMode: "COD" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_PAYMENT_MODE_CONVERSION");
+assert.throws(() => buildDelhiveryShipmentEditPayload({ waybill: "920000000001", currentPaymentMode: "Prepaid", paymentMode: "COD" }), (error) => error instanceof DelhiveryError && error.code === "COD_AMOUNT_REQUIRED");
+assert.throws(() => buildDelhiveryShipmentEditPayload({ waybill: "920000000001", currentPaymentMode: "Pickup", paymentMode: "Prepaid" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_PAYMENT_MODE_CONVERSION");
+assert.throws(() => normalizeDelhiveryShipmentEdit({ status: false, message: "Package in incorrect status" }, "920000000001"), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_EDIT_REJECTED");
 
 const serviceable = normalizeDelhiveryServiceability({
   delivery_codes: [{ postal_code: { pin: 194103, cod: "Y", pre_paid: "Y", pickup: "N", reverse_pickup: "Y", remarks: "", district: "Leh", state_code: "LA" } }],
@@ -129,6 +160,15 @@ try {
         });
       }
       assert.equal(options.headers.Authorization, "Token test-token");
+      if (endpoint.pathname === "/api/p/edit") {
+        assert.equal(options.method, "POST");
+        assert.equal(options.headers["Content-Type"], "application/json");
+        assert.deepEqual(JSON.parse(options.body), editPayload);
+        return new Response(JSON.stringify({ status: true, message: "Shipment updated successfully" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/api/cmu/create.json") {
         assert.equal(options.method, "POST");
         if (options.headers["Content-Type"] === "application/json") {
@@ -194,7 +234,10 @@ try {
   assert.equal(manifested.packages[0].waybill, "920000000001");
   const manifestedMps = await client.createShipment(mpsManifestInput);
   assert.equal(manifestedMps.packageCount, 2);
-  assert.equal(requestCount, 7, "each Delhivery contract uses its independent provider request path");
+  const edited = await client.editShipment(editInput);
+  assert.equal(edited.updated, true);
+  assert.equal(edited.waybill, "920000000001");
+  assert.equal(requestCount, 8, "each Delhivery contract uses its independent provider request path");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -206,4 +249,4 @@ try {
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));

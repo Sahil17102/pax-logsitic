@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, waybill inventory, SPS and exact MPS master/child manifestation. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, waybill inventory, SPS/MPS manifestation and shipment editing. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -99,7 +99,37 @@
         "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"COD\",\n  \"amount\": 100\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "  pm.collectionVariables.set('editableShipmentId', data.id);", "  pm.collectionVariables.set('editableWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Edit manifested COD shipment",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{editableWaybill}}\",\n  \"name\": \"Edited Receiver\",\n  \"phone\": [\"9234567890\"],\n  \"add\": \"Edited delivery address\",\n  \"products_desc\": \"Edited products\",\n  \"gm\": 1500,\n  \"shipment_height\": 40.2,\n  \"shipment_width\": 20,\n  \"shipment_length\": 30,\n  \"pt\": \"Pre-paid\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Editable fields are accepted only after Delhivery success', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.provider.waybill).to.eql(pm.collectionVariables.get('editableWaybill'));", "  pm.expect(body.data.customer).to.eql('Edited Receiver');", "  pm.expect(body.data.phone).to.eql('9234567890');", "  pm.expect(body.data.address).to.eql('Edited delivery address');", "  pm.expect(body.data.payment).to.eql('Prepaid');", "  pm.expect(body.data.weightGrams).to.eql(1500);", "  pm.expect(body.data.lastEditedAt).to.be.a('string');", "});"] } }]
+    },
+    {
+      "name": "Convert Prepaid shipment back to COD",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pt\": \"COD\",\n  \"cod\": 250\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Prepaid to COD requires and saves the COD amount', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('COD');", "  pm.expect(data.codAmount).to.eql(250);", "});"] } }]
+    },
+    {
+      "name": "Reject unchanged payment mode",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pt\": \"COD\",\n  \"cod\": 250\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('COD to COD conversion is blocked locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_PAYMENT_MODE_CONVERSION');", "});"] } }]
     },
     {
       "name": "Create reverse pickup shipment",
@@ -180,6 +210,26 @@
         "url": "{{baseUrl}}/api/admin/auth/login"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Move editable shipment to terminal status",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"Delivered\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/status"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Shipment reaches a terminal status', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.status).to.eql('Delivered');", "});"] } }]
+    },
+    {
+      "name": "Reject edit in terminal status",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Must Not Be Updated\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Delivered shipment edit is blocked before provider call', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_EDIT_NOT_ALLOWED');", "});"] } }]
     },
     {
       "name": "Fetch and store 3 waybills",
