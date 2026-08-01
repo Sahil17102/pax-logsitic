@@ -36,7 +36,7 @@ Backend web service:
 
 ```env
 NODE_ENV=production
-REQUIRE_DATABASE=true
+REQUIRE_DATABASE=false
 FRONTEND_URLS=https://paxlogistic.onrender.com,https://pax-logsiticadmin-utus.onrender.com
 DATABASE_URL=<set securely in the Render dashboard>
 ```
@@ -77,7 +77,7 @@ For local preview only, `admin` / `Pax@1234` is available when `VITE_ENABLE_PREV
 
 The repository includes the Express API in `server/index.js`. It stores platform state in PostgreSQL when `DATABASE_URL` is present and uses an empty in-memory store for local development. Legacy seeded sample customers and shipments are removed by the schema-v2 migration. Admin configuration changes are published to client panels through server-sent events, with a 30-second client polling fallback.
 
-Production sets `REQUIRE_DATABASE=true`; `/health` returns `503` instead of silently using temporary memory if PostgreSQL is not attached. A healthy Render production response must report `"storage":"postgres"`.
+The current Render service sets `REQUIRE_DATABASE=false` so the sample-free API can remain healthy while PostgreSQL is being attached. After `DATABASE_URL` is available in the backend service, set `REQUIRE_DATABASE=true`; a fully persistent production health response reports `"storage":"postgres"`.
 
 Run the API contract smoke test with `npm run test:api`. It verifies registration, customer-scoped bootstrap, shipment creation, public tracking and the admin dashboard.
 
