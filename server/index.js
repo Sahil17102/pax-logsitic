@@ -242,6 +242,59 @@ async function markWaybillsUsed(waybills, shipmentId) {
   });
 }
 
+async function reserveMpsWaybills(waybills, shipmentId) {
+  const uniqueWaybills = [...new Set(waybills.map(String))];
+  if (uniqueWaybills.length !== waybills.length || uniqueWaybills.some((waybill) => !/^\d{8,20}$/.test(waybill))) {
+    throw new DelhiveryError("Every MPS box requires a distinct valid prefetched waybill.", { code: "INVALID_MPS_WAYBILLS", status: 400 });
+  }
+  await initializeDatabase();
+  if (pool) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(`
+        UPDATE delhivery_waybills
+        SET status = 'reserved', reserved_at = NOW(), shipment_id = $2
+        WHERE waybill = ANY($1::text[]) AND status = 'stored'
+        RETURNING waybill
+      `, [uniqueWaybills, shipmentId]);
+      if (result.rowCount !== uniqueWaybills.length) {
+        throw new DelhiveryError("Every MPS waybill must exist in stored inventory and be unused.", { code: "MPS_WAYBILL_UNAVAILABLE", status: 409 });
+      }
+      await client.query("COMMIT");
+      return;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  if (uniqueWaybills.some((waybill) => memoryWaybills.get(waybill)?.status !== "stored")) {
+    throw new DelhiveryError("Every MPS waybill must exist in stored inventory and be unused.", { code: "MPS_WAYBILL_UNAVAILABLE", status: 409 });
+  }
+  const reservedAt = new Date().toISOString();
+  uniqueWaybills.forEach((waybill) => memoryWaybills.set(waybill, { ...memoryWaybills.get(waybill), status: "reserved", reservedAt, shipmentId }));
+}
+
+async function releaseMpsWaybills(waybills, shipmentId) {
+  if (!waybills.length) return;
+  await initializeDatabase();
+  if (pool) {
+    await pool.query(`
+      UPDATE delhivery_waybills
+      SET status = 'stored', reserved_at = NULL, shipment_id = NULL
+      WHERE waybill = ANY($1::text[]) AND status = 'reserved' AND shipment_id = $2
+    `, [waybills, shipmentId]);
+    return;
+  }
+  waybills.forEach((waybill) => {
+    const record = memoryWaybills.get(waybill);
+    if (record?.status !== "reserved" || record.shipmentId !== shipmentId) return;
+    memoryWaybills.set(waybill, { ...record, status: "stored", reservedAt: null, shipmentId: null });
+  });
+}
+
 function manifestPiece(body, piece, user, orderId, paymentMode) {
   const value = (key, fallback) => piece?.[key] ?? body?.[key] ?? fallback;
   const weightKg = Number(value("weight", 0));
@@ -601,7 +654,23 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
   const inputPieces = Array.isArray(body.pieces) && body.pieces.length ? body.pieces : [body];
   if (inputPieces.length > 100) return response.status(400).json({ code: "TOO_MANY_PIECES", message: "A multi-piece shipment cannot contain more than 100 boxes." });
   const providerPieces = inputPieces.map((piece) => manifestPiece(body, piece, user, id, payment));
-  const manifestation = await delhivery.createShipment({ pickupLocation, clientName, shipments: providerPieces });
+  const mpsWaybills = inputPieces.length > 1 ? providerPieces.map((piece) => String(piece.waybill || "")) : [];
+  if (mpsWaybills.length) await reserveMpsWaybills(mpsWaybills, id);
+  let manifestation;
+  try {
+    manifestation = await delhivery.createShipment({
+      pickupLocation,
+      clientName,
+      shipments: providerPieces,
+      masterWaybill: body.masterWaybill,
+      mpsAmount: payment === "COD" ? Number(body.codAmount ?? body.amount ?? 0) : 0,
+    });
+  } catch (error) {
+    if (mpsWaybills.length && Number(error?.status) < 500) {
+      await releaseMpsWaybills(mpsWaybills, id).catch((releaseError) => console.error("Unable to release rejected MPS waybills:", releaseError.message));
+    }
+    throw error;
+  }
   const waybills = manifestation.packages.map((item) => item.waybill);
   const latestState = await readState();
   const shipment = {
@@ -624,6 +693,11 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
     waybill: waybills[0],
     waybills,
     packageCount: manifestation.packageCount,
+    shipmentType: mpsWaybills.length ? "MPS" : "SPS",
+    ...(mpsWaybills.length ? {
+      masterWaybill: String(body.masterWaybill || mpsWaybills[0]),
+      mpsAmount: payment === "COD" ? Number(body.codAmount ?? body.amount ?? 0) : 0,
+    } : {}),
     providerStatus: "Manifested",
     manifestedAt: new Date().toISOString(),
     pickupLocation,

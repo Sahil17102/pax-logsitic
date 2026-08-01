@@ -20,6 +20,21 @@ assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments:
 const normalizedManifest = normalizeDelhiveryShipmentCreation({ packages: [{ status: "Success", waybill: "920000000001", refnum: "PAX-ORDER-1" }], upload_wbn: "UP-1" }, 1);
 assert.equal(normalizedManifest.manifested, true);
 assert.equal(normalizedManifest.packages[0].waybill, "920000000001");
+const mpsManifestInput = {
+  pickupLocation: "Pax Test Warehouse",
+  clientName: "Pax Test Client",
+  masterWaybill: "900000000002",
+  mpsAmount: 2400,
+  shipments: [
+    { ...manifestInput.shipments[0], order: "PAX-MPS-1", waybill: "900000000001", codAmount: 1200, totalAmount: 1200 },
+    { ...manifestInput.shipments[0], order: "PAX-MPS-1", waybill: "900000000002", codAmount: 1200, totalAmount: 1200 },
+  ],
+};
+const mpsManifestPayload = buildDelhiveryShipmentPayload(mpsManifestInput);
+assert.equal(mpsManifestPayload.shipments[0].shipment_type, "MPS");
+assert.equal(mpsManifestPayload.shipments[0].master_id, "900000000002");
+assert.equal(mpsManifestPayload.shipments[1].mps_children, 2);
+assert.equal(mpsManifestPayload.shipments[1].mps_amount, 2400);
 
 const serviceable = normalizeDelhiveryServiceability({
   delivery_codes: [{ postal_code: { pin: 194103, cod: "Y", pre_paid: "Y", pickup: "N", reverse_pickup: "Y", remarks: "", district: "Leh", state_code: "LA" } }],
@@ -116,6 +131,13 @@ try {
       assert.equal(options.headers.Authorization, "Token test-token");
       if (endpoint.pathname === "/api/cmu/create.json") {
         assert.equal(options.method, "POST");
+        if (options.headers["Content-Type"] === "application/json") {
+          assert.deepEqual(JSON.parse(options.body), mpsManifestPayload);
+          return new Response(JSON.stringify({ packages: [
+            { status: "Success", waybill: "900000000001", refnum: "PAX-MPS-1" },
+            { status: "Success", waybill: "900000000002", refnum: "PAX-MPS-1" },
+          ] }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
         assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded");
         const form = new URLSearchParams(options.body);
         assert.equal(form.get("format"), "json");
@@ -170,7 +192,9 @@ try {
   assert.deepEqual(fetchedSingleWaybill.waybills, ["910000000001"]);
   const manifested = await client.createShipment(manifestInput);
   assert.equal(manifested.packages[0].waybill, "920000000001");
-  assert.equal(requestCount, 6, "each Delhivery contract uses its independent provider request path");
+  const manifestedMps = await client.createShipment(mpsManifestInput);
+  assert.equal(manifestedMps.packageCount, 2);
+  assert.equal(requestCount, 7, "each Delhivery contract uses its independent provider request path");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -182,4 +206,4 @@ try {
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));

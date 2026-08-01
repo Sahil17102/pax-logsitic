@@ -81,7 +81,7 @@ function requiredText(value, field) {
   return normalized;
 }
 
-export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, shipments }) {
+export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, shipments, masterWaybill, mpsAmount }) {
   const warehouse = requiredText(pickupLocation, "Pickup location");
   const client = requiredText(clientName, "Delhivery client name");
   if (!Array.isArray(shipments) || !shipments.length) {
@@ -177,8 +177,32 @@ export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, ship
   if (multiPiece && new Set(providerShipments.map((shipment) => shipment.waybill)).size !== providerShipments.length) {
     throw new DelhiveryError("Every multi-piece shipment box requires a distinct waybill.", { code: "DUPLICATE_MPS_WAYBILL", status: 400 });
   }
+  let finalShipments = providerShipments;
+  if (multiPiece) {
+    const masterId = String(masterWaybill || providerShipments[0].waybill || "").trim();
+    if (!providerShipments.some((shipment) => shipment.waybill === masterId)) {
+      throw new DelhiveryError("The MPS master waybill must belong to one of the shipment boxes.", { code: "INVALID_MPS_MASTER", status: 400 });
+    }
+    if (new Set(providerShipments.map((shipment) => shipment.payment_mode)).size !== 1) {
+      throw new DelhiveryError("Every MPS box must use the same payment mode.", { code: "INVALID_MPS_PAYMENT", status: 400 });
+    }
+    const codShipment = providerShipments[0].payment_mode === "COD";
+    const calculatedMpsAmount = codShipment
+      ? Number(mpsAmount ?? providerShipments.reduce((sum, shipment) => sum + Number(shipment.cod_amount || 0), 0))
+      : 0;
+    if (!Number.isInteger(calculatedMpsAmount) || calculatedMpsAmount < 0) {
+      throw new DelhiveryError("MPS COD amount must be a non-negative integer.", { code: "INVALID_MPS_AMOUNT", status: 400 });
+    }
+    finalShipments = providerShipments.map((shipment) => ({
+      ...shipment,
+      mps_amount: calculatedMpsAmount,
+      mps_children: providerShipments.length,
+      master_id: masterId,
+      shipment_type: "MPS",
+    }));
+  }
   return {
-    shipments: providerShipments,
+    shipments: finalShipments,
     pickup_location: { name: warehouse },
     ...(shipments.some((shipment) => shipment.fragileShipment === true) ? { fragile_shipment: true } : {}),
   };
@@ -666,11 +690,12 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ensureConfigured();
     const manifest = buildDelhiveryShipmentPayload(input);
     const endpoint = new URL(manifestPath, `${baseUrl}/`);
-    const form = new URLSearchParams({ format: "json", data: JSON.stringify(manifest) });
+    const multiPiece = manifest.shipments.length > 1;
+    const form = multiPiece ? null : new URLSearchParams({ format: "json", data: JSON.stringify(manifest) });
     const payload = await requestJson(endpoint, "manifest", manifestRateLimitRequests, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
+      headers: { "Content-Type": multiPiece ? "application/json" : "application/x-www-form-urlencoded" },
+      body: multiPiece ? JSON.stringify(manifest) : form.toString(),
     });
     return normalizeDelhiveryShipmentCreation(payload, manifest.shipments.length);
   }

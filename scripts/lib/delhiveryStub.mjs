@@ -31,15 +31,17 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
     if (request.method === "POST" && url.pathname === "/api/cmu/create.json") {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
-      const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
-      if (form.get("format") !== "json" || !form.get("data")) {
-        response.statusCode = 400;
-        response.end(JSON.stringify({ message: "format key missing in the post" }));
-        return;
-      }
+      const rawBody = Buffer.concat(chunks).toString("utf8");
+      const contentType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
       let manifest;
       try {
-        manifest = JSON.parse(form.get("data"));
+        if (contentType === "application/json") {
+          manifest = JSON.parse(rawBody);
+        } else {
+          const form = new URLSearchParams(rawBody);
+          if (form.get("format") !== "json" || !form.get("data")) throw new Error("format key missing in the post");
+          manifest = JSON.parse(form.get("data"));
+        }
       } catch {
         response.statusCode = 400;
         response.end(JSON.stringify({ message: "invalid manifest JSON" }));
@@ -47,6 +49,18 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       }
       if (manifest?.pickup_location?.name !== "Pax Test Warehouse" || !Array.isArray(manifest?.shipments) || !manifest.shipments.length) {
         response.end(JSON.stringify({ packages: [], rmk: "shipment list contains no data" }));
+        return;
+      }
+      const multiPiece = manifest.shipments.length > 1;
+      const masterWaybill = String(manifest.shipments[0].master_id || "");
+      const invalidMps = multiPiece && (contentType !== "application/json"
+        || !manifest.shipments.some((shipment) => shipment.waybill === masterWaybill)
+        || manifest.shipments.some((shipment) => shipment.shipment_type !== "MPS"
+          || shipment.mps_children !== manifest.shipments.length
+          || String(shipment.master_id) !== masterWaybill
+          || shipment.mps_amount !== (shipment.payment_mode === "COD" ? 2400 : 0)));
+      if (invalidMps || (!multiPiece && contentType !== "application/x-www-form-urlencoded")) {
+        response.end(JSON.stringify({ packages: [], rmk: "Invalid MPS or content-type contract" }));
         return;
       }
       const packages = manifest.shipments.map((shipment) => {

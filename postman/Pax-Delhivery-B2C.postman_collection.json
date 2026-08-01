@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, waybill inventory and forward/reverse/replacement shipment manifestation. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, waybill inventory, SPS and exact MPS master/child manifestation. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -147,6 +147,16 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(4);", "  pm.expect(shipments.every((item) => item.status === 'Manifested')).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
     },
     {
+      "name": "Reject MPS with unprefetched waybills",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Unprefetched MPS\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2000,\n  \"pieces\": [\n    { \"waybill\": \"930000000001\", \"weight\": 1 },\n    { \"waybill\": \"930000000002\", \"weight\": 1 }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('MPS requires stored prefetched waybills', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('MPS_WAYBILL_UNAVAILABLE');", "});"] } }]
+    },
+    {
       "name": "Expected TAT - Surface",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=S&pdt=B2C&expectedPickupDate=2026-08-03%2010:30" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Expected TAT is normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.originPin).to.eql('122003');", "  pm.expect(data.destinationPin).to.eql('136118');", "  pm.expect(data.modeOfTransport).to.eql('Surface');", "  pm.expect(data.productType).to.eql('B2C');", "  pm.expect(data.expectedPickupDate).to.eql('2026-08-03 10:30');", "  pm.expect(data.tatDays).to.eql(3);", "  pm.expect(data.expectedDeliveryDate).to.eql('2026-08-05');", "});"] } }]
@@ -225,15 +235,25 @@
       "request": {
         "method": "POST",
         "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"masterWaybill\": \"900000000002\",\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box is manifested with its supplied waybill', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box is manifested with master and child fields', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.masterWaybill).to.eql('900000000002');", "  pm.expect(data.mpsAmount).to.eql(0);", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "});"] } }]
+    },
+    {
+      "name": "Create COD MPS with aggregate amount",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"COD Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"COD two box address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"COD\",\n  \"amount\": 2400,\n  \"masterWaybill\": \"910000000001\",\n  \"pieces\": [\n    { \"waybill\": \"900000000003\", \"weight\": 1, \"productsDescription\": \"COD box one\", \"totalAmount\": 1200 },\n    { \"waybill\": \"910000000001\", \"weight\": 1, \"productsDescription\": \"COD box two\", \"totalAmount\": 1200 }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('COD MPS carries total COD amount on every box', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.masterWaybill).to.eql('910000000001');", "  pm.expect(data.mpsAmount).to.eql(2400);", "  pm.expect(data.waybills).to.eql(['900000000003', '910000000001']);", "});"] } }]
     },
     {
       "name": "Verify manifested waybills are used",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=used&limit=10" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('MPS waybills move from stored to used', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(4);", "  pm.expect(data.summary.stored).to.eql(2);", "  pm.expect(data.summary.used).to.eql(2);", "  pm.expect(data.items).to.have.lengthOf(2);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('MPS waybills move from stored to used', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(4);", "  pm.expect(data.summary.stored).to.eql(0);", "  pm.expect(data.summary.used).to.eql(4);", "  pm.expect(data.items).to.have.lengthOf(4);", "});"] } }]
     },
     {
       "name": "Admin serviceability",
