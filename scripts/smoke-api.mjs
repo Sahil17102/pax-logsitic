@@ -121,3 +121,37 @@ try {
 } finally {
   server.kill();
 }
+
+const productionPort = 3106;
+const productionEnvironment = {
+  ...process.env,
+  PORT: String(productionPort),
+  NODE_ENV: "production",
+  REQUIRE_DATABASE: "true",
+  ADMIN_PASSWORD: "StrongPass123",
+  JWT_SECRET: "test-secret-for-production-health",
+};
+delete productionEnvironment.DATABASE_URL;
+const productionServer = spawn(process.execPath, ["server/index.js"], {
+  cwd: new URL("..", import.meta.url),
+  env: productionEnvironment,
+  stdio: "ignore",
+});
+
+try {
+  let healthResponse;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      healthResponse = await fetch(`http://127.0.0.1:${productionPort}/health`);
+      break;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  assert.equal(healthResponse?.status, 503);
+  const healthPayload = await healthResponse.json();
+  assert.equal(healthPayload.storage, "unavailable");
+  console.log(JSON.stringify({ productionWithoutDatabase: healthResponse.status }));
+} finally {
+  productionServer.kill();
+}

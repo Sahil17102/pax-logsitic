@@ -16,7 +16,7 @@ services:
         source: /*
         destination: /index.html
   - type: web
-    name: pax-logsiticadmin
+    name: pax-logsiticadmin-utus
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
@@ -40,8 +40,12 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: NODE_ENV
+        value: production
+      - key: REQUIRE_DATABASE
+        value: true
       - key: FRONTEND_URLS
-        value: https://paxlogistic.onrender.com,https://pax-logsiticadmin.onrender.com
+        value: https://paxlogistic.onrender.com,https://pax-logsiticadmin-utus.onrender.com
       - key: ADMIN_USERNAME
         value: admin
       - key: ADMIN_PASSWORD

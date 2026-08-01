@@ -30,10 +30,14 @@ VITE_APP_MODE=admin
 VITE_ENABLE_PREVIEW_MODE=false
 ```
 
+The admin static service is named `pax-logsiticadmin-utus` in `render.yaml` and is configured for `https://pax-logsiticadmin-utus.onrender.com`.
+
 Backend web service:
 
 ```env
-FRONTEND_URL=https://paxlogistic.onrender.com
+NODE_ENV=production
+REQUIRE_DATABASE=true
+FRONTEND_URLS=https://paxlogistic.onrender.com,https://pax-logsiticadmin-utus.onrender.com
 DATABASE_URL=<set securely in the Render dashboard>
 ```
 
@@ -72,6 +76,8 @@ For local preview only, `admin` / `Pax@1234` is available when `VITE_ENABLE_PREV
 ## Shared admin/client state
 
 The repository includes the Express API in `server/index.js`. It stores platform state in PostgreSQL when `DATABASE_URL` is present and uses an empty in-memory store for local development. Legacy seeded sample customers and shipments are removed by the schema-v2 migration. Admin configuration changes are published to client panels through server-sent events, with a 30-second client polling fallback.
+
+Production sets `REQUIRE_DATABASE=true`; `/health` returns `503` instead of silently using temporary memory if PostgreSQL is not attached. A healthy Render production response must report `"storage":"postgres"`.
 
 Run the API contract smoke test with `npm run test:api`. It verifies registration, customer-scoped bootstrap, shipment creation, public tracking and the admin dashboard.
 
