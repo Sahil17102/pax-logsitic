@@ -4,6 +4,7 @@ import App from "./App.jsx";
 import "../styles.css";
 import "./professional.css";
 import "./portal.css";
+import "./admin/admin.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

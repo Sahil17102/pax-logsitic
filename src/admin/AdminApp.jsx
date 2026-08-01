@@ -1,0 +1,482 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  API_BASE_URL,
+  getAdminDashboard,
+  hasAdminToken,
+  loginAdmin,
+  logoutAdmin,
+  setShipmentStatus,
+} from "../services/adminApi.js";
+
+const PREVIEW_SESSION_KEY = "pax-admin-preview-session";
+const CLIENT_USERS_KEY = "pax-demo-users";
+const CLIENT_SHIPMENTS_KEY = "pax-demo-shipments";
+
+const sampleCustomers = [
+  { id: "CUS-1048", name: "Aarav Sharma", business: "Aarav Retail", email: "aarav@retail.in", phone: "+91 98765 41048", city: "Hyderabad", shipments: 18, joinedAt: "28 Jul 2026", status: "Active" },
+  { id: "CUS-1042", name: "Nila Reddy", business: "Nila Studios", email: "hello@nilastudios.in", phone: "+91 98490 22117", city: "Secunderabad", shipments: 12, joinedAt: "24 Jul 2026", status: "Active" },
+  { id: "CUS-1039", name: "Rohan Mehta", business: "Mehta Home", email: "rohan@mehtahome.in", phone: "+91 97012 84530", city: "Hyderabad", shipments: 7, joinedAt: "19 Jul 2026", status: "Review" },
+  { id: "CUS-1033", name: "Kavya Rao", business: "Kite Office", email: "ops@kiteoffice.in", phone: "+91 99596 31022", city: "Warangal", shipments: 22, joinedAt: "12 Jul 2026", status: "Active" },
+];
+
+const sampleShipments = [
+  { id: "PAX-260731", customer: "Aarav Retail", destination: "Mumbai, MH", amount: 1240, payment: "Prepaid", status: "In transit", date: "31 Jul 2026" },
+  { id: "PAX-260728", customer: "Nila Studios", destination: "Bengaluru, KA", amount: 860, payment: "COD", status: "Out for delivery", date: "30 Jul 2026" },
+  { id: "PAX-260724", customer: "Kite Office", destination: "Pune, MH", amount: 590, payment: "Prepaid", status: "Delivered", date: "29 Jul 2026" },
+  { id: "PAX-260719", customer: "Rohan Mehta", destination: "Chennai, TN", amount: 1720, payment: "COD", status: "Pickup scheduled", date: "28 Jul 2026" },
+  { id: "PAX-260714", customer: "Veda Foods", destination: "Vijayawada, AP", amount: 940, payment: "COD", status: "Exception", date: "27 Jul 2026" },
+  { id: "PAX-260709", customer: "Mint Bazaar", destination: "Delhi, DL", amount: 1480, payment: "Prepaid", status: "Delivered", date: "26 Jul 2026" },
+];
+
+const sampleActivities = [
+  { title: "PAX-260728 is out for delivery", detail: "Bengaluru delivery centre · 8 min ago", tone: "blue" },
+  { title: "New customer account created", detail: "Aarav Retail · 24 min ago", tone: "green" },
+  { title: "Weight exception needs review", detail: "PAX-260714 · 42 min ago", tone: "amber" },
+  { title: "COD remittance processed", detail: "₹18,420 · 1 hr ago", tone: "purple" },
+];
+
+const navigation = [
+  { group: "Core", items: [["overview", "Dashboard", "grid"], ["shipments", "Orders", "box"]] },
+  { group: "Operations", items: [["ndr", "NDR", "support"], ["rto", "RTO", "truck"]] },
+  { group: "Accounts", items: [["customers", "Users Management", "users"], ["plans", "Plan Management", "star"]] },
+  { group: "Shipping Management", items: [["couriers", "Couriers", "truck"], ["credentials", "Courier Credentials", "key"], ["providers", "Service Providers", "grid"], ["serviceability", "Serviceability", "map"], ["pricing-b2b", "B2B Pricing", "wallet"], ["pricing-b2c", "B2C Pricing", "wallet"]] },
+  { group: "Billing", items: [["invoices", "Invoices", "file"], ["billing-preferences", "Billing Preferences", "settings"], ["cod", "COD Remittance", "wallet"], ["wallet", "Wallet", "wallet"]] },
+  { group: "Reconciliation", items: [["weight", "Weight Discrepancies", "scale"], ["disputes", "Dispute Management", "support"]] },
+  { group: "Tools", items: [["rate", "Rate Calculator", "tools"], ["rate-terms", "Rate Calculator Terms", "file"], ["tracking", "Order Tracking", "map"], ["api", "API Integration", "code"], ["about", "About Us Page", "page"], ["support", "Support", "support"]] },
+  { group: "Settings", items: [["payment-options", "Payment Options", "wallet"], ["password", "Change Password", "key"], ["developer", "Developer", "code"]] },
+];
+
+const statusOptions = ["Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
+
+const pageTitles = {
+  overview: ["Admin dashboard", "Monitor orders, sellers, revenue and delivery health across the Pax network."],
+  shipments: ["Orders", "Search every order and update the shipment status visible to customers."],
+  ndr: ["NDR management", "Resolve non-delivery reports before they turn into returns."],
+  rto: ["RTO orders", "Review return-to-origin movement and customer impact."],
+  customers: ["Users management", "Manage customer accounts, verification and platform access."],
+  plans: ["Plan management", "Configure seller plans, prices and active benefits."],
+  couriers: ["Couriers", "Manage courier partners, service state and delivery performance."],
+  credentials: ["Courier credentials", "Review configured courier connections without exposing secrets."],
+  providers: ["Service providers", "Control logistics providers available to the booking engine."],
+  serviceability: ["Serviceability", "Check delivery and COD coverage for an Indian PIN code."],
+  "pricing-b2b": ["B2B pricing", "Manage business shipment slabs and freight rates."],
+  "pricing-b2c": ["B2C pricing", "Manage parcel pricing by zone and weight slab."],
+  invoices: ["Invoices", "Review platform invoices, due dates and payment state."],
+  "billing-preferences": ["Billing preferences", "Configure invoice cycle, tax and settlement behaviour."],
+  cod: ["COD remittance", "Monitor collected cash and seller remittance batches."],
+  wallet: ["Wallet", "Review platform credits, debits and manual adjustments."],
+  weight: ["Weight discrepancies", "Audit declared and courier-measured shipment weight."],
+  disputes: ["Dispute management", "Resolve open billing and weight disputes."],
+  rate: ["Rate calculator", "Estimate shipping charges using Pax pricing rules."],
+  "rate-terms": ["Rate calculator terms", "Manage the notes and conditions shown with rate estimates."],
+  tracking: ["Order tracking", "Find an order and inspect its customer-visible milestone."],
+  api: ["API integration", "Review backend endpoints and connection health."],
+  about: ["About Us page", "Edit the company content shown on the customer website."],
+  support: ["Support", "Triage customer tickets and shipment issues."],
+  "payment-options": ["Payment options", "Control payment methods available during booking and recharge."],
+  password: ["Change password", "Update the current administrator password."],
+  developer: ["Developer settings", "Review environment and webhook configuration."],
+};
+
+const managementPages = {
+  plans: { action: "Add plan", columns: ["Plan", "Monthly fee", "Shipment limit", "Status"], rows: [["Starter", "Rs 0", "50 / month", "Active"], ["Growth", "Rs 1,499", "500 / month", "Active"], ["Enterprise", "Custom", "Unlimited", "Review"]] },
+  couriers: { action: "Add courier", columns: ["Courier", "Service", "Delivery rate", "Status"], rows: [["Pax Express", "Domestic", "97.2%", "Active"], ["Delhivery", "National", "95.8%", "Active"], ["Blue Dart", "Express", "96.1%", "Active"]] },
+  credentials: { action: "Connect courier", columns: ["Connection", "Account", "Last verified", "Status"], rows: [["Pax Express API", "Primary", "Today, 08:42", "Active"], ["Delhivery API", "DLV-2981", "Yesterday", "Active"], ["Blue Dart API", "BD-HYD-04", "31 Jul", "Review"]] },
+  providers: { action: "Add provider", columns: ["Provider", "Type", "Coverage", "Status"], rows: [["Pax Logistics", "First party", "Pan India", "Active"], ["SouthLine Freight", "Surface", "South India", "Active"], ["Metro Sprint", "Last mile", "8 metros", "Review"]] },
+  "pricing-b2b": { action: "Add rate slab", columns: ["Zone", "Weight slab", "Base freight", "Status"], rows: [["Within city", "Up to 10 kg", "Rs 180", "Active"], ["Regional", "10-25 kg", "Rs 420", "Active"], ["National", "25-50 kg", "Rs 890", "Active"]] },
+  "pricing-b2c": { action: "Add rate slab", columns: ["Zone", "Weight slab", "Base rate", "Status"], rows: [["Local", "0.5 kg", "Rs 79", "Active"], ["Metro", "0.5 kg", "Rs 119", "Active"], ["National", "0.5 kg", "Rs 149", "Active"]] },
+  invoices: { action: "Export invoices", columns: ["Invoice", "Customer", "Amount", "Status"], rows: [["INV-260731", "Aarav Retail", "Rs 12,840", "Active"], ["INV-260724", "Nila Studios", "Rs 8,420", "Active"], ["INV-260719", "Kite Office", "Rs 5,960", "Review"]] },
+  cod: { action: "Create remittance", columns: ["Batch", "Seller", "Collected", "Status"], rows: [["COD-731", "Nila Studios", "Rs 18,420", "Active"], ["COD-728", "Rohan Mehta", "Rs 6,850", "Review"], ["COD-724", "Veda Foods", "Rs 4,120", "Active"]] },
+  wallet: { action: "Add adjustment", columns: ["Transaction", "Account", "Amount", "Status"], rows: [["WAL-8042", "Aarav Retail", "+ Rs 5,000", "Active"], ["WAL-8039", "Kite Office", "- Rs 590", "Active"], ["WAL-8032", "Nila Studios", "+ Rs 860", "Review"]] },
+  weight: { action: "Export report", columns: ["Shipment", "Declared", "Measured", "Status"], rows: [["PAX-260714", "2.4 kg", "3.1 kg", "Review"], ["PAX-260702", "5.0 kg", "5.6 kg", "Review"], ["PAX-260691", "1.2 kg", "1.2 kg", "Active"]] },
+  disputes: { action: "Create dispute", columns: ["Dispute", "Shipment", "Amount at risk", "Status"], rows: [["DSP-184", "PAX-260714", "Rs 184", "Review"], ["DSP-172", "PAX-260702", "Rs 96", "Review"], ["DSP-160", "PAX-260691", "Rs 0", "Active"]] },
+  support: { action: "Raise ticket", columns: ["Ticket", "Subject", "Owner", "Status"], rows: [["SUP-104", "Weight mismatch review", "Operations", "Review"], ["SUP-101", "Delivery address query", "Support", "Active"], ["SUP-096", "COD confirmation", "Finance", "Active"]] },
+};
+
+function safeParse(value, fallback) {
+  try {
+    const parsed = JSON.parse(value || "null");
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function buildPreviewDashboard() {
+  const cachedShipments = safeParse(localStorage.getItem(CLIENT_SHIPMENTS_KEY), []);
+  const cachedUsers = safeParse(localStorage.getItem(CLIENT_USERS_KEY), []);
+  const shipments = Array.isArray(cachedShipments) && cachedShipments.length ? cachedShipments : sampleShipments;
+  const customers = Array.isArray(cachedUsers) && cachedUsers.length
+    ? cachedUsers.map((user, index) => ({
+      id: user.id || `CUS-${String(1100 + index)}`,
+      name: user.fullName || "Pax Customer",
+      business: user.businessName || "Individual account",
+      email: user.email || "—",
+      phone: user.phone || "—",
+      city: user.city || "Hyderabad",
+      shipments: shipments.filter((shipment) => shipment.customer === user.businessName).length,
+      joinedAt: user.joinedAt || "Recently",
+      status: "Active",
+    }))
+    : sampleCustomers;
+
+  return { shipments, customers, activities: sampleActivities };
+}
+
+function Icon({ name }) {
+  const paths = {
+    grid: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
+    box: <><path d="m4 7 8-4 8 4-8 4-8-4Z" /><path d="M4 7v10l8 4 8-4V7M12 11v10" /></>,
+    users: <><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5" /></>,
+    truck: <><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>,
+    wallet: <><path d="M4 6h14a2 2 0 0 1 2 2v10H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11" /><path d="M16 11h5v4h-5a2 2 0 0 1 0-4Z" /></>,
+    support: <><circle cx="12" cy="12" r="9" /><path d="M9.8 9a2.3 2.3 0 1 1 3.3 2.1c-.8.4-1.1.8-1.1 1.7M12 17h.01" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1A8 8 0 0 0 15 6l-.3-2.6h-4L10.4 6A8 8 0 0 0 9 7.1l-2.4-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 1.4.8l.3 2.8h4l.3-2.8a8 8 0 0 0 1.5-.8l2.4 1 2-3.4-2-1.5c0-.3.1-.7.1-1Z" /></>,
+    star: <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
+    key: <><circle cx="8" cy="15" r="4" /><path d="m11 12 9-9m-3 3 3 3m-6 0 3 3" /></>,
+    map: <><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" /><path d="M9 3v15M15 6v15" /></>,
+    file: <><path d="M6 3h8l4 4v14H6Z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
+    scale: <><path d="M12 3v18M5 6h14M6 6l-3 7h6L6 6Zm12 0-3 7h6l-3-7ZM8 21h8" /></>,
+    tools: <><path d="m4 20 8-8M14 6l4-4 4 4-4 4M3 7l4-4 4 4-4 4Z" /></>,
+    code: <path d="m8 8-4 4 4 4m8-8 4 4-4 4m-2-11-4 14" />,
+    page: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></>,
+    menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+    refresh: <><path d="M20 6v5h-5" /><path d="M18 9a7 7 0 1 0 1 7" /></>,
+    logout: <><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10" /></>,
+    arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
+  };
+  return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.grid}</svg>;
+}
+
+function StatusBadge({ status }) {
+  const slug = String(status || "pending").toLowerCase().replaceAll(" ", "-");
+  return <span className={`admin-status admin-status--${slug}`}><i></i>{status}</span>;
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
+function AdminLogin({ onLogin, onPreview }) {
+  const [form, setForm] = useState({ username: "", password: "", remember: true });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    if (form.username.trim().length < 3 || form.password.length < 8) {
+      setError("Enter your admin username and password (minimum 8 characters).");
+      return;
+    }
+    if (form.username.trim().toLowerCase() === "admin" && form.password === "Pax@1234") {
+      onPreview();
+      return;
+    }
+    setLoading(true);
+    try {
+      const admin = await loginAdmin(form);
+      onLogin(admin);
+    } catch (loginError) {
+      setError(`${loginError.message} You can open preview mode while the API is being connected.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="admin-login-page">
+      <section className="admin-login-story">
+        <div className="admin-brand admin-brand--light"><img src="/assets/pax-logo.png" alt="Pax Logistics" /><span>ADMIN</span></div>
+        <div className="admin-login-copy">
+          <p>OPERATIONS CONTROL CENTRE</p>
+          <h1>Every parcel.<br />One clear view.</h1>
+          <span>Manage customers, monitor movement, resolve exceptions and keep collections on track.</span>
+        </div>
+        <div className="admin-login-route" aria-hidden="true">
+          <span className="is-done">Pickup</span><i></i><span className="is-live">HYD Hub</span><i></i><span>Delivery</span>
+        </div>
+        <small>Restricted to authorised Pax operations staff.</small>
+      </section>
+      <section className="admin-login-panel">
+        <form className="admin-login-card" onSubmit={submit}>
+          <div className="admin-mobile-brand"><img src="/assets/pax-logo.png" alt="Pax Logistics" /><span>ADMIN</span></div>
+          <p className="admin-eyebrow">SECURE ADMIN ACCESS</p>
+          <h2>Welcome back.</h2>
+          <p>Sign in with the username and password issued by your Pax administrator.</p>
+          <label>Username<input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} placeholder="Enter admin username" autoComplete="username" /></label>
+          <label>Password<input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Enter password" autoComplete="current-password" /></label>
+          <label className="admin-remember"><input type="checkbox" checked={form.remember} onChange={(event) => setForm({ ...form, remember: event.target.checked })} /> Keep me signed in</label>
+          {error && <p className="admin-form-error" role="alert">{error}</p>}
+          <button className="admin-primary-button" type="submit" disabled={loading}>{loading ? "Connecting…" : "Sign in to operations"}<Icon name="arrow" /></button>
+          <div className="admin-demo-credentials"><span>Preview credentials</span><strong>admin</strong><i>/</i><strong>Pax@1234</strong></div>
+          <button className="admin-preview-button" type="button" onClick={onPreview}>Open connected preview directly</button>
+          <small className="admin-api-caption">API: {API_BASE_URL}</small>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function MetricCard({ label, value, note, tone, icon }) {
+  return <article className={`admin-metric admin-metric--${tone}`}><div><span>{label}</span><strong>{value}</strong><small>{note}</small></div><i className="admin-metric-icon"><Icon name={icon} /></i></article>;
+}
+
+function ShipmentTable({ shipments, onStatusChange, compact = false }) {
+  if (!shipments.length) return <div className="admin-empty">No shipments match the current filters.</div>;
+  return (
+    <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead><tr><th>Shipment</th><th>Customer</th><th>Destination</th><th>Payment</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody>{shipments.map((shipment) => <tr key={shipment.id}>
+          <td><strong>{shipment.id}</strong></td>
+          <td>{shipment.customer}</td>
+          <td>{shipment.destination}</td>
+          <td><span>{shipment.payment}</span><small>{formatMoney(shipment.amount)}</small></td>
+          <td>{compact ? <StatusBadge status={shipment.status} /> : <select className="admin-status-select" value={shipment.status} onChange={(event) => onStatusChange(shipment.id, event.target.value)}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>}</td>
+          <td>{shipment.date || "Today"}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function ManagementWorkspace({ page, flash, search }) {
+  const config = managementPages[page];
+  const [rows, setRows] = useState(config?.rows || []);
+  const [editorOpen, setEditorOpen] = useState(false);
+
+  useEffect(() => {
+    setRows(config?.rows || []);
+    setEditorOpen(false);
+  }, [page]);
+
+  if (!config) return null;
+  const query = search.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => !query || row.some((cell) => String(cell).toLowerCase().includes(query)));
+  const saveRecord = (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const label = String(data.get("name") || "New record").trim();
+    setRows((current) => [[label, "Configured", "Just now", "Active"], ...current]);
+    setEditorOpen(false);
+    flash(`${label} saved in ${pageTitles[page][0]}.`);
+  };
+
+  return <section className="admin-card admin-table-card admin-full-card">
+    <div className="admin-table-toolbar"><div><strong>{visibleRows.length} records</strong><span>Search, review and manage the current configuration.</span></div><button className="admin-compact-primary" type="button" onClick={() => setEditorOpen((open) => !open)}>{editorOpen ? "Close" : config.action}</button></div>
+    {editorOpen && <form className="admin-inline-editor" onSubmit={saveRecord}><label>Name or reference<input name="name" required placeholder="Enter a value" autoFocus /></label><label>Notes<input name="notes" placeholder="Optional notes" /></label><button type="submit">Save record</button></form>}
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}<th>Action</th></tr></thead><tbody>{visibleRows.map((row, rowIndex) => <tr key={`${row[0]}-${rowIndex}`}>{row.map((cell, index) => <td key={`${cell}-${index}`}>{index === row.length - 1 ? <StatusBadge status={cell} /> : index === 0 ? <strong>{cell}</strong> : cell}</td>)}<td><button className="admin-row-action" type="button" onClick={() => flash(`${row[0]} opened for review.`)}>Manage</button></td></tr>)}</tbody></table></div>
+  </section>;
+}
+
+function ToolWorkspace({ page, shipments, connection, sourceLabel, flash }) {
+  const [pin, setPin] = useState("500029");
+  const [pinResult, setPinResult] = useState(null);
+  const [rate, setRate] = useState({ pickup: "500029", delivery: "560001", weight: "1", payment: "Prepaid" });
+  const [rateResult, setRateResult] = useState(null);
+  const [trackingId, setTrackingId] = useState(shipments[0]?.id || "PAX-260731");
+  const [trackingResult, setTrackingResult] = useState(null);
+  const [content, setContent] = useState("Pax Logistics provides clear, practical shipping support from Hyderabad to customers across India.");
+  const [options, setOptions] = useState({ prepaid: true, cod: true, wallet: true, upi: true, weekly: true, gst: true });
+
+  const toggle = (key) => {
+    setOptions((current) => ({ ...current, [key]: !current[key] }));
+    flash("Preference updated in preview mode.");
+  };
+
+  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); if (!/^[1-9]\d{5}$/.test(pin)) { setPinResult({ error: "Enter a valid 6-digit PIN code." }); return; } const digit = Number(pin.at(-1)); setPinResult({ region: pin[0] === "5" ? "South" : "Domestic", express: digit !== 9, cod: digit % 2 === 0 }); }}><p>PIN CODE CHECK</p><h2>Check serviceability</h2><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check coverage</button></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view Standard, Express and COD availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>PIN {pin} · {pinResult.region} zone</span><h2>Service available</h2><ul><li><b>Standard delivery</b><StatusBadge status="Active" /></li><li><b>Express delivery</b><StatusBadge status={pinResult.express ? "Active" : "Review"} /></li><li><b>Cash on delivery</b><StatusBadge status={pinResult.cod ? "Active" : "Review"} /></li></ul></>}</div></section>;
+
+  if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(rate.weight); if (!/^[1-9]\d{5}$/.test(rate.pickup) || !/^[1-9]\d{5}$/.test(rate.delivery) || weight <= 0) { setRateResult({ error: "Enter two valid PIN codes and parcel weight." }); return; } const sameRegion = rate.pickup[0] === rate.delivery[0]; const base = (sameRegion ? 78 : 128) + Math.ceil(weight * 31) + (rate.payment === "COD" ? 45 : 0); setRateResult({ standard: base, express: Math.round(base * 1.48) }); }}><p>SHIPPING RATE TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer and courier charges.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>ESTIMATED CUSTOMER RATE</span><h2>{formatMoney(rateResult.standard)}</h2><ul><li><b>Pax Standard</b><strong>{formatMoney(rateResult.standard)}</strong></li><li><b>Pax Express</b><strong>{formatMoney(rateResult.express)}</strong></li><li><b>GST</b><span>Calculated at checkout</span></li></ul></>}</div></section>;
+
+  if (page === "tracking") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const found = shipments.find((item) => item.id.toLowerCase() === trackingId.trim().toLowerCase()); setTrackingResult(found || { error: "No matching order found." }); }}><p>LIVE ORDER LOOKUP</p><h2>Track an order</h2><label>Pax reference<input value={trackingId} onChange={(event) => setTrackingId(event.target.value.toUpperCase())} placeholder="PAX-260731" /></label><button type="submit">Track order</button></form><div className="admin-card admin-tool-result">{!trackingResult ? <p>Search a Pax reference to inspect its current milestone.</p> : trackingResult.error ? <p className="is-error">{trackingResult.error}</p> : <><span>{trackingResult.id}</span><h2>{trackingResult.customer}</h2><ul><li><b>Destination</b><span>{trackingResult.destination}</span></li><li><b>Payment</b><span>{trackingResult.payment}</span></li><li><b>Latest status</b><StatusBadge status={trackingResult.status} /></li></ul></>}</div></section>;
+
+  if (["payment-options", "billing-preferences"].includes(page)) {
+    const settings = page === "payment-options" ? [["prepaid", "Prepaid orders", "Accept online-paid bookings"], ["cod", "Cash on delivery", "Allow COD on serviceable PIN codes"], ["wallet", "Pax wallet", "Use wallet balance for shipping"], ["upi", "UPI recharge", "Allow UPI wallet recharges"]] : [["weekly", "Weekly invoicing", "Generate invoices every Monday"], ["gst", "GST invoices", "Include tax breakup and GSTIN"]];
+    return <section className="admin-card admin-preference-card"><div><p>PLATFORM PREFERENCES</p><h2>{pageTitles[page][0]}</h2></div>{settings.map(([key, title, detail]) => <button key={key} type="button" className={options[key] ? "is-on" : ""} onClick={() => toggle(key)}><span><strong>{title}</strong><small>{detail}</small></span><i></i></button>)}</section>;
+  }
+
+  if (["about", "rate-terms"].includes(page)) return <form className="admin-card admin-content-editor" onSubmit={(event) => { event.preventDefault(); localStorage.setItem(`pax-admin-content-${page}`, content); flash(`${pageTitles[page][0]} content saved.`); }}><div><p>WEBSITE CONTENT</p><h2>{pageTitles[page][0]}</h2><span>This content is ready to publish through the connected content API.</span></div><label>Page content<textarea rows="10" value={content} onChange={(event) => setContent(event.target.value)} /></label><button type="submit">Save changes</button></form>;
+
+  if (page === "password") return <form className="admin-card admin-password-form" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); if (data.get("next") !== data.get("confirm") || String(data.get("next")).length < 8) { flash("Passwords must match and contain at least 8 characters."); return; } event.currentTarget.reset(); flash("Password update request saved."); }}><p>ACCOUNT SECURITY</p><h2>Change administrator password</h2><label>Current password<input name="current" type="password" required /></label><label>New password<input name="next" type="password" minLength="8" required /></label><label>Confirm new password<input name="confirm" type="password" minLength="8" required /></label><button type="submit">Update password</button></form>;
+
+  if (["api", "developer"].includes(page)) return <section className="admin-card admin-settings-card"><div><p>{page === "api" ? "DATA CONNECTION" : "DEVELOPER TOOLS"}</p><h2>{pageTitles[page][0]}</h2><span>Production secrets remain on the backend and are never bundled into this static admin app.</span></div><dl><div><dt>Base URL</dt><dd>{API_BASE_URL}</dd></div><div><dt>Admin dashboard</dt><dd>GET /api/admin/dashboard</dd></div><div><dt>Order update</dt><dd>PATCH /api/admin/shipments/:id/status</dd></div><div><dt>Webhook</dt><dd>POST /api/webhooks/shipment-status</dd></div><div><dt>Current state</dt><dd><span className={`admin-connection-dot is-${connection}`}></span>{sourceLabel}</dd></div></dl></section>;
+
+  return null;
+}
+
+function AdminApp() {
+  const [authenticated, setAuthenticated] = useState(() => hasAdminToken() || sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true");
+  const [admin, setAdmin] = useState({ name: "Operations Admin", username: "admin" });
+  const [previewMode, setPreviewMode] = useState(() => sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true");
+  const [active, setActive] = useState("overview");
+  const [mobileNav, setMobileNav] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [snapshot, setSnapshot] = useState(buildPreviewDashboard);
+  const [connection, setConnection] = useState("checking");
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const loadDashboard = async () => {
+    if (!authenticated) return;
+    setLoading(true);
+    if (previewMode) {
+      setSnapshot(buildPreviewDashboard());
+      setConnection("preview");
+      setLoading(false);
+      return;
+    }
+    setConnection("checking");
+    try {
+      const data = await getAdminDashboard();
+      setSnapshot({ shipments: data.shipments || [], customers: data.customers || [], activities: data.activities || [] });
+      setConnection("live");
+    } catch {
+      setSnapshot(buildPreviewDashboard());
+      setConnection("offline");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    document.title = "Pax Admin — Operations Control Centre";
+    loadDashboard();
+  }, [authenticated, previewMode]);
+
+  useEffect(() => {
+    if (!authenticated || !previewMode) return undefined;
+    const syncClientPreview = (event) => {
+      if (event.key && ![CLIENT_USERS_KEY, CLIENT_SHIPMENTS_KEY].includes(event.key)) return;
+      setSnapshot(buildPreviewDashboard());
+    };
+    window.addEventListener("storage", syncClientPreview);
+    return () => window.removeEventListener("storage", syncClientPreview);
+  }, [authenticated, previewMode]);
+
+  const shipments = snapshot.shipments || [];
+  const customers = snapshot.customers || [];
+  const filteredShipments = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return shipments.filter((shipment) => {
+      const matchesSearch = !query || [shipment.id, shipment.customer, shipment.destination, shipment.payment, shipment.status].some((value) => String(value).toLowerCase().includes(query));
+      return matchesSearch && (statusFilter === "All statuses" || shipment.status === statusFilter);
+    });
+  }, [shipments, search, statusFilter]);
+
+  const filteredCustomers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return customers.filter((customer) => !query || [customer.name, customer.business, customer.email, customer.phone, customer.city].some((value) => String(value).toLowerCase().includes(query)));
+  }, [customers, search]);
+
+  const delivered = shipments.filter((item) => item.status === "Delivered").length;
+  const moving = shipments.filter((item) => ["In transit", "Out for delivery"].includes(item.status)).length;
+  const exceptions = shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length;
+  const codValue = shipments.filter((item) => item.payment === "COD").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const prepaidValue = shipments.filter((item) => item.payment === "Prepaid").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const sourceLabel = connection === "live" ? "Live API" : connection === "checking" ? "Connecting" : connection === "offline" ? "API offline · preview data" : "Connected preview";
+
+  const flash = (message) => {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2800);
+  };
+
+  const changeStatus = async (id, status) => {
+    const previous = snapshot;
+    const next = { ...snapshot, shipments: shipments.map((shipment) => shipment.id === id ? { ...shipment, status } : shipment) };
+    setSnapshot(next);
+    if (previewMode || connection !== "live") {
+      localStorage.setItem(CLIENT_SHIPMENTS_KEY, JSON.stringify(next.shipments));
+      window.dispatchEvent(new CustomEvent("pax:shipments-updated", { detail: next.shipments }));
+      flash(`${id} updated in the client preview data.`);
+      return;
+    }
+    try {
+      await setShipmentStatus(id, status);
+      flash(`${id} status updated.`);
+    } catch (error) {
+      setSnapshot(previous);
+      flash(error.message);
+    }
+  };
+
+  const signOut = () => {
+    logoutAdmin();
+    sessionStorage.removeItem(PREVIEW_SESSION_KEY);
+    setAuthenticated(false);
+    setPreviewMode(false);
+  };
+
+  if (!authenticated) {
+    return <AdminLogin onLogin={(nextAdmin) => { setAdmin(nextAdmin); setAuthenticated(true); }} onPreview={() => { sessionStorage.setItem(PREVIEW_SESSION_KEY, "true"); setPreviewMode(true); setAuthenticated(true); }} />;
+  }
+
+  return (
+    <div className="admin-app">
+      <aside className={`admin-sidebar${mobileNav ? " is-open" : ""}`}>
+        <div className="admin-brand"><img src="/assets/pax-logo.png" alt="Pax Logistics" /><span>ADMIN</span></div>
+        <nav>{navigation.map((section) => <div className="admin-nav-section" key={section.group}><p>{section.group}</p>{section.items.map(([id, label, icon]) => <button key={id} className={active === id ? "is-active" : ""} type="button" onClick={() => { setActive(id); setMobileNav(false); setSearch(""); }}><Icon name={icon} /><span>{label}</span>{id === "shipments" && <b>{shipments.length}</b>}</button>)}</div>)}</nav>
+        <div className="admin-sidebar-foot"><span className={`admin-connection-dot is-${connection}`}></span><div><strong>{sourceLabel}</strong><small>{API_BASE_URL.replace(/^https?:\/\//, "")}</small></div></div>
+      </aside>
+      {mobileNav && <button className="admin-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
+
+      <main className="admin-main">
+        <header className="admin-topbar">
+          <button className="admin-menu-button" type="button" onClick={() => setMobileNav(true)}><Icon name="menu" /></button>
+          <label className="admin-global-search"><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search shipment, customer or city" /></label>
+          <div className="admin-topbar-actions"><button type="button" title="Refresh data" onClick={loadDashboard} disabled={loading}><Icon name="refresh" /></button><button type="button" className="admin-bell"><Icon name="bell" /><i></i></button><div className="admin-user"><span>{(admin.name || "PA").split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><strong>{admin.name || "Pax Admin"}</strong><small>{admin.username || admin.email || "Operations"}</small></div></div><button type="button" title="Sign out" onClick={signOut}><Icon name="logout" /></button></div>
+        </header>
+
+        <div className="admin-content">
+          {connection === "offline" && <div className="admin-connection-banner"><span><strong>Backend unavailable.</strong> Showing safe preview data; changes stay in this browser until the API reconnects.</span><button type="button" onClick={loadDashboard}>Retry connection</button></div>}
+          {previewMode && <div className="admin-connection-banner is-preview"><span><strong>Preview mode.</strong> Same-origin customer records are connected through shared browser storage.</span><button type="button" onClick={loadDashboard}>Refresh preview</button></div>}
+          <div className="admin-page-heading"><div><p>01 AUGUST 2026 · HYDERABAD</p><h1>{pageTitles[active][0]}</h1><span>{pageTitles[active][1]}</span></div><div className="admin-live-chip"><i></i>{sourceLabel}</div></div>
+
+          {active === "overview" && <>
+            <section className="admin-metrics">
+              <MetricCard label="Total shipments" value={shipments.length} note={`${moving} moving now`} tone="blue" icon="box" />
+              <MetricCard label="Delivery success" value={shipments.length ? `${Math.round((delivered / shipments.length) * 100)}%` : "0%"} note={`${delivered} delivered`} tone="green" icon="truck" />
+              <MetricCard label="Customers" value={customers.length} note="Connected accounts" tone="purple" icon="users" />
+              <MetricCard label="Needs attention" value={exceptions} note="Exceptions and RTO" tone="amber" icon="support" />
+            </section>
+            <section className="admin-action-strip">
+              <article><i className="is-coral"></i><span><strong>Open tickets</strong><small>Support triage</small></span><b>3</b><button type="button" onClick={() => setActive("support")}>Review</button></article>
+              <article><i className="is-yellow"></i><span><strong>Pending KYC</strong><small>Verification queue</small></span><b>2</b><button type="button" onClick={() => setActive("customers")}>Review</button></article>
+              <article><i className="is-purple"></i><span><strong>Weight disputes</strong><small>Reconciliation</small></span><b>2</b><button type="button" onClick={() => setActive("weight")}>Review</button></article>
+              <article><i className="is-green"></i><span><strong>Active sellers</strong><small>Seller analytics</small></span><b>{customers.length}</b><button type="button" onClick={() => setActive("customers")}>View</button></article>
+            </section>
+            <section className="admin-overview-grid">
+              <article className="admin-card admin-volume-card"><div className="admin-card-head"><div><p>SHIPMENT VOLUME</p><h2>Network movement</h2></div><span>Last 7 days</span></div><div className="admin-chart"><div className="admin-chart-y"><span>24</span><span>18</span><span>12</span><span>6</span><span>0</span></div><div className="admin-bars">{[["Mon", 48], ["Tue", 68], ["Wed", 53], ["Thu", 82], ["Fri", 66], ["Sat", 92], ["Sun", 74]].map(([day, height], index) => <div key={day}><i style={{ height: `${height}%` }} className={index === 5 ? "is-peak" : ""}></i><span>{day}</span></div>)}</div></div></article>
+              <article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>LIVE FEED</p><h2>Recent activity</h2></div></div><div className="admin-activity-list">{(snapshot.activities || sampleActivities).map((item) => <div key={item.title}><i className={`is-${item.tone}`}></i><span><strong>{item.title}</strong><small>{item.detail}</small></span></div>)}</div></article>
+            </section>
+            <section className="admin-card admin-table-card"><div className="admin-card-head"><div><p>ACTIVE OPERATIONS</p><h2>Recent shipments</h2></div><button type="button" onClick={() => setActive("shipments")}>View all <Icon name="arrow" /></button></div><ShipmentTable shipments={filteredShipments.slice(0, 5)} onStatusChange={changeStatus} compact /></section>
+          </>}
+
+          {active === "shipments" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredShipments.length} shipments</strong><span>Updates are reflected in the customer panel.</span></div><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label></div><ShipmentTable shipments={filteredShipments} onStatusChange={changeStatus} /></section>}
+
+          {active === "ndr" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>NDR action queue</strong><span>Contact the customer or reattempt delivery before RTO.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("NDR report exported.")}>Export report</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "Exception")} onStatusChange={changeStatus} /></section>}
+
+          {active === "rto" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>Return-to-origin orders</strong><span>Monitor reverse transit and seller communication.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("RTO manifest generated.")}>Generate manifest</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "RTO")} onStatusChange={changeStatus} /></section>}
+
+          {active === "customers" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredCustomers.length} customer accounts</strong><span>Passwords and authentication secrets are never exposed here.</span></div></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Customer</th><th>Business</th><th>Contact</th><th>City</th><th>Shipments</th><th>Status</th></tr></thead><tbody>{filteredCustomers.map((customer) => <tr key={customer.id}><td><strong>{customer.name}</strong><small>{customer.id}</small></td><td>{customer.business}</td><td><span>{customer.email}</span><small>{customer.phone}</small></td><td>{customer.city}</td><td>{customer.shipments || 0}</td><td><StatusBadge status={customer.status || "Active"} /></td></tr>)}</tbody></table></div></section>}
+
+          {active === "pickups" && <section className="admin-list-grid">{shipments.filter((item) => item.status === "Pickup scheduled").length ? shipments.filter((item) => item.status === "Pickup scheduled").map((shipment, index) => <article className="admin-card admin-pickup-card" key={shipment.id}><div className="admin-pickup-time"><strong>{index ? "04:30" : "02:30"}</strong><span>PM</span></div><div><StatusBadge status="Pickup scheduled" /><h2>{shipment.customer}</h2><p>Pickup for {shipment.id} · {shipment.destination}</p></div><button type="button" onClick={() => changeStatus(shipment.id, "In transit")}>Mark collected</button></article>) : <div className="admin-empty admin-card">No pickups are currently scheduled.</div>}</section>}
+
+          {active === "finance" && <><section className="admin-metrics"><MetricCard label="COD exposure" value={formatMoney(codValue)} note={`${shipments.filter((item) => item.payment === "COD").length} shipments`} tone="green" icon="wallet" /><MetricCard label="Prepaid value" value={formatMoney(prepaidValue)} note={`${shipments.filter((item) => item.payment === "Prepaid").length} shipments`} tone="blue" icon="wallet" /><MetricCard label="Gross booked value" value={formatMoney(codValue + prepaidValue)} note="Current shipment set" tone="purple" icon="grid" /><MetricCard label="Settlement health" value="98.4%" note="Within payout SLA" tone="amber" icon="support" /></section><section className="admin-card admin-finance-card"><div className="admin-card-head"><div><p>COLLECTION MIX</p><h2>Payment distribution</h2></div></div><div className="admin-finance-bar"><i style={{ width: `${(codValue / Math.max(codValue + prepaidValue, 1)) * 100}%` }}></i></div><div className="admin-finance-legend"><span><i className="is-cod"></i>COD <strong>{formatMoney(codValue)}</strong></span><span><i className="is-prepaid"></i>Prepaid <strong>{formatMoney(prepaidValue)}</strong></span></div></section></>}
+
+          {Object.hasOwn(managementPages, active) && <ManagementWorkspace page={active} flash={flash} search={search} />}
+
+          {["serviceability", "rate", "tracking", "payment-options", "billing-preferences", "about", "rate-terms", "password", "api", "developer"].includes(active) && <ToolWorkspace page={active} shipments={shipments} connection={connection} sourceLabel={sourceLabel} flash={flash} />}
+
+          {active === "settings" && <section className="admin-card admin-settings-card"><div><p>DATA CONNECTION</p><h2>Admin API</h2><span>The admin panel reads customer and shipment records from this shared backend.</span></div><dl><div><dt>Base URL</dt><dd>{API_BASE_URL}</dd></div><div><dt>Dashboard endpoint</dt><dd>GET /api/admin/dashboard</dd></div><div><dt>Status update</dt><dd>PATCH /api/admin/shipments/:id/status</dd></div><div><dt>Authentication</dt><dd>Bearer token via POST /api/admin/auth/login</dd></div><div><dt>Current state</dt><dd><span className={`admin-connection-dot is-${connection}`}></span>{sourceLabel}</dd></div></dl></section>}
+        </div>
+      </main>
+      {toast && <div className="admin-toast" role="status">{toast}</div>}
+    </div>
+  );
+}
+
+export default AdminApp;
