@@ -7,6 +7,8 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://pax-logistic.onrender.com
+      - key: VITE_APP_MODE
+        value: admin
     routes:
       - type: rewrite
         source: /*

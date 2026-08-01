@@ -8,6 +8,33 @@
   --admin-green: #006a51;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  background: var(--admin-bg);
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--admin-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img,
+svg {
+  display: block;
+}
+
 .admin-app,
 .admin-login-page {
   min-height: 100svh;

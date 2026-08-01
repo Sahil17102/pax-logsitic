@@ -1,6 +1,6 @@
-# Pax Logistics
+# Pax Logistics Admin
 
-Responsive Vite + React website for Pax Logistics, Hyderabad.
+Responsive Vite + React administration console for Pax Logistics. The deployed root route is admin-only: unauthenticated visitors see the admin login, and authenticated visitors see the operations console. The customer landing page is not part of the production entry point.
 
 ## Run locally
 
@@ -22,10 +22,11 @@ The site will use a Render `onrender.com` URL. You can attach a custom domain in
 
 ## Render environment variables
 
-Landing-page static site:
+Admin static service:
 
 ```env
 VITE_API_URL=https://pax-logistic.onrender.com
+VITE_APP_MODE=admin
 ```
 
 Backend web service:
@@ -39,13 +40,7 @@ Never add `DATABASE_URL` to a Vite variable or commit it to this repository. Vit
 
 ## Admin panel
 
-The same production build serves the admin panel when either:
-
-- the hostname contains `admin` (for example `pax-logsiticadmin.onrender.com`),
-- the URL path is `/admin`, or
-- `VITE_APP_MODE=admin` is set on the Render static service.
-
-For local development, open `http://127.0.0.1:4173/admin`. Preview mode reads the existing customer-panel keys (`pax-demo-users` and `pax-demo-shipments`) and writes shipment status changes back to the same browser storage.
+Open `http://127.0.0.1:4173/` locally. Preview mode reads the existing customer-panel keys (`pax-demo-users` and `pax-demo-shipments`) and writes shipment status changes back to the same browser storage.
 
 Production mode expects these authenticated backend endpoints at `VITE_API_URL`:
 
