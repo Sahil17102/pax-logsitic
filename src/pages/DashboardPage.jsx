@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchClientBootstrap, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
+import { createClientShipment } from "../services/clientApi.js";
 
 const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
@@ -229,6 +231,7 @@ export default function DashboardPage() {
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
+  const [controlState, setControlState] = useState(readControlState);
   const [search, setSearch] = useState("");
   const [shipmentModal, setShipmentModal] = useState(false);
   const [toast, setToast] = useState("");
@@ -249,6 +252,32 @@ export default function DashboardPage() {
   const notificationMenuRef = useRef(null);
   const walletMenuRef = useRef(null);
   const accountMenuRef = useRef(null);
+
+  useEffect(() => {
+    const stopLocalSync = subscribeToLocalControl(setControlState);
+    const controller = new AbortController();
+    const syncFromApi = async () => {
+      try {
+        const data = await fetchClientBootstrap(controller.signal);
+        if (data.configuration) setControlState(writeControlState(data.configuration));
+        if (Array.isArray(data.shipments)) {
+          setShipments(data.shipments);
+          localStorage.setItem(SHIPMENTS_KEY, JSON.stringify(data.shipments));
+        }
+      } catch {
+        // Keep the customer workspace usable with its last synchronized snapshot.
+      }
+    };
+    syncFromApi();
+    const timer = window.setInterval(syncFromApi, 30000);
+    const stopRemoteSync = subscribeToRemoteUpdates(syncFromApi);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      stopLocalSync();
+      stopRemoteSync();
+    };
+  }, []);
 
   useEffect(() => {
     const syncShipments = (event) => {
@@ -294,6 +323,17 @@ export default function DashboardPage() {
       [shipment.id, shipment.customer, shipment.destination, shipment.status].some((value) => value.toLowerCase().includes(query)),
     );
   }, [search, shipments]);
+  const availablePaymentOptions = [
+    controlState.settings.paymentOptions.prepaid && "Prepaid",
+    controlState.settings.paymentOptions.cod && "COD",
+  ].filter(Boolean);
+  const enabledCouriers = (controlState.resources.couriers || []).filter((courier) => courier.enabled);
+  useEffect(() => {
+    if (!availablePaymentOptions.length) return;
+    const fallback = availablePaymentOptions[0];
+    setRateForm((current) => availablePaymentOptions.includes(current.payment) ? current : { ...current, payment: fallback });
+    setNewShipment((current) => availablePaymentOptions.includes(current.payment) ? current : { ...current, payment: fallback });
+  }, [controlState.settings.paymentOptions.prepaid, controlState.settings.paymentOptions.cod]);
   const unreadNotificationCount = notifications.filter((notification) => notification.unread).length;
   const walletBalanceLabel = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(walletBalance);
 
@@ -376,6 +416,10 @@ export default function DashboardPage() {
       notify("Complete the receiver details and enter a valid PIN code.");
       return;
     }
+    if (!availablePaymentOptions.length) {
+      notify("Shipment booking is temporarily disabled by the Pax administrator.");
+      return;
+    }
     const shipment = {
       id: `PAX-${String(Date.now()).slice(-6)}`,
       customer: newShipment.customer,
@@ -391,6 +435,15 @@ export default function DashboardPage() {
     setShipmentModal(false);
     setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "" });
     notify(`${shipment.id} created. Pickup is scheduled.`);
+    createClientShipment({ ...shipment, ownerEmail: user.email }).then((remoteShipment) => {
+      setShipments((current) => {
+        const synced = current.map((item) => item.id === shipment.id ? remoteShipment : item);
+        localStorage.setItem(SHIPMENTS_KEY, JSON.stringify(synced));
+        return synced;
+      });
+    }).catch(() => {
+      // The locally-created shipment will synchronize on the next successful API session.
+    });
   };
 
   const submitTracking = (event) => {
@@ -413,6 +466,10 @@ export default function DashboardPage() {
       setRateQuote({ error: "Enter two valid 6-digit PIN codes and a valid parcel weight." });
       return;
     }
+    if (!enabledCouriers.length) {
+      setRateQuote({ error: "Rate calculation is unavailable because all courier services are disabled." });
+      return;
+    }
 
     const sameZone = pickup.slice(0, 2) === delivery.slice(0, 2);
     const sameRegion = pickup[0] === delivery[0];
@@ -420,10 +477,12 @@ export default function DashboardPage() {
     const weightCharge = Math.ceil(weight * (sameZone ? 20 : 31));
     const codCharge = rateForm.payment === "COD" ? 45 : 0;
     const base = routeBase + weightCharge + codCharge;
-    const services = [
-      { name: "Pax Standard", eta: sameZone ? "1–2 days" : "3–5 days", amount: Math.max(79, Math.round(base / 10) * 10), tone: "standard" },
-      { name: "Pax Express", eta: sameZone ? "Next day" : "1–2 days", amount: Math.round((base * 1.48) / 10) * 10, tone: "express" },
-    ];
+    const services = enabledCouriers.slice(0, 2).map((courier, index) => ({
+      name: courier.cells[0],
+      eta: index === 0 ? (sameZone ? "1–2 days" : "3–5 days") : (sameZone ? "Next day" : "1–2 days"),
+      amount: index === 0 ? Math.max(79, Math.round(base / 10) * 10) : Math.round((base * 1.48) / 10) * 10,
+      tone: index === 0 ? "standard" : "express",
+    }));
     if (rateForm.speed === "express") services.reverse();
     setRateQuote({ pickup, delivery, weight, payment: rateForm.payment, services });
   };
@@ -451,9 +510,9 @@ export default function DashboardPage() {
     setServiceResult({
       pin,
       region: regions[pin[0]] || "Domestic",
-      standard: true,
-      express: lastDigit !== 9,
-      cod: lastDigit % 2 === 0,
+      standard: controlState.settings.serviceability.standard,
+      express: controlState.settings.serviceability.express && lastDigit !== 9,
+      cod: controlState.settings.serviceability.cod && controlState.settings.paymentOptions.cod && lastDigit % 2 === 0,
       eta: lastDigit < 4 ? "2–3 business days" : "3–5 business days",
     });
   };
@@ -935,7 +994,7 @@ export default function DashboardPage() {
             <label>Delivery PIN<input value={rateForm.delivery} onChange={(event) => setRateForm({ ...rateForm, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="400001" /></label>
             <label>Chargeable weight (kg)<input value={rateForm.weight} onChange={(event) => setRateForm({ ...rateForm, weight: event.target.value })} type="number" min="0.1" step="0.1" /></label>
             <label>Preferred speed<select value={rateForm.speed} onChange={(event) => setRateForm({ ...rateForm, speed: event.target.value })}><option value="standard">Standard</option><option value="express">Express</option></select></label>
-            <label className="span-two">Payment mode<select value={rateForm.payment} onChange={(event) => setRateForm({ ...rateForm, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label>
+            <label className="span-two">Payment mode<select value={rateForm.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setRateForm({ ...rateForm, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
           </div>
           <button className="portal-primary portal-tool-submit" type="submit"><Icon name="wallet" /> Calculate available rates</button>
           <p className="portal-tool-note">Indicative rates include route, weight and payment handling. Final courier allocation happens while booking.</p>
@@ -1356,7 +1415,7 @@ export default function DashboardPage() {
               <label>City *<input value={newShipment.city} onChange={(event) => setNewShipment({ ...newShipment, city: event.target.value })} placeholder="Destination city" /></label>
               <label>PIN code *<input value={newShipment.pincode} onChange={(event) => setNewShipment({ ...newShipment, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="6-digit PIN" /></label>
               <label>Weight (kg)<input value={newShipment.weight} onChange={(event) => setNewShipment({ ...newShipment, weight: event.target.value })} type="number" min=".1" step=".1" /></label>
-              <label>Payment<select value={newShipment.payment} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label>
+              <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
             </div>
             <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Create & schedule pickup <Icon name="arrow" /></button></div>

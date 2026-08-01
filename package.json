@@ -9,9 +9,12 @@
     "prebuild": "node scripts/prepare-public.mjs",
     "build": "vite build && node scripts/prepare-spa-routes.mjs",
     "preview": "vite preview",
-    "start": "vite preview"
+    "start": "vite preview",
+    "start:api": "node server/index.js"
   },
   "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
