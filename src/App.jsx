@@ -8,7 +8,8 @@ import ContactPage from "./pages/ContactPage.jsx";
 import SignInPage from "./pages/SignInPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import { usePageInteractions } from "./usePageInteractions.js";
-import { API_BASE_URL } from "./config.js";
+import { API_BASE_URL, APP_MODE } from "./config.js";
+import AdminApp from "./admin/AdminApp.jsx";
 
 const primaryNavItems = [
   ["/services", "Services"],
@@ -188,7 +189,7 @@ function SiteRoutes({ location }) {
   return pages[location.pathname] || <HomePage />;
 }
 
-export default function App() {
+function ClientApp() {
   const [location, setLocation] = useState(() => ({
     pathname: window.location.pathname,
     search: window.location.search,
@@ -214,4 +215,13 @@ export default function App() {
       {!isDashboard && !isSignIn && <Footer />}
     </div>
   );
+}
+
+export default function App() {
+  const isAdminApp = APP_MODE === "admin"
+    || window.location.hostname.toLowerCase().includes("admin")
+    || window.location.pathname === "/admin"
+    || window.location.pathname.startsWith("/admin/");
+
+  return isAdminApp ? <AdminApp /> : <ClientApp />;
 }

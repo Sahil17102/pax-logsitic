@@ -251,6 +251,20 @@ export default function DashboardPage() {
   const accountMenuRef = useRef(null);
 
   useEffect(() => {
+    const syncShipments = (event) => {
+      if (event.type === "storage" && event.key !== SHIPMENTS_KEY) return;
+      const next = event.detail || readShipments();
+      if (Array.isArray(next)) setShipments(next);
+    };
+    window.addEventListener("storage", syncShipments);
+    window.addEventListener("pax:shipments-updated", syncShipments);
+    return () => {
+      window.removeEventListener("storage", syncShipments);
+      window.removeEventListener("pax:shipments-updated", syncShipments);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!notificationsOpen && !walletMenuOpen && !accountMenuOpen) return undefined;
 
     const closeMenusOutside = (event) => {

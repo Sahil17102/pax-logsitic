@@ -323,16 +323,148 @@ export default function SignInPage() {
               from one dependable workspace.
             </p>
             <div
-              className="auth-visual auth-logistics-motion"
+              className="auth-visual auth-cinematic-delivery"
               role="img"
-              aria-label="Animated Pax delivery route from pickup through the Hyderabad hub to the customer"
+              aria-label="Animated Pax courier leaving a Hyderabad logistics hub for a city delivery"
             >
-              <div className="motion-scene-grid" aria-hidden="true"></div>
-              <div className="motion-scene-orb motion-scene-orb-one" aria-hidden="true"></div>
-              <div className="motion-scene-orb motion-scene-orb-two" aria-hidden="true"></div>
-              <div className="motion-scene-head">
-                <span><i></i> Live operations</span>
-                <b>38 ACTIVE SHIPMENTS</b>
+              <div className="cinematic-aurora" aria-hidden="true"></div>
+              <div className="cinematic-scene-head">
+                <span><i></i> Live city delivery</span>
+                <b>HYD <em>•</em> 08:42 PM</b>
+              </div>
+              <svg
+                className="cinematic-world"
+                viewBox="0 20 640 245"
+                preserveAspectRatio="xMidYMid slice"
+                aria-hidden="true"
+              >
+                <defs>
+                  <linearGradient id="cinematicSky" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#06142e" />
+                    <stop offset="52%" stopColor="#173b76" />
+                    <stop offset="100%" stopColor="#7b76b7" />
+                  </linearGradient>
+                  <linearGradient id="cinematicGround" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#163f4b" />
+                    <stop offset="100%" stopColor="#092b3d" />
+                  </linearGradient>
+                  <linearGradient id="cinematicHub" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#edf5ff" />
+                    <stop offset="100%" stopColor="#aec4ed" />
+                  </linearGradient>
+                  <linearGradient id="cinematicVan" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#ffffff" />
+                    <stop offset="100%" stopColor="#d9e7ff" />
+                  </linearGradient>
+                  <radialGradient id="cinematicMoon">
+                    <stop offset="0%" stopColor="#fff7dc" />
+                    <stop offset="72%" stopColor="#ffd891" />
+                    <stop offset="100%" stopColor="#ffb963" stopOpacity="0" />
+                  </radialGradient>
+                  <filter id="cinematicGlow" x="-80%" y="-80%" width="260%" height="260%">
+                    <feGaussianBlur stdDeviation="5" result="blur" />
+                    <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                  </filter>
+                  <filter id="cinematicShadow" x="-50%" y="-50%" width="200%" height="220%">
+                    <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#020817" floodOpacity=".5" />
+                  </filter>
+                </defs>
+
+                <rect width="640" height="285" fill="url(#cinematicSky)" />
+                <circle className="cinematic-moon-halo" cx="525" cy="66" r="54" fill="url(#cinematicMoon)" />
+                <circle className="cinematic-star cinematic-star-one" cx="426" cy="52" r="1.8" />
+                <circle className="cinematic-star cinematic-star-two" cx="462" cy="83" r="1.4" />
+                <circle className="cinematic-star cinematic-star-three" cx="578" cy="39" r="1.6" />
+                <circle className="cinematic-star cinematic-star-four" cx="354" cy="70" r="1.2" />
+
+                <g className="cinematic-skyline cinematic-skyline--far">
+                  <path d="M0 172V133H31V111H57V145H84V94H111V128H139V105H165V172Z" />
+                  <path d="M385 172V125H410V99H437V141H462V80H494V116H522V92H548V135H578V103H608V126H640V172Z" />
+                </g>
+                <g className="cinematic-city-windows">
+                  <path d="M92 109h5v6h-5zm0 13h5v6h-5zm398-28h5v7h-5zm0 15h5v7h-5zm96 7h5v7h-5zm13 0h5v7h-5z" />
+                </g>
+
+                <path d="M0 166C130 146 221 176 339 159C455 142 541 149 640 133V285H0Z" fill="url(#cinematicGround)" />
+                <path className="cinematic-ground-grid" d="M0 204H640M0 244H640M86 166L18 285M174 160L135 285M270 160L253 285M371 155L389 285M472 148L523 285M561 141L632 266" />
+
+                <path className="cinematic-road-shadow" d="M-70 292C130 238 248 266 375 218C484 177 566 180 701 137" />
+                <path className="cinematic-road" d="M-70 285C130 231 248 259 375 211C484 170 566 173 701 130" />
+                <path className="cinematic-road-edge" d="M-70 263C132 208 247 238 368 192C481 149 560 153 697 109" />
+                <path className="cinematic-road-edge cinematic-road-edge--lower" d="M-65 307C128 256 253 281 382 231C489 190 574 193 705 151" />
+                <path className="cinematic-road-lane" d="M-70 285C130 231 248 259 375 211C484 170 566 173 701 130" />
+
+                <g className="cinematic-hub" filter="url(#cinematicShadow)">
+                  <path className="cinematic-hub-side" d="M39 112L79 87V195L39 213Z" />
+                  <path className="cinematic-hub-front" d="M79 87H205V195H79Z" fill="url(#cinematicHub)" />
+                  <path className="cinematic-hub-roof" d="M61 76H196L217 92H79Z" />
+                  <path className="cinematic-hub-trim" d="M79 92H205V107H79Z" />
+                  <path className="cinematic-bay" d="M102 126H164V195H102Z" />
+                  <path className="cinematic-bay-lines" d="M106 136H160M106 148H160M106 160H160M106 172H160" />
+                  <rect className="cinematic-hub-window" x="174" y="126" width="20" height="26" rx="2" />
+                  <text className="cinematic-hub-logo" x="115" y="103">PAX</text>
+                  <text className="cinematic-hub-label" x="142" y="103">HYD HUB</text>
+                  <ellipse className="cinematic-loader-glow" cx="133" cy="192" rx="44" ry="10" />
+                </g>
+
+                <g className="cinematic-parcel cinematic-parcel--one">
+                  <path d="M0 5L10 0L20 5L10 11Z" />
+                  <path d="M0 5L10 11V22L0 16Z" />
+                  <path d="M20 5L10 11V22L20 16Z" />
+                </g>
+                <g className="cinematic-parcel cinematic-parcel--two">
+                  <path d="M0 5L10 0L20 5L10 11Z" />
+                  <path d="M0 5L10 11V22L0 16Z" />
+                  <path d="M20 5L10 11V22L20 16Z" />
+                </g>
+
+                <g className="cinematic-destination" filter="url(#cinematicShadow)">
+                  <path className="cinematic-tower-side" d="M536 107L557 96V181L536 190Z" />
+                  <path className="cinematic-tower-front" d="M557 96H603V181H557Z" />
+                  <path className="cinematic-tower-roof" d="M549 90H596L609 98H557Z" />
+                  <path className="cinematic-tower-windows" d="M566 111h10v11h-10zm18 0h10v11h-10zm-18 20h10v11h-10zm18 0h10v11h-10zm-18 20h10v11h-10z" />
+                  <circle className="cinematic-beacon-wave cinematic-beacon-wave--one" cx="580" cy="84" r="20" />
+                  <circle className="cinematic-beacon-wave cinematic-beacon-wave--two" cx="580" cy="84" r="12" />
+                  <path className="cinematic-pin" d="M580 68C571 68 565 74 565 82C565 94 580 105 580 105S595 94 595 82C595 74 589 68 580 68Z" />
+                  <circle className="cinematic-pin-core" cx="580" cy="82" r="4" />
+                  <text className="cinematic-destination-label" x="579" y="201" textAnchor="middle">JUBILEE HILLS</text>
+                </g>
+
+                <g className="cinematic-tree" transform="translate(504 163)">
+                  <path d="M9 23V42" /><circle cx="9" cy="13" r="13" /><circle cx="0" cy="20" r="10" /><circle cx="18" cy="21" r="10" />
+                </g>
+                <g className="cinematic-tree cinematic-tree--small" transform="translate(235 176)">
+                  <path d="M9 23V42" /><circle cx="9" cy="13" r="13" /><circle cx="0" cy="20" r="10" /><circle cx="18" cy="21" r="10" />
+                </g>
+
+                <g className="cinematic-van" filter="url(#cinematicShadow)">
+                  <animateMotion
+                    dur="7.2s"
+                    repeatCount="indefinite"
+                    rotate="auto"
+                    path="M126 242 C245 259 319 232 390 204 C468 173 535 169 611 143"
+                  />
+                  <ellipse className="cinematic-van-shadow" cx="0" cy="18" rx="35" ry="8" />
+                  <path className="cinematic-van-body" d="M-38 -18H11V16H-38Z" fill="url(#cinematicVan)" />
+                  <path className="cinematic-van-cab" d="M11 -12H27L39 1V16H11Z" fill="url(#cinematicVan)" />
+                  <path className="cinematic-van-window" d="M16 -8H25L33 1H16Z" />
+                  <path className="cinematic-van-stripe" d="M-38 5H39V11H-38Z" />
+                  <circle className="cinematic-van-wheel" cx="-24" cy="17" r="7" />
+                  <circle className="cinematic-van-wheel" cx="26" cy="17" r="7" />
+                  <circle className="cinematic-van-hubcap" cx="-24" cy="17" r="2.5" />
+                  <circle className="cinematic-van-hubcap" cx="26" cy="17" r="2.5" />
+                  <text className="cinematic-van-mark" x="-27" y="0">PAX</text>
+                  <circle className="cinematic-headlight" cx="38" cy="8" r="3" />
+                  <path className="cinematic-headlight-beam" d="M41 5L86 -7V20L41 11Z" />
+                </g>
+              </svg>
+              <div className="cinematic-dispatch-chip">
+                <span className="cinematic-dispatch-icon" aria-hidden="true"><i></i></span>
+                <div>
+                  <small>OUT FOR DELIVERY</small>
+                  <strong>6 stops remaining</strong>
+                </div>
+                <b>LIVE <i></i></b>
               </div>
               <svg className="motion-route-map" viewBox="0 0 640 260" aria-hidden="true">
                 <defs>
