@@ -54,6 +54,7 @@ POST  /api/admin/auth/login
 GET   /api/admin/dashboard
 PATCH /api/admin/shipments/:id/status
 PATCH /api/admin/shipments/:id
+POST  /api/admin/shipments/:id/cancel
 PUT   /api/admin/configuration
 PATCH /api/admin/customers/:id/access
 GET   /api/client/bootstrap
@@ -63,6 +64,7 @@ POST  /api/client/auth/otp/request
 POST  /api/client/auth/otp/verify
 POST  /api/client/shipments
 PATCH /api/client/shipments/:id
+POST  /api/client/shipments/:id/cancel
 GET   /api/client/serviceability/:pincode
 GET   /api/admin/serviceability/:pincode
 GET   /api/client/heavy-serviceability/:pincode
@@ -147,6 +149,10 @@ Shipment editing is available through authenticated customer and admin `PATCH /a
 
 Forward COD/Prepaid and REPL shipments can be edited only in Manifested, In Transit or Pending state; reverse Pickup shipments can be edited only in Scheduled/Pickup scheduled state. Dispatched and terminal shipments are blocked. Payment conversion is restricted to COD to Prepaid or Prepaid to COD, and the latter requires `cod`/`codAmount`. The backend reserves an independent 11,000-request window below Delhivery's 12,200-request limit. Local shipment data and audit activity are changed only after Delhivery accepts the update; provider rejection leaves local data untouched. The supplied B2C edit contract does not cover Heavy shipments, so Pax rejects those rather than guessing a provider contract.
 
+Shipment cancellation uses authenticated `POST /api/*/shipments/:id/cancel` routes with `{ "waybill": "...", "cancellation": "true" }`. The waybill is checked against the persisted Pax shipment and the provider receives the exact `{ waybill, cancellation: "true" }` JSON on `/api/p/edit`. Forward COD/Prepaid and REPL cancellations are limited to Manifested, In Transit or Pending; Pickup cancellation is limited to Scheduled/Pickup scheduled. The edit and cancellation calls share the same 11,000-request process window because Delhivery serves both contracts from the same rate-limited endpoint.
+
+Accepted cancellation outcomes mirror Delhivery's lifecycle instead of always marking an order Canceled: Manifested remains Manifested with `statusType: "UD"`; In Transit/Pending becomes In transit with `statusType: "RT"`; Scheduled Pickup becomes Canceled with `statusType: "CN"`. Pax records the accepted waybill and timestamp only after provider success and blocks repeat cancellation or later editing of that waybill. An MPS cancellation targets one explicit box waybill; `cancellationState` becomes `Accepted` and the aggregate status changes only after every box has been accepted, preventing one child cancellation from incorrectly canceling the entire order.
+
 The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
 
 ```bash
@@ -154,9 +160,9 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Manifested/In Transit/Scheduled cancellation outcomes, duplicate cancellation protection, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
 
-Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, cancellation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 
 ## Database seeds
 

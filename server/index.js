@@ -390,7 +390,20 @@ function ensureShipmentEditAllowed(shipment) {
   }
 }
 
-function editTargetWaybill(shipment, requestedWaybill) {
+function ensureShipmentCancellationAllowed(shipment) {
+  const status = String(shipment.status || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  const allowed = shipment.payment === "Pickup"
+    ? new Set(["scheduled", "pickup scheduled"])
+    : new Set(["manifested", "in transit", "pending"]);
+  if (!allowed.has(status)) {
+    throw new DelhiveryError(`Shipment cannot be cancelled while its status is ${shipment.status || "unknown"}.`, {
+      code: "SHIPMENT_CANCELLATION_NOT_ALLOWED",
+      status: 409,
+    });
+  }
+}
+
+function shipmentActionWaybill(shipment, requestedWaybill, action = "edited") {
   const available = Array.isArray(shipment.waybills) && shipment.waybills.length
     ? shipment.waybills.map(String)
     : [String(shipment.waybill || "")].filter(Boolean);
@@ -399,7 +412,10 @@ function editTargetWaybill(shipment, requestedWaybill) {
     throw new DelhiveryError("The requested waybill does not belong to this shipment.", { code: "SHIPMENT_WAYBILL_MISMATCH", status: 400 });
   }
   if (!requested && available.length > 1) {
-    throw new DelhiveryError("Select the MPS box waybill that needs to be edited.", { code: "MPS_EDIT_WAYBILL_REQUIRED", status: 400 });
+    throw new DelhiveryError(`Select the MPS box waybill that needs to be ${action}.`, {
+      code: action === "cancelled" ? "MPS_CANCELLATION_WAYBILL_REQUIRED" : "MPS_EDIT_WAYBILL_REQUIRED",
+      status: 400,
+    });
   }
   return requested || available[0];
 }
@@ -426,6 +442,35 @@ function applyShipmentEdit(shipment, edit, providerResult) {
   if (edit.codAmount !== undefined) shipment.codAmount = Number(edit.codAmount);
   shipment.lastEditedAt = new Date().toISOString();
   shipment.lastEditedWaybill = providerResult.waybill;
+}
+
+function applyShipmentCancellation(shipment, providerResult) {
+  const acceptedAt = new Date().toISOString();
+  const waybill = providerResult.waybill;
+  const statusBeforeCancellation = shipment.status;
+  const normalizedStatus = String(statusBeforeCancellation || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  const outcome = shipment.payment === "Pickup"
+    ? { status: "Canceled", statusType: "CN" }
+    : normalizedStatus === "manifested"
+      ? { status: "Manifested", statusType: "UD" }
+      : { status: "In transit", statusType: "RT" };
+  const packageCancellations = Array.isArray(shipment.packageCancellations) ? shipment.packageCancellations : [];
+  packageCancellations.push({ waybill, acceptedAt, statusBeforeCancellation, ...outcome });
+  shipment.packageCancellations = packageCancellations;
+  shipment.canceledWaybills = [...new Set([...(Array.isArray(shipment.canceledWaybills) ? shipment.canceledWaybills : []), waybill])];
+  const allWaybills = Array.isArray(shipment.waybills) && shipment.waybills.length
+    ? shipment.waybills.map(String)
+    : [String(shipment.waybill || "")].filter(Boolean);
+  const fullyCancelled = allWaybills.every((item) => shipment.canceledWaybills.includes(item));
+  shipment.cancellationState = fullyCancelled ? "Accepted" : "Partially accepted";
+  shipment.lastCancellationAcceptedAt = acceptedAt;
+  shipment.lastCancelledWaybill = waybill;
+  if (fullyCancelled) {
+    shipment.status = outcome.status;
+    shipment.providerStatus = outcome.status;
+    shipment.statusType = outcome.statusType;
+    shipment.cancelledAt = acceptedAt;
+  }
 }
 
 function findUserByIdentifier(state, value) {
@@ -604,7 +649,10 @@ async function handleShipmentEdit(request, response) {
   }
   ensureShipmentEditAllowed(shipment);
   const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
-  const waybill = editTargetWaybill(shipment, body.waybill);
+  const waybill = shipmentActionWaybill(shipment, body.waybill);
+  if (Array.isArray(shipment.canceledWaybills) && shipment.canceledWaybills.includes(waybill)) {
+    throw new DelhiveryError("A cancelled waybill cannot be edited.", { code: "SHIPMENT_ALREADY_CANCELLED", status: 409 });
+  }
   const edit = normalizeShipmentEdit(body, shipment, waybill);
   const providerResult = await delhivery.editShipment(edit);
   applyShipmentEdit(shipment, edit, providerResult);
@@ -621,6 +669,46 @@ async function handleShipmentEdit(request, response) {
 
 app.patch("/api/admin/shipments/:id", requireRole("admin"), handleShipmentEdit);
 app.patch("/api/client/shipments/:id", requireRole("customer"), handleShipmentEdit);
+
+async function handleShipmentCancellation(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const unsupported = Object.keys(body).filter((key) => !["waybill", "cancellation"].includes(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported shipment cancellation field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_CANCELLATION_FIELD", status: 400 });
+  }
+  if (!(body.cancellation === true || String(body.cancellation || "").trim().toLowerCase() === "true")) {
+    throw new DelhiveryError("cancellation must be passed as true.", { code: "INVALID_CANCELLATION_REQUEST", status: 400 });
+  }
+  const waybill = shipmentActionWaybill(shipment, body.waybill, "cancelled");
+  if (Array.isArray(shipment.canceledWaybills) && shipment.canceledWaybills.includes(waybill)) {
+    throw new DelhiveryError("This waybill has already been cancelled.", { code: "SHIPMENT_ALREADY_CANCELLED", status: 409 });
+  }
+  ensureShipmentCancellationAllowed(shipment);
+  const providerResult = await delhivery.cancelShipment({ waybill });
+  applyShipmentCancellation(shipment, providerResult);
+  state.activities.unshift({
+    title: `${shipment.id} cancellation accepted`,
+    detail: `Delhivery waybill ${providerResult.waybill} · ${shipment.statusType || "partial MPS"}`,
+    tone: "blue",
+    createdAt: shipment.lastCancellationAcceptedAt,
+  });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "shipment.cancelled");
+  response.json({ data: shipment, provider: providerResult });
+}
+
+app.post("/api/admin/shipments/:id/cancel", requireRole("admin"), handleShipmentCancellation);
+app.post("/api/client/shipments/:id/cancel", requireRole("customer"), handleShipmentCancellation);
 
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();

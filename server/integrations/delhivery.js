@@ -341,6 +341,24 @@ export function normalizeDelhiveryShipmentEdit(payload, waybill) {
   return { provider: "delhivery", updated: true, waybill, remark };
 }
 
+export function buildDelhiveryShipmentCancellationPayload(input = {}) {
+  const waybill = String(input.waybill || "").trim();
+  if (!/^\d{8,20}$/.test(waybill)) {
+    throw new DelhiveryError("A valid waybill is required to cancel a shipment.", { code: "INVALID_WAYBILL", status: 400 });
+  }
+  return { waybill, cancellation: "true" };
+}
+
+export function normalizeDelhiveryShipmentCancellation(payload, waybill) {
+  try {
+    const normalized = normalizeDelhiveryShipmentEdit(payload, waybill);
+    return { provider: normalized.provider, cancelled: true, waybill, remark: normalized.remark };
+  } catch (error) {
+    if (!(error instanceof DelhiveryError) || error.code !== "DELHIVERY_EDIT_REJECTED") throw error;
+    throw new DelhiveryError(error.message, { code: "DELHIVERY_CANCELLATION_REJECTED", status: error.status, cause: error });
+  }
+}
+
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
   const deliveryCodes = Array.isArray(payload?.delivery_codes) ? payload.delivery_codes : [];
   const wrapper = deliveryCodes[0];
@@ -825,6 +843,18 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryShipmentEdit(payload, edit.waybill);
   }
 
+  async function cancelShipment(input) {
+    ensureConfigured();
+    const cancellation = buildDelhiveryShipmentCancellationPayload(input);
+    const endpoint = new URL(editPath, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "shipment-edit", editRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cancellation),
+    });
+    return normalizeDelhiveryShipmentCancellation(payload, cancellation.waybill);
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -905,5 +935,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     fetchSingleWaybill,
     createShipment,
     editShipment,
+    cancelShipment,
   };
 }

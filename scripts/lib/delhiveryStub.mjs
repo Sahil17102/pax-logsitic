@@ -11,6 +11,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
   let manifestSequence = 0;
   const manifestedOrders = new Set();
   const manifestedWaybills = new Set();
+  const cancelledWaybills = new Set();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
@@ -46,6 +47,19 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         && (!Array.isArray(edit.phone) || !edit.phone.length || edit.phone.some((phone) => !/^\d{10}$/.test(String(phone))));
       if (!/^\d{8,20}$/.test(String(edit.waybill || "")) || !manifestedWaybills.has(String(edit.waybill))) {
         response.end(JSON.stringify({ status: false, message: "No such waybill found" }));
+        return;
+      }
+      if (edit.cancellation !== undefined) {
+        if (edit.cancellation !== "true" || Object.keys(edit).some((key) => !["waybill", "cancellation"].includes(key))) {
+          response.end(JSON.stringify({ status: false, message: "Invalid cancellation payload" }));
+          return;
+        }
+        if (cancelledWaybills.has(String(edit.waybill))) {
+          response.end(JSON.stringify({ status: false, message: "Shipment is already cancelled" }));
+          return;
+        }
+        cancelledWaybills.add(String(edit.waybill));
+        response.end(JSON.stringify({ status: true, message: "Shipment cancellation accepted", waybill: String(edit.waybill) }));
         return;
       }
       if (!editableKeys.some((key) => edit[key] !== undefined) || invalidPhone || (edit.pt !== undefined && !["COD", "Pre-paid"].includes(edit.pt))) {
