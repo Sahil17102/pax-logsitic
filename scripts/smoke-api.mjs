@@ -70,6 +70,7 @@ try {
   });
   const before = await request("/api/client/bootstrap", { headers: authorization });
   const serviceability = await request("/api/client/serviceability/194103", { headers: authorization });
+  const heavyServiceability = await request("/api/client/heavy-serviceability/400086", { headers: authorization });
   const created = await request("/api/client/shipments", {
     method: "POST",
     headers: { ...authorization, "Content-Type": "application/json" },
@@ -78,8 +79,9 @@ try {
       phone: "9123456789",
       address: "Delivery address",
       city: "Pune",
-      pincode: "411001",
+      pincode: "400086",
       weight: 2.5,
+      productType: "Heavy",
       payment: "COD",
       amount: 750,
     }),
@@ -121,6 +123,8 @@ try {
   assert.equal(before.data.shipments.length, 0);
   assert.equal(serviceability.data.serviceable, true);
   assert.equal(serviceability.data.cod, true);
+  assert.equal(heavyServiceability.data.productType, "Heavy");
+  assert.equal(heavyServiceability.data.serviceable, true);
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
@@ -147,6 +151,7 @@ try {
     secondCustomerShipments: secondBootstrap.data.shipments.length,
     publicTrackingIsPrivate: !Object.hasOwn(tracked.data, "ownerEmail"),
     delhiveryServiceable: serviceability.data.serviceable,
+    delhiveryHeavyServiceable: heavyServiceability.data.serviceable,
   }));
 } finally {
   server.kill();

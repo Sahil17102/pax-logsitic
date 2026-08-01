@@ -52,6 +52,36 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Empty Delhivery list is NSZ', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "});"] } }]
     },
     {
+      "name": "Heavy serviceable pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/heavy-serviceability/400086" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Heavy payment modes are normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.status).to.eql('serviceable');", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Heavy NSZ pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/heavy-serviceability/999998" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Heavy NSZ is not serviceable', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Block Heavy order for NSZ pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Blocked Heavy Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Heavy NSZ address\",\n  \"city\": \"Unknown\",\n  \"pincode\": \"999998\",\n  \"weight\": 50,\n  \"productType\": \"Heavy\",\n  \"payment\": \"Prepaid\",\n  \"amount\": 1000\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Heavy NSZ order is rejected before creation', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('PINCODE_NOT_SERVICEABLE');", "});"] } }]
+    },
+    {
+      "name": "Create Heavy order for serviceable pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Heavy Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Heavy serviceable address\",\n  \"city\": \"Mumbai\",\n  \"pincode\": \"400086\",\n  \"weight\": 50,\n  \"productType\": \"Heavy\",\n  \"payment\": \"COD\",\n  \"amount\": 1000\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable Heavy order is created', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.pincode).to.eql('400086');", "});"] } }]
+    },
+    {
       "name": "Block order for NSZ pincode",
       "request": {
         "method": "POST",
@@ -85,6 +115,11 @@
       "name": "Admin serviceability",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/serviceability/500029" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives live normalized coverage', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "  pm.expect(data.cod).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Admin Heavy serviceability",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/heavy-serviceability/400086" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives Heavy payment modes', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
     }
   ],
   "variable": [

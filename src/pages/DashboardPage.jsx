@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientShipment, getClientBootstrap, getClientServiceability, logoutClient } from "../services/clientApi.js";
+import { createClientShipment, getClientBootstrap, getClientHeavyServiceability, getClientServiceability, logoutClient } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -297,11 +297,12 @@ export default function DashboardPage() {
   const [weightForm, setWeightForm] = useState({ actual: "2.5", length: "40", width: "30", height: "25", divisor: "5000" });
   const [weightResult, setWeightResult] = useState(null);
   const [servicePin, setServicePin] = useState("560001");
+  const [serviceProductType, setServiceProductType] = useState("Parcel");
   const [serviceResult, setServiceResult] = useState(null);
   const [labelShipmentId, setLabelShipmentId] = useState(() => shipments[0]?.id || "");
   const [generatedLabel, setGeneratedLabel] = useState(null);
   const [newShipment, setNewShipment] = useState({
-    customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "",
+    customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", productType: "Parcel", amount: "",
   });
   const notificationMenuRef = useRef(null);
   const walletMenuRef = useRef(null);
@@ -475,7 +476,7 @@ export default function DashboardPage() {
       setShipments(next);
       localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
       setShipmentModal(false);
-      setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "" });
+      setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", productType: "Parcel", amount: "" });
       notify(`${shipment.id} saved. Delhivery serviceability is confirmed; courier booking is pending.`);
     } catch (error) {
       notify(error.message || "Shipment could not be created.");
@@ -543,7 +544,9 @@ export default function DashboardPage() {
       return;
     }
     try {
-      const result = await getClientServiceability(pin);
+      const result = serviceProductType === "Heavy"
+        ? await getClientHeavyServiceability(pin)
+        : await getClientServiceability(pin);
       setServiceResult({
         ...result,
         pin,
@@ -1002,7 +1005,7 @@ export default function DashboardPage() {
       <section className="portal-tool-layout">
         <form className="portal-card portal-tool-form pincode-tool-form" onSubmit={checkServiceability}>
           <div className="portal-card-head"><div><small>DESTINATION CHECK</small><h2>Where are you shipping?</h2></div><span className="tool-live-badge">India</span></div>
-          <div className="portal-tool-fields"><label>Delivery PIN code<input value={servicePin} onChange={(event) => setServicePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="560001" /></label></div>
+          <div className="portal-tool-fields"><label>Product type<select value={serviceProductType} onChange={(event) => { setServiceProductType(event.target.value); setServiceResult(null); }}><option>Parcel</option><option>Heavy</option></select></label><label>Delivery PIN code<input value={servicePin} onChange={(event) => setServicePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="560001" /></label></div>
           <button className="portal-primary portal-tool-submit" type="submit"><Icon name="search" /> Check serviceability</button>
         </form>
         <article className="portal-card portal-tool-result" aria-live="polite">
@@ -1371,6 +1374,7 @@ export default function DashboardPage() {
               <label>City *<input value={newShipment.city} onChange={(event) => setNewShipment({ ...newShipment, city: event.target.value })} placeholder="Destination city" /></label>
               <label>PIN code *<input value={newShipment.pincode} onChange={(event) => setNewShipment({ ...newShipment, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="6-digit PIN" /></label>
               <label>Weight (kg)<input value={newShipment.weight} onChange={(event) => setNewShipment({ ...newShipment, weight: event.target.value })} type="number" min=".1" step=".1" /></label>
+              <label>Product type<select value={newShipment.productType} onChange={(event) => setNewShipment({ ...newShipment, productType: event.target.value })}><option>Parcel</option><option>Heavy</option></select></label>
               <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
             </div>

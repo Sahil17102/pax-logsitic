@@ -17,6 +17,22 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ detail: "Invalid token" }));
       return;
     }
+    if (request.method === "GET" && url.pathname === "/api/dc/fetch/serviceability/pincode") {
+      const pincode = url.searchParams.get("pincode");
+      if (url.searchParams.get("product_type") !== "Heavy") {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ message: "product_type must be Heavy" }));
+        return;
+      }
+      if (pincode === "400086") {
+        response.end(JSON.stringify({
+          data: [{ pincode: 400086, product_type: "Heavy", payment_type: ["Pre-paid", "COD"], serviceability: "Serviceable", city: "Mumbai", state_code: "MH" }],
+        }));
+        return;
+      }
+      response.end(JSON.stringify({ pincode: Number(pincode), product_type: "Heavy", payment_type: "NSZ", serviceability: "NSZ" }));
+      return;
+    }
     if (request.method !== "GET" || url.pathname !== "/c/api/pin-codes/json/") {
       response.statusCode = 404;
       response.end(JSON.stringify({ detail: "Not found" }));

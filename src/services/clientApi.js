@@ -78,6 +78,10 @@ export async function getClientServiceability(pincode) {
   return unwrapApiData(await request(`/api/client/serviceability/${encodeURIComponent(pincode)}`));
 }
 
+export async function getClientHeavyServiceability(pincode) {
+  return unwrapApiData(await request(`/api/client/heavy-serviceability/${encodeURIComponent(pincode)}`));
+}
+
 export async function getClientBootstrap() {
   return normalizeClientBootstrap(await request("/api/client/bootstrap"));
 }

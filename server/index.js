@@ -266,8 +266,15 @@ async function handleServiceability(request, response) {
   response.json({ data });
 }
 
+async function handleHeavyServiceability(request, response) {
+  const data = await delhivery.checkHeavyServiceability(request.params.pincode);
+  response.json({ data });
+}
+
 app.get("/api/admin/serviceability/:pincode", requireRole("admin"), handleServiceability);
 app.get("/api/client/serviceability/:pincode", requireRole("customer"), handleServiceability);
+app.get("/api/admin/heavy-serviceability/:pincode", requireRole("admin"), handleHeavyServiceability);
+app.get("/api/client/heavy-serviceability/:pincode", requireRole("customer"), handleHeavyServiceability);
 
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();
@@ -378,10 +385,17 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
   const city = String(body.city || "").trim();
   const pincode = String(body.pincode || "").trim();
   const weight = Number(body.weight);
+  const requestedProductType = String(body.productType || body.product_type || "Parcel").trim().toLowerCase();
+  if (!["parcel", "heavy"].includes(requestedProductType)) {
+    return response.status(400).json({ message: "Product type must be Parcel or Heavy." });
+  }
+  const productType = requestedProductType === "heavy" ? "Heavy" : "Parcel";
   if (!customer || !/^\d{10}$/.test(phone) || !address || !city || !/^[1-9]\d{5}$/.test(pincode) || !Number.isFinite(weight) || weight <= 0) {
     return response.status(400).json({ message: "Valid receiver, phone, address, PIN code and parcel weight are required." });
   }
-  const serviceability = await delhivery.checkServiceability(pincode);
+  const serviceability = productType === "Heavy"
+    ? await delhivery.checkHeavyServiceability(pincode)
+    : await delhivery.checkServiceability(pincode);
   if (!serviceability.serviceable) {
     const reason = serviceability.embargoed ? "temporarily embargoed" : "not serviceable";
     return response.status(422).json({
@@ -408,6 +422,7 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
     weight,
     amount: Number(body.amount) || 0,
     payment,
+    productType,
     courier: "Delhivery",
     serviceabilityCheckedAt: new Date().toISOString(),
     ownerEmail: request.session.subject,
