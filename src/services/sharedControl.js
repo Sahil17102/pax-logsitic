@@ -28,16 +28,14 @@ export function readControlState() {
 
 export function writeControlState(nextState) {
   const next = { ...nextState, revision: Number(nextState.revision || 0) + 1, updatedAt: new Date().toISOString() };
+  return cacheControlState(next);
+}
+
+export function cacheControlState(nextState) {
+  const next = { ...cloneDefaults(), ...nextState };
   localStorage.setItem(CONTROL_KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent(CONTROL_EVENT, { detail: next }));
   return next;
-}
-
-export async function fetchClientBootstrap(signal) {
-  const response = await fetch(`${API_BASE_URL}/api/client/bootstrap`, { signal, headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`Client bootstrap failed (${response.status})`);
-  const payload = await response.json();
-  return payload.data || payload;
 }
 
 export function subscribeToLocalControl(handler) {

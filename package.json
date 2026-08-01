@@ -10,7 +10,8 @@
     "build": "vite build && node scripts/prepare-spa-routes.mjs",
     "preview": "vite preview",
     "start": "node server/index.js",
-    "start:api": "node server/index.js"
+    "start:api": "node server/index.js",
+    "test:api": "node scripts/smoke-api.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",

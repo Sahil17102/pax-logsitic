@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { loginClient, registerClient } from "../services/clientApi.js";
+import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
@@ -49,7 +50,7 @@ const defaultSignup = {
 
 export default function SignInPage() {
   const [mode, setMode] = useState("login");
-  const [loginMethod, setLoginMethod] = useState("otp");
+  const [loginMethod, setLoginMethod] = useState("password");
   const [loginId, setLoginId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginOtp, setLoginOtp] = useState("");
@@ -175,38 +176,30 @@ export default function SignInPage() {
     }
 
     const savedUser = findLoginUser();
-
     try {
       const apiUser = await loginClient(loginId.trim().toLowerCase(), loginPassword, remember);
       saveSession({ ...apiUser, authVersion: 2 }, remember);
       goTo("/dashboard");
-      return;
     } catch (apiError) {
-      if (!savedUser) {
+      const canMigrateLegacyAccount = apiError.status === 401
+        && savedUser
+        && !savedUser.disabled
+        && savedUser.password === loginPassword;
+      if (!canMigrateLegacyAccount) {
         setLoginError(apiError.message);
         return;
       }
+      try {
+        const apiUser = await registerClient({ ...savedUser, password: loginPassword }, remember);
+        const migratedUser = { ...savedUser, ...apiUser, authVersion: 2 };
+        const { password, ...safeMigratedUser } = migratedUser;
+        localStorage.setItem(USERS_KEY, JSON.stringify(getSavedUsers().map((user) => user.email?.toLowerCase() === safeMigratedUser.email?.toLowerCase() ? safeMigratedUser : user)));
+        saveSession(safeMigratedUser, remember);
+        goTo("/dashboard");
+      } catch (migrationError) {
+        setLoginError(migrationError.message || "Your existing account could not be connected to the live API.");
+      }
     }
-
-    if (!savedUser) {
-      setLoginError("No Pax account found with these details. Create an account first.");
-      return;
-    }
-    if (savedUser.disabled) {
-      setLoginError("This account has been disabled by the Pax administrator. Contact support for access.");
-      return;
-    }
-    if (!savedUser.password) {
-      setLoginError("This older preview account has no password. Please create your account again.");
-      return;
-    }
-    if (savedUser.password !== loginPassword) {
-      setLoginError("Incorrect password. Check it and try again.");
-      return;
-    }
-
-    saveSession(savedUser, remember);
-    goTo("/dashboard");
   };
 
   const updateSignup = (event) => {
@@ -285,14 +278,7 @@ export default function SignInPage() {
       }
     }
 
-    const users = getSavedUsers();
-    const duplicate = users.find(
-      (item) => item.email?.toLowerCase() === signup.email.trim().toLowerCase() || item.phone === signup.phone,
-    );
-    if (duplicate?.password) {
-      setSignupError("An account already exists with this email or mobile number. Please sign in.");
-      return;
-    }
+    const users = ENABLE_PREVIEW_MODE ? getSavedUsers() : [];
 
     const { confirmPassword, ...accountFields } = signup;
     const user = {
@@ -305,13 +291,17 @@ export default function SignInPage() {
     try {
       const apiUser = await registerClient(user);
       Object.assign(user, apiUser, { authVersion: 2 });
-    } catch {
-      // Preserve local preview signup when the shared API is unavailable.
+    } catch (error) {
+      setSignupError(error.message || "Your account could not be created.");
+      return;
     }
-    const upgradedUsers = users.filter(
-      (item) => item.email?.toLowerCase() !== user.email && item.phone !== user.phone,
-    );
-    localStorage.setItem(USERS_KEY, JSON.stringify([...upgradedUsers, user]));
+    if (ENABLE_PREVIEW_MODE) {
+      const { password, ...safePreviewUser } = user;
+      const upgradedUsers = users.filter(
+        (item) => item.email?.toLowerCase() !== user.email && item.phone !== user.phone,
+      );
+      localStorage.setItem(USERS_KEY, JSON.stringify([...upgradedUsers, safePreviewUser]));
+    }
     saveSession(user, true);
     goTo("/dashboard");
   };
@@ -583,7 +573,7 @@ export default function SignInPage() {
                 <p className="mini-label">Welcome to Pax</p>
                 <h2>Log in to your account.</h2>
                 <p className="auth-form-intro">Choose a secure login method and use your registered email address.</p>
-                <div className="login-method-tabs" role="tablist" aria-label="Login method">
+                {ENABLE_PREVIEW_MODE && <div className="login-method-tabs" role="tablist" aria-label="Login method">
                   <button
                     className={loginMethod === "otp" ? "is-active" : ""}
                     type="button"
@@ -602,7 +592,7 @@ export default function SignInPage() {
                   >
                     Email + Password
                   </button>
-                </div>
+                </div>}
 
                 {loginMethod === "otp" && loginCode ? (
                   <>

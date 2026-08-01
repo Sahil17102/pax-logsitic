@@ -1,26 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchClientBootstrap, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
-import { createClientShipment } from "../services/clientApi.js";
+import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
+import { createClientShipment, getClientBootstrap, logoutClient } from "../services/clientApi.js";
+import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
-const USERS_KEY = "pax-demo-users";
-const SHIPMENTS_KEY = "pax-demo-shipments";
-const NOTIFICATIONS_KEY = "pax-demo-notifications";
-const WALLET_KEY = "pax-demo-wallet-balance";
-
-const starterShipments = [
-  { id: "PAX-260731", customer: "Aarav Retail", destination: "Mumbai, MH", amount: 1240, payment: "Prepaid", status: "In transit", date: "31 Jul 2026" },
-  { id: "PAX-260728", customer: "Nila Studios", destination: "Bengaluru, KA", amount: 860, payment: "COD", status: "Out for delivery", date: "30 Jul 2026" },
-  { id: "PAX-260724", customer: "Kite Office", destination: "Pune, MH", amount: 590, payment: "Prepaid", status: "Delivered", date: "29 Jul 2026" },
-  { id: "PAX-260719", customer: "Rohan Mehta", destination: "Chennai, TN", amount: 1720, payment: "COD", status: "Pickup scheduled", date: "28 Jul 2026" },
-];
-
-const starterNotifications = [
-  { id: "shipment-moving", icon: "route", tone: "blue", title: "Shipment is out for delivery", detail: "PAX-260728 reached the Bengaluru delivery centre.", time: "8 min ago", section: "shipments", tool: "shipments-track", unread: true },
-  { id: "cod-ready", icon: "wallet", tone: "green", title: "COD settlement is ready", detail: "₹18,420 from 24 orders is available for remittance.", time: "32 min ago", section: "finance", tool: "finance-cod", unread: true },
-  { id: "sla-warning", icon: "alert", tone: "amber", title: "2 shipments need attention", detail: "The Hyderabad to Mumbai lane may breach its SLA.", time: "1 hr ago", section: "exceptions", tool: "exceptions-delayed", unread: true },
-  { id: "weekly-report", icon: "insights", tone: "purple", title: "Weekly report is available", detail: "Delivery success improved by 2.4% this week.", time: "Yesterday", section: "insights", tool: "insights-shipments", unread: false },
-];
+const USERS_KEY = "pax-cache-users-v1";
+const SHIPMENTS_KEY = "pax-cache-shipments-v1";
+const NOTIFICATIONS_KEY = "pax-cache-notifications-v1";
+const WALLET_KEY = "pax-cache-wallet-balance-v1";
 
 const navItems = [
   { id: "overview", icon: "home", label: "Overview", children: [
@@ -85,33 +72,33 @@ const navItems = [
 ];
 
 const featureDetails = {
-  "dashboard-performance": ["DELIVERY CONTROL", "Delivery Performance", "Review service success, delivery speed and destination health.", ["96.4% success rate", "2.8 day average", "3.6% RTO", "24 delivered today"]],
-  "dashboard-pickups": ["PICKUP CONTROL", "Pickup Schedule", "Plan today’s handovers and confirm what the courier desk will collect.", ["4 pickups today", "12 parcels ready", "Next run 2:30 PM", "1 address pending"]],
-  "shipments-create": ["NEW ORDER", "Create Shipment", "Add a receiver, parcel and payment mode to schedule a pickup.", ["Receiver details", "Delivery address", "Parcel weight", "Payment mode"]],
-  "shipments-track": ["LIVE MOVEMENT", "Track Shipment", "Search a Pax reference and review its latest movement milestone.", ["Booked", "Picked up", "In transit", "Out for delivery"]],
-  "shipments-pickups": ["PICKUP REQUESTS", "Pickup Requests", "Manage pending, scheduled and completed pickup handovers.", ["4 scheduled", "1 pending", "8 completed today", "0 missed"]],
-  "shipments-manifests": ["DISPATCH DOCUMENTS", "Manifests", "Create and download courier-wise shipment manifests.", ["Manifest PAX-M-731", "12 orders assigned", "2 couriers", "Last closed 4:20 PM"]],
-  "exceptions-rto": ["RETURN CONTROL", "RTO Shipments", "Review return-to-origin parcels and plan the reverse journey.", ["3 in return transit", "1 address issue", "₹2,450 value", "2 actions due"]],
-  "exceptions-delayed": ["DELAY MONITOR", "Delayed Shipments", "Find shipments beyond their expected movement milestone.", ["2 hub delays", "1 weather delay", "0 lost", "Oldest 18 hours"]],
-  "exceptions-weight": ["WEIGHT REVIEW", "Weight Disputes", "Compare declared and courier-measured parcel weight.", ["2 open disputes", "₹184 at risk", "1 accepted", "1 under review"]],
-  "finance-wallet": ["WALLET LEDGER", "Wallet Transactions", "Review credits, shipping debits, refunds and adjustments.", ["₹12,840 balance", "₹5,000 last recharge", "₹860 debited today", "₹240 refunded"]],
-  "finance-invoices": ["BILLING RECORDS", "Invoices", "Review, filter and download weekly shipping invoices.", ["3 recent invoices", "₹13,280 billed", "2 paid", "1 due"]],
-  "audits-cod": ["COD CONTROL", "COD Reconciliation", "Match collected COD against remittance and order records.", ["₹18,420 matched", "24 COD orders", "0 mismatches", "Next close 03 Aug"]],
-  "audits-billing": ["CHARGE REVIEW", "Billing Audit", "Review shipping charges, taxes and invoice-level adjustments.", ["42 orders checked", "₹184 adjustment", "2 recommendations", "92/100 health"]],
-  "utilities-rate": ["SHIPPING TOOL", "Rate Calculator", "Estimate indicative shipping charges for a route and parcel.", ["Pickup PIN", "Delivery PIN", "Chargeable weight", "Service speed"]],
-  "utilities-weight": ["SHIPPING TOOL", "Weight Calculator", "Compare actual and volumetric weight before booking.", ["Length × width × height", "Actual weight", "Volumetric divisor", "Chargeable result"]],
-  "utilities-pincode": ["SERVICEABILITY", "Pincode Serviceability", "Check whether a destination supports standard, express and COD.", ["Standard delivery", "Express delivery", "COD availability", "Expected timeline"]],
-  "utilities-labels": ["DOCUMENT TOOL", "Label Generator", "Prepare shipping labels for booked customer orders.", ["A6 shipping label", "Invoice copy", "Barcode", "Download PDF"]],
-  "insights-courier": ["COURIER ANALYTICS", "Courier Performance", "Compare delivery success, speed and RTO across courier partners.", ["Pax Express 97.2%", "Partner North 95.8%", "Partner South 94.9%", "Best SLA 2.1 days"]],
-  "insights-zones": ["ROUTE ANALYTICS", "Zone Analysis", "Understand shipment mix and cost by delivery zone.", ["Local 22%", "Regional 31%", "Metro 28%", "National 19%"]],
-  "insights-rto": ["RETURN ANALYTICS", "RTO Analytics", "Identify return patterns by city, payment and exception reason.", ["3.6% RTO", "COD 68% of RTO", "Top reason unavailable", "Down 0.8%"]],
-  "channels-connect": ["STORE CONNECTION", "Connect Store", "Connect a commerce channel and start importing orders.", ["Shopify", "WooCommerce", "Amazon", "CSV upload"]],
-  "channels-sync": ["ORDER AUTOMATION", "Order Sync", "Review imports, mapping rules and sync failures.", ["Last sync 6 mins ago", "36 orders imported", "2 skipped", "0 failed"]],
-  "workspace-pickups": ["ORIGIN SETTINGS", "Pickup Addresses", "Manage warehouses, offices and recurring pickup origins.", ["Himayat Nagar", "Kukatpally", "2 active origins", "Default origin set"]],
-  "workspace-team": ["ACCESS CONTROL", "Team & Roles", "Invite teammates and decide what each role can manage.", ["3 team members", "1 administrator", "2 operators", "0 pending invites"]],
-  "workspace-kyc": ["BUSINESS VERIFICATION", "KYC & Billing", "Review KYC, GST and billing identity for the workspace.", ["KYC verified", "GST active", "Billing address set", "PAN verified"]],
-  "support-history": ["SUPPORT RECORDS", "Ticket History", "Track open and resolved conversations with the Pax team.", ["1 open ticket", "8 resolved", "12 min avg response", "Latest PAX-SUP-104"]],
-  "support-contact": ["CONTACT DESK", "Contact Support", "Reach the local logistics team by WhatsApp, phone or email.", ["WhatsApp support", "+91 94943 38206", "Email support", "Mon–Sat 9 AM–7 PM"]],
+  "dashboard-performance": ["DELIVERY CONTROL", "Delivery Performance", "Review service success, delivery speed and destination health."],
+  "dashboard-pickups": ["PICKUP CONTROL", "Pickup Schedule", "Plan today’s handovers and confirm what the courier desk will collect."],
+  "shipments-create": ["NEW ORDER", "Create Shipment", "Add a receiver, parcel and payment mode to schedule a pickup."],
+  "shipments-track": ["LIVE MOVEMENT", "Track Shipment", "Search a Pax reference and review its latest movement milestone."],
+  "shipments-pickups": ["PICKUP REQUESTS", "Pickup Requests", "Manage pending, scheduled and completed pickup handovers."],
+  "shipments-manifests": ["DISPATCH DOCUMENTS", "Manifests", "Create and download courier-wise shipment manifests."],
+  "exceptions-rto": ["RETURN CONTROL", "RTO Shipments", "Review return-to-origin parcels and plan the reverse journey."],
+  "exceptions-delayed": ["DELAY MONITOR", "Delayed Shipments", "Find shipments beyond their expected movement milestone."],
+  "exceptions-weight": ["WEIGHT REVIEW", "Weight Disputes", "Compare declared and courier-measured parcel weight."],
+  "finance-wallet": ["WALLET LEDGER", "Wallet Transactions", "Review credits, shipping debits, refunds and adjustments."],
+  "finance-invoices": ["BILLING RECORDS", "Invoices", "Review, filter and download weekly shipping invoices."],
+  "audits-cod": ["COD CONTROL", "COD Reconciliation", "Match collected COD against remittance and order records."],
+  "audits-billing": ["CHARGE REVIEW", "Billing Audit", "Review shipping charges, taxes and invoice-level adjustments."],
+  "utilities-rate": ["SHIPPING TOOL", "Rate Calculator", "Estimate indicative shipping charges for a route and parcel."],
+  "utilities-weight": ["SHIPPING TOOL", "Weight Calculator", "Compare actual and volumetric weight before booking."],
+  "utilities-pincode": ["SERVICEABILITY", "Pincode Serviceability", "Check whether a destination supports standard, express and COD."],
+  "utilities-labels": ["DOCUMENT TOOL", "Label Generator", "Prepare shipping labels for booked customer orders."],
+  "insights-courier": ["COURIER ANALYTICS", "Courier Performance", "Compare delivery success, speed and RTO across courier partners."],
+  "insights-zones": ["ROUTE ANALYTICS", "Zone Analysis", "Understand shipment mix and cost by delivery zone."],
+  "insights-rto": ["RETURN ANALYTICS", "RTO Analytics", "Identify return patterns by city, payment and exception reason."],
+  "channels-connect": ["STORE CONNECTION", "Connect Store", "Connect a commerce channel and start importing orders."],
+  "channels-sync": ["ORDER AUTOMATION", "Order Sync", "Review imports, mapping rules and sync failures."],
+  "workspace-pickups": ["ORIGIN SETTINGS", "Pickup Addresses", "Manage warehouses, offices and recurring pickup origins."],
+  "workspace-team": ["ACCESS CONTROL", "Team & Roles", "Invite teammates and decide what each role can manage."],
+  "workspace-kyc": ["BUSINESS VERIFICATION", "KYC & Billing", "Review KYC, GST and billing identity for the workspace."],
+  "support-history": ["SUPPORT RECORDS", "Ticket History", "Track open and resolved conversations with the Pax team."],
+  "support-contact": ["CONTACT DESK", "Contact Support", "Reach the local logistics team by WhatsApp, phone or email."],
 };
 
 const defaultTools = {
@@ -166,31 +153,31 @@ function readSession() {
   }
 }
 
+function userCacheKey(baseKey, email = readSession()?.email) {
+  return email ? `${baseKey}:${String(email).trim().toLowerCase()}` : `${baseKey}:anonymous`;
+}
+
 function readShipments() {
   try {
-    const saved = JSON.parse(localStorage.getItem(SHIPMENTS_KEY) || "null");
-    return Array.isArray(saved) ? saved : starterShipments;
+    const saved = JSON.parse(localStorage.getItem(userCacheKey(SHIPMENTS_KEY)) || "null");
+    return Array.isArray(saved) ? saved : [];
   } catch {
-    return starterShipments;
+    return [];
   }
 }
 
 function readNotifications() {
   try {
-    const saved = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || "null");
-    if (!Array.isArray(saved)) return starterNotifications;
-    return starterNotifications.map((notification) => ({
-      ...notification,
-      unread: saved.find((item) => item.id === notification.id)?.unread ?? notification.unread,
-    }));
+    const saved = JSON.parse(localStorage.getItem(userCacheKey(NOTIFICATIONS_KEY)) || "null");
+    return Array.isArray(saved) ? saved : [];
   } catch {
-    return starterNotifications;
+    return [];
   }
 }
 
 function readWalletBalance() {
-  const saved = Number(localStorage.getItem(WALLET_KEY));
-  return Number.isFinite(saved) && saved >= 0 ? saved : 12840;
+  const saved = Number(localStorage.getItem(userCacheKey(WALLET_KEY)));
+  return Number.isFinite(saved) && saved >= 0 ? saved : 0;
 }
 
 function goTo(path) {
@@ -213,6 +200,73 @@ function StatusBadge({ status }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
 }
 
+function buildOverviewAnalytics(shipments, days, label) {
+  const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+  const records = shipments.filter((shipment) => {
+    const timestamp = Date.parse(shipment.date);
+    return !Number.isFinite(timestamp) || timestamp >= cutoff;
+  });
+  const delivered = records.filter((item) => item.status === "Delivered").length;
+  const inTransit = records.filter((item) => ["In transit", "Out for delivery"].includes(item.status)).length;
+  const rto = records.filter((item) => item.status === "RTO").length;
+  const scheduled = records.filter((item) => item.status === "Pickup scheduled").length;
+  const attention = records.filter((item) => ["Exception", "RTO"].includes(item.status)).length;
+  const codRecords = records.filter((item) => item.payment === "COD");
+  const revenueValue = records.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const costValue = Math.round(revenueValue * 0.62);
+  const contributionValue = revenueValue - costValue;
+  const percentage = (count) => records.length ? `${((count / records.length) * 100).toFixed(1)}%` : "0%";
+  const money = (value) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", notation: "compact", maximumFractionDigits: 1 }).format(value);
+  const destinationCounts = records.reduce((result, item) => {
+    const city = String(item.destination || "").split(",")[0].trim();
+    if (city) result[city] = (result[city] || 0) + 1;
+    return result;
+  }, {});
+  const bestLane = Object.entries(destinationCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+  const bucketCounts = Array(7).fill(0);
+  records.forEach((shipment) => {
+    const timestamp = Date.parse(shipment.date);
+    if (!Number.isFinite(timestamp)) return;
+    const age = Math.max(0, Date.now() - timestamp);
+    const index = Math.min(6, Math.max(0, 6 - Math.floor((age / (days * 24 * 60 * 60 * 1000)) * 7)));
+    bucketCounts[index] += 1;
+  });
+  const maxBucket = Math.max(...bucketCounts, 1);
+  const successRate = records.length ? (delivered / records.length) * 100 : 0;
+
+  return {
+    label,
+    shipments: records.length,
+    revenue: money(revenueValue),
+    cost: money(costValue),
+    aov: money(records.length ? revenueValue / records.length : 0),
+    growth: "Live data",
+    inTransit,
+    delivered,
+    scheduled,
+    attention,
+    codAvailable: money(codRecords.filter((item) => item.status === "Delivered").reduce((sum, item) => sum + Number(item.amount || 0), 0)),
+    avgDelivery: "—",
+    firstAttempt: percentage(delivered),
+    rto: percentage(rto),
+    codShare: percentage(codRecords.length),
+    peak: `${Math.max(...bucketCounts)} orders`,
+    dailyAverage: `${Math.round(records.length / days)} orders`,
+    bestLane,
+    contribution: money(contributionValue),
+    margin: revenueValue ? `${Math.round((contributionValue / revenueValue) * 100)}% margin` : "0% margin",
+    costShare: revenueValue ? `${Math.round((costValue / revenueValue) * 100)}% of revenue` : "0% of revenue",
+    aovGrowth: "Live data",
+    codOrders: codRecords.length,
+    sla: Number(successRate.toFixed(1)),
+    pickupSla: records.length ? 100 : 0,
+    transitSla: Number(successRate.toFixed(1)),
+    ndrSla: Number(successRate.toFixed(1)),
+    bars: bucketCounts.map((count) => count ? Math.max(12, Math.round((count / maxBucket) * 100)) : 0),
+    labels: days === 7 ? ["D-6", "D-5", "D-4", "D-3", "D-2", "D-1", "Today"] : ["1", "2", "3", "4", "5", "6", "Now"],
+  };
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState(readSession);
   const [active, setActive] = useState("overview");
@@ -231,12 +285,12 @@ export default function DashboardPage() {
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
-  const [controlState, setControlState] = useState(readControlState);
+  const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [search, setSearch] = useState("");
   const [shipmentModal, setShipmentModal] = useState(false);
   const [toast, setToast] = useState("");
-  const [trackId, setTrackId] = useState("PAX-260728");
-  const [trackResult, setTrackResult] = useState("PAX-260728");
+  const [trackId, setTrackId] = useState("");
+  const [trackResult, setTrackResult] = useState(null);
   const [ticket, setTicket] = useState({ subject: "", message: "" });
   const [rateForm, setRateForm] = useState({ pickup: "500029", delivery: "400001", weight: "2", speed: "standard", payment: "Prepaid" });
   const [rateQuote, setRateQuote] = useState(null);
@@ -254,15 +308,15 @@ export default function DashboardPage() {
   const accountMenuRef = useRef(null);
 
   useEffect(() => {
-    const stopLocalSync = subscribeToLocalControl(setControlState);
-    const controller = new AbortController();
+    if (!user) return undefined;
+    const stopLocalSync = ENABLE_PREVIEW_MODE ? subscribeToLocalControl(setControlState) : () => undefined;
     const syncFromApi = async () => {
       try {
-        const data = await fetchClientBootstrap(controller.signal);
-        if (data.configuration) setControlState(writeControlState(data.configuration));
+        const data = await getClientBootstrap();
+        if (data.configuration) setControlState(cacheControlState(data.configuration));
         if (Array.isArray(data.shipments)) {
           setShipments(data.shipments);
-          localStorage.setItem(SHIPMENTS_KEY, JSON.stringify(data.shipments));
+          localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(data.shipments));
         }
       } catch {
         // Keep the customer workspace usable with its last synchronized snapshot.
@@ -272,16 +326,16 @@ export default function DashboardPage() {
     const timer = window.setInterval(syncFromApi, 30000);
     const stopRemoteSync = subscribeToRemoteUpdates(syncFromApi);
     return () => {
-      controller.abort();
       window.clearInterval(timer);
       stopLocalSync();
       stopRemoteSync();
     };
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
+    if (!user) return undefined;
     const syncShipments = (event) => {
-      if (event.type === "storage" && event.key !== SHIPMENTS_KEY) return;
+      if (event.type === "storage" && event.key !== userCacheKey(SHIPMENTS_KEY, user?.email)) return;
       const next = event.detail || readShipments();
       if (Array.isArray(next)) setShipments(next);
     };
@@ -291,7 +345,7 @@ export default function DashboardPage() {
       window.removeEventListener("storage", syncShipments);
       window.removeEventListener("pax:shipments-updated", syncShipments);
     };
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
     if (!notificationsOpen && !walletMenuOpen && !accountMenuOpen) return undefined;
@@ -345,6 +399,7 @@ export default function DashboardPage() {
   };
 
   const logout = () => {
+    logoutClient();
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     setUser(null);
@@ -364,7 +419,7 @@ export default function DashboardPage() {
   const openNotification = (notification) => {
     setNotifications((current) => {
       const next = current.map((item) => item.id === notification.id ? { ...item, unread: false } : item);
-      localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(next));
+      localStorage.setItem(userCacheKey(NOTIFICATIONS_KEY, user?.email), JSON.stringify(next));
       return next;
     });
     navigatePanel(notification.section, notification.tool);
@@ -373,7 +428,7 @@ export default function DashboardPage() {
   const markAllNotificationsRead = () => {
     setNotifications((current) => {
       const next = current.map((notification) => ({ ...notification, unread: false }));
-      localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(next));
+      localStorage.setItem(userCacheKey(NOTIFICATIONS_KEY, user?.email), JSON.stringify(next));
       return next;
     });
     notify("All notifications marked as read.");
@@ -381,17 +436,7 @@ export default function DashboardPage() {
 
   const addWalletMoney = (event) => {
     event.preventDefault();
-    const amount = Number(rechargeAmount);
-    if (!Number.isFinite(amount) || amount < 100 || amount > 50000) {
-      notify("Enter an amount between ₹100 and ₹50,000.");
-      return;
-    }
-    const nextBalance = walletBalance + amount;
-    setWalletBalance(nextBalance);
-    localStorage.setItem(WALLET_KEY, String(nextBalance));
-    setWalletModal(false);
-    setRechargeAmount("1000");
-    notify(`${new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount)} added through ${rechargeMethod}.`);
+    notify("Wallet recharge will be available after the payment API is connected.");
   };
 
   const toggleSubmenu = (event, item) => {
@@ -410,7 +455,7 @@ export default function DashboardPage() {
     setOpenMenu((current) => current === item.id ? null : item.id);
   };
 
-  const createShipment = (event) => {
+  const createShipment = async (event) => {
     event.preventDefault();
     if (!newShipment.customer || !newShipment.phone || !newShipment.address || !newShipment.city || !/^[1-9]\d{5}$/.test(newShipment.pincode)) {
       notify("Complete the receiver details and enter a valid PIN code.");
@@ -420,40 +465,32 @@ export default function DashboardPage() {
       notify("Shipment booking is temporarily disabled by the Pax administrator.");
       return;
     }
-    const shipment = {
-      id: `PAX-${String(Date.now()).slice(-6)}`,
-      customer: newShipment.customer,
-      destination: `${newShipment.city}, ${newShipment.pincode}`,
-      amount: Number(newShipment.amount) || Math.max(110, Math.round(Number(newShipment.weight) * 78)),
-      payment: newShipment.payment,
-      status: "Pickup scheduled",
-      date: "31 Jul 2026",
-    };
-    const next = [shipment, ...shipments];
-    setShipments(next);
-    localStorage.setItem(SHIPMENTS_KEY, JSON.stringify(next));
-    setShipmentModal(false);
-    setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "" });
-    notify(`${shipment.id} created. Pickup is scheduled.`);
-    createClientShipment({ ...shipment, ownerEmail: user.email }).then((remoteShipment) => {
-      setShipments((current) => {
-        const synced = current.map((item) => item.id === shipment.id ? remoteShipment : item);
-        localStorage.setItem(SHIPMENTS_KEY, JSON.stringify(synced));
-        return synced;
+    try {
+      const shipment = await createClientShipment({
+        ...newShipment,
+        weight: Number(newShipment.weight),
+        amount: Number(newShipment.amount) || 0,
       });
-    }).catch(() => {
-      // The locally-created shipment will synchronize on the next successful API session.
-    });
+      const next = [shipment, ...shipments.filter((item) => item.id !== shipment.id)];
+      setShipments(next);
+      localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
+      setShipmentModal(false);
+      setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "" });
+      notify(`${shipment.id} created. Pickup is scheduled.`);
+    } catch (error) {
+      notify(error.message || "Shipment could not be created.");
+    }
   };
 
   const submitTracking = (event) => {
     event.preventDefault();
     const normalized = trackId.trim().toUpperCase();
-    if (!/^PAX-\d{6,}$/.test(normalized)) {
-      notify("Enter a reference such as PAX-260728.");
+    if (!/^PAX-[A-Z0-9]{6,20}$/.test(normalized)) {
+      notify("Enter a valid Pax shipment reference.");
       return;
     }
-    setTrackResult(normalized);
+    const shipment = shipments.find((item) => item.id.toUpperCase() === normalized);
+    setTrackResult(shipment || { error: "Shipment not found in your account." });
   };
 
   const calculateRate = (event) => {
@@ -567,97 +604,22 @@ export default function DashboardPage() {
   const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
 
   const overviewAnalytics = {
-    "7D": {
-      label: "Last 7 days",
-      shipments: shipments.length + 34,
-      revenue: "₹84.6K",
-      cost: "₹46.2K",
-      aov: "₹642",
-      growth: "+18.2%",
-      inTransit: 8,
-      delivered: 24,
-      codAvailable: "₹18.4K",
-      avgDelivery: "2.6 days",
-      firstAttempt: "95.8%",
-      rto: "4.1%",
-      codShare: "36.5%",
-      peak: "18 orders",
-      dailyAverage: "6 orders",
-      bestLane: "HYD → BLR",
-      contribution: "₹38.4K",
-      margin: "45.4% margin",
-      costShare: "54.6% of revenue",
-      aovGrowth: "+4.8%",
-      codOrders: 12,
-      sla: 93.6,
-      pickupSla: 97.4,
-      transitSla: 93.6,
-      ndrSla: 86.2,
-      bars: [48, 61, 52, 76, 68, 88, 96],
-      labels: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
-    },
-    "30D": {
-      label: "Last 30 days",
-      shipments: shipments.length + 176,
-      revenue: "₹3.42L",
-      cost: "₹1.86L",
-      aov: "₹688",
-      growth: "+24.8%",
-      inTransit: 31,
-      delivered: 142,
-      codAvailable: "₹72.8K",
-      avgDelivery: "2.8 days",
-      firstAttempt: "96.4%",
-      rto: "3.6%",
-      codShare: "38.2%",
-      peak: "42 orders",
-      dailyAverage: "27 orders",
-      bestLane: "HYD → BLR",
-      contribution: "₹1.56L",
-      margin: "45.6% margin",
-      costShare: "54.4% of revenue",
-      aovGrowth: "+7.2%",
-      codOrders: 24,
-      sla: 94.8,
-      pickupSla: 98.2,
-      transitSla: 94.8,
-      ndrSla: 88.6,
-      bars: [42, 57, 69, 64, 78, 83, 94],
-      labels: ["01", "05", "10", "15", "20", "25", "30"],
-    },
-    "90D": {
-      label: "Last 90 days",
-      shipments: shipments.length + 538,
-      revenue: "₹10.8L",
-      cost: "₹5.72L",
-      aov: "₹704",
-      growth: "+31.4%",
-      inTransit: 74,
-      delivered: 451,
-      codAvailable: "₹2.18L",
-      avgDelivery: "2.7 days",
-      firstAttempt: "96.9%",
-      rto: "3.1%",
-      codShare: "40.1%",
-      peak: "58 orders",
-      dailyAverage: "34 orders",
-      bestLane: "HYD → MUM",
-      contribution: "₹5.08L",
-      margin: "47.0% margin",
-      costShare: "53.0% of revenue",
-      aovGrowth: "+9.6%",
-      codOrders: 82,
-      sla: 95.7,
-      pickupSla: 98.7,
-      transitSla: 95.7,
-      ndrSla: 91.3,
-      bars: [36, 48, 55, 67, 72, 86, 98],
-      labels: ["May", "W2", "Jun", "W2", "Jul", "W3", "Now"],
-    },
+    "7D": buildOverviewAnalytics(shipments, 7, "Last 7 days"),
+    "30D": buildOverviewAnalytics(shipments, 30, "Last 30 days"),
+    "90D": buildOverviewAnalytics(shipments, 90, "Last 90 days"),
   };
+  const destinationAnalytics = Object.entries(shipments.reduce((result, shipment) => {
+    const city = String(shipment.destination || "Unknown").split(",")[0];
+    result[city] = result[city] || { total: 0, delivered: 0 };
+    result[city].total += 1;
+    if (shipment.status === "Delivered") result[city].delivered += 1;
+    return result;
+  }, {})).sort((a, b) => b[1].total - a[1].total);
+  const activeLaneCount = destinationAnalytics.length;
 
   const renderOverview = () => {
     const analytics = overviewAnalytics[overviewRange];
+    const chartPoints = analytics.bars.map((height, index) => `${Math.round((index / Math.max(analytics.bars.length - 1, 1)) * 640)},${190 - Math.round(height * 1.6)}`).join(" ");
     return (
       <>
         <section className="portal-welcome overview-welcome">
@@ -716,16 +678,16 @@ export default function DashboardPage() {
         </section>
 
         <section className="overview-signal-bar" aria-label="Network health">
-          <div><span className="signal-live"><i></i> Live network</span><strong>All systems operational</strong></div>
-          <div><small>ACTIVE LANES</small><strong>12</strong><span>5 priority routes</span></div>
+          <div><span className="signal-live"><i></i> Live API data</span><strong>{shipments.length ? "Shipment records connected" : "Awaiting first shipment"}</strong></div>
+          <div><small>ACTIVE LANES</small><strong>{activeLaneCount}</strong><span>Current destination cities</span></div>
           <div><small>AVG. DELIVERY</small><strong>{analytics.avgDelivery}</strong><span>Across {analytics.label.toLowerCase()}</span></div>
           <div><small>FIRST ATTEMPT</small><strong>{analytics.firstAttempt}</strong><span>Successful deliveries</span></div>
           <div><small>RTO RATE</small><strong>{analytics.rto}</strong><span>Return-to-origin share</span></div>
         </section>
 
         <section className="portal-kpis overview-kpis" aria-label="Shipment summary">
-          <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>TOTAL SHIPMENTS</small><strong>{analytics.shipments}</strong><p><b>↑ 12%</b> from previous period</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
-          <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN TRANSIT</small><strong>{analytics.inTransit}</strong><p>Across 5 active lanes</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>TOTAL SHIPMENTS</small><strong>{analytics.shipments}</strong><p><b>Live</b> for selected period</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
+          <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN TRANSIT</small><strong>{analytics.inTransit}</strong><p>Across {activeLaneCount} active lanes</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
           <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="box" /></span><small>DELIVERED</small><strong>{analytics.delivered}</strong><p><b>{analytics.firstAttempt}</b> first-attempt success</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
           <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="wallet" /></span><small>COD AVAILABLE</small><strong>{analytics.codAvailable}</strong><p>{analytics.codOrders} COD orders</p><span className="kpi-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i></span></article>
         </section>
@@ -747,8 +709,8 @@ export default function DashboardPage() {
               <div className="chart-lines"><i></i><i></i><i></i><i></i></div>
               <svg viewBox="0 0 640 190" preserveAspectRatio="none" aria-label="Shipment activity trend">
                 <defs><linearGradient id="areaOverview" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3157c8" stopOpacity=".3" /><stop offset="1" stopColor="#3157c8" stopOpacity="0" /></linearGradient></defs>
-                <path className="area overview-area" d="M0 160 C70 150 80 110 140 126 S220 170 280 105 S360 85 410 99 S490 82 535 47 S590 60 640 18 L640 190 L0 190Z" />
-                <path className="line overview-line" d="M0 160 C70 150 80 110 140 126 S220 170 280 105 S360 85 410 99 S490 82 535 47 S590 60 640 18" />
+                <polygon className="area overview-area" points={`0,190 ${chartPoints} 640,190`} />
+                <polyline className="line overview-line" points={chartPoints} fill="none" />
               </svg>
               <div className="chart-days">{analytics.labels.map((label) => <span key={label}>{label}</span>)}</div>
             </div>
@@ -759,20 +721,20 @@ export default function DashboardPage() {
             <div className="donut-row">
               <div className="donut"><div><strong>{analytics.shipments}</strong><span>Total</span></div></div>
               <div className="donut-legend">
-                <span><i className="legend-green"></i><b>Delivered</b><em>63%</em></span>
-                <span><i className="legend-purple"></i><b>In transit</b><em>21%</em></span>
-                <span><i className="legend-yellow"></i><b>Scheduled</b><em>11%</em></span>
-                <span><i className="legend-coral"></i><b>Attention</b><em>5%</em></span>
+                <span><i className="legend-green"></i><b>Delivered</b><em>{analytics.shipments ? Math.round((analytics.delivered / analytics.shipments) * 100) : 0}%</em></span>
+                <span><i className="legend-purple"></i><b>In transit</b><em>{analytics.shipments ? Math.round((analytics.inTransit / analytics.shipments) * 100) : 0}%</em></span>
+                <span><i className="legend-yellow"></i><b>Scheduled</b><em>{analytics.shipments ? Math.round((analytics.scheduled / analytics.shipments) * 100) : 0}%</em></span>
+                <span><i className="legend-coral"></i><b>Attention</b><em>{analytics.shipments ? Math.round((analytics.attention / analytics.shipments) * 100) : 0}%</em></span>
               </div>
             </div>
-            <div className="overview-delivery-note"><span>✓</span><div><strong>Healthy delivery mix</strong><small>Attention shipments are below your 8% threshold.</small></div></div>
+            <div className="overview-delivery-note"><span>✓</span><div><strong>Live delivery mix</strong><small>Calculated only from shipments returned by the API.</small></div></div>
           </article>
         </section>
 
         <section className="overview-analytics-grid">
           <article className="portal-card overview-revenue-card">
             <div className="portal-card-head"><div><small>COMMERCIAL PERFORMANCE</small><h2>Revenue vs shipping cost</h2></div><button type="button" onClick={() => notify("Finance report prepared for export.")}>Export report ↗</button></div>
-            <div className="overview-revenue-head"><div><small>NET CONTRIBUTION</small><strong>{analytics.contribution}</strong><span>{analytics.margin}</span></div><p>Revenue is growing faster than shipping spend across the selected period.</p></div>
+            <div className="overview-revenue-head"><div><small>NET CONTRIBUTION</small><strong>{analytics.contribution}</strong><span>{analytics.margin}</span></div><p>Calculated from the booked values returned for the selected period.</p></div>
             <div className="overview-bars">
               {analytics.bars.map((height, index) => <div key={`${overviewRange}-${index}`}><span style={{ height: `${height}%` }}><i style={{ height: `${Math.max(25, height * .55)}%` }}></i></span><small>{analytics.labels[index]}</small></div>)}
             </div>
@@ -780,7 +742,7 @@ export default function DashboardPage() {
           </article>
 
           <article className="portal-card overview-sla-card">
-            <div className="portal-card-head"><div><small>SERVICE QUALITY</small><h2>SLA health</h2></div><span className="trend-pill">Excellent</span></div>
+            <div className="portal-card-head"><div><small>SERVICE QUALITY</small><h2>SLA health</h2></div><span className="trend-pill">{analytics.shipments ? "Live" : "Awaiting data"}</span></div>
             <div className="overview-sla-score"><div className="sla-gauge" style={{ background: `conic-gradient(#3157c8 0 ${analytics.sla}%, #e9eef6 ${analytics.sla}%)` }}><span><strong>{analytics.sla}</strong><small>/100</small></span></div><div><strong>On-time performance</strong><p>Calculated for {analytics.label.toLowerCase()}.</p></div></div>
             <div className="overview-sla-list">
               <div><span>Pickup SLA</span><b>{analytics.pickupSla}%</b><i><em style={{ width: `${analytics.pickupSla}%` }}></em></i></div>
@@ -796,23 +758,20 @@ export default function DashboardPage() {
             <div className="portal-card-head"><div><small>PARTNER SCORECARD</small><h2>Courier performance</h2></div><button type="button" onClick={() => navigatePanel("insights", "insights-courier")}>Deep analysis →</button></div>
             <div className="overview-courier-table">
               <div className="is-heading"><span>Courier partner</span><span>Volume</span><span>On-time</span><span>Avg. TAT</span><span>Health</span></div>
-              {[
-                ["PX", "Pax Express", "46%", "97.2%", "2.1 days", 97],
-                ["PN", "Partner North", "28%", "95.8%", "2.5 days", 91],
-                ["PS", "Partner South", "18%", "94.9%", "2.7 days", 86],
-                ["PL", "Partner Local", "8%", "91.4%", "1.4 days", 74],
-              ].map(([code, name, volume, onTime, tat, health]) => (
-                <div key={name}><span><i>{code}</i><b>{name}</b></span><span>{volume}</span><span>{onTime}</span><span>{tat}</span><span><i className="courier-health"><em style={{ width: `${health}%` }}></em></i></span></div>
-              ))}
+              {enabledCouriers.length ? enabledCouriers.map((courier) => {
+                const health = Number.parseFloat(courier.cells?.[2]) || 0;
+                const name = courier.cells?.[0] || courier.id;
+                return <div key={courier.id}><span><i>{name.slice(0, 2).toUpperCase()}</i><b>{name}</b></span><span>—</span><span>{courier.cells?.[2] || "—"}</span><span>—</span><span><i className="courier-health"><em style={{ width: `${health}%` }}></em></i></span></div>;
+              }) : <div className="portal-tool-empty"><p>No courier performance records received.</p></div>}
             </div>
           </article>
 
           <article className="portal-card overview-insight-card">
             <div className="portal-card-head"><div><small>SMART INSIGHTS</small><h2>Needs your attention</h2></div><span className="overview-ai-pill">PAX SIGNAL</span></div>
             <div className="overview-insight-list">
-              <button type="button" onClick={() => navigatePanel("exceptions", "exceptions-delayed")}><span className="is-warning"><Icon name="alert" /></span><div><strong>2 shipments may breach SLA</strong><small>HYD → Mumbai lane · act within 3 hours</small></div><b>→</b></button>
-              <button type="button" onClick={() => navigatePanel("finance", "finance-cod")}><span className="is-success"><Icon name="wallet" /></span><div><strong>₹18,420 ready to settle</strong><small>24 COD orders are fully reconciled</small></div><b>→</b></button>
-              <button type="button" onClick={() => navigatePanel("insights", "insights-rto")}><span className="is-info"><Icon name="insights" /></span><div><strong>RTO improved by 0.8%</strong><small>Bengaluru and Pune are your best routes</small></div><b>→</b></button>
+              <button type="button" onClick={() => navigatePanel("exceptions", "exceptions-delayed")}><span className="is-warning"><Icon name="alert" /></span><div><strong>{analytics.attention} shipments need attention</strong><small>Exceptions and returns in the selected period</small></div><b>→</b></button>
+              <button type="button" onClick={() => navigatePanel("finance", "finance-cod")}><span className="is-success"><Icon name="wallet" /></span><div><strong>{analytics.codAvailable} delivered COD value</strong><small>{analytics.codOrders} COD orders in live data</small></div><b>→</b></button>
+              <button type="button" onClick={() => navigatePanel("insights", "insights-rto")}><span className="is-info"><Icon name="insights" /></span><div><strong>{analytics.rto} RTO rate</strong><small>Calculated from current shipment statuses</small></div><b>→</b></button>
             </div>
           </article>
         </section>
@@ -820,12 +779,7 @@ export default function DashboardPage() {
         <section className="overview-zone-section">
           <div className="overview-section-heading"><div><small>DESTINATION INTELLIGENCE</small><h2>Zone performance</h2></div><button type="button" onClick={() => navigatePanel("insights", "insights-zones")}>Explore all zones →</button></div>
           <div className="overview-zone-grid">
-            {[
-              ["Local", "22%", "98.4%", "1.2 days", "is-blue"],
-              ["Regional", "31%", "96.8%", "2.1 days", "is-green"],
-              ["Metro", "28%", "95.2%", "2.6 days", "is-purple"],
-              ["National", "19%", "92.7%", "3.8 days", "is-amber"],
-            ].map(([zone, share, success, tat, tone]) => <article className={`overview-zone-card ${tone}`} key={zone}><span>{zone.slice(0, 1)}</span><small>{zone.toUpperCase()} ZONE</small><strong>{success}</strong><p>Delivery success</p><div><b>{share} volume</b><em>{tat}</em></div></article>)}
+            {destinationAnalytics.length ? destinationAnalytics.slice(0, 4).map(([city, data], index) => <article className={`overview-zone-card ${["is-blue", "is-green", "is-purple", "is-amber"][index]}`} key={city}><span>{city.slice(0, 1)}</span><small>{city.toUpperCase()}</small><strong>{data.total ? Math.round((data.delivered / data.total) * 100) : 0}%</strong><p>Delivery success</p><div><b>{data.total} shipments</b><em>Live data</em></div></article>) : <article className="overview-zone-card is-blue"><span>—</span><small>NO DATA</small><strong>0%</strong><p>Delivery success</p><div><b>0 shipments</b><em>Awaiting API</em></div></article>}
           </div>
         </section>
 
@@ -844,10 +798,10 @@ export default function DashboardPage() {
         <button className="portal-primary" type="button" onClick={openShipment}><Icon name="plus" /> Create shipment</button>
       </section>
       <section className="portal-kpis portal-kpis-compact">
-        <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>READY TO SHIP</small><strong>12</strong><p>Pickup cut-off · 4:30 PM</p></article>
-        <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN MOVEMENT</small><strong>08</strong><p>5 active destination lanes</p></article>
-        <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="insights" /></span><small>DELIVERY RATE</small><strong>96.4%</strong><p>First-attempt success</p></article>
-        <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="alert" /></span><small>NEEDS ACTION</small><strong>03</strong><p>2 NDR · 1 address issue</p></article>
+        <article className="kpi-card kpi-purple"><span className="kpi-icon"><Icon name="box" /></span><small>READY TO SHIP</small><strong>{shipments.filter((item) => item.status === "Pickup scheduled").length}</strong><p>Awaiting pickup</p></article>
+        <article className="kpi-card kpi-yellow"><span className="kpi-icon"><Icon name="route" /></span><small>IN MOVEMENT</small><strong>{shipments.filter((item) => ["In transit", "Out for delivery"].includes(item.status)).length}</strong><p>Live shipment records</p></article>
+        <article className="kpi-card kpi-green"><span className="kpi-icon"><Icon name="insights" /></span><small>DELIVERY RATE</small><strong>{shipments.length ? `${Math.round((shipments.filter((item) => item.status === "Delivered").length / shipments.length) * 100)}%` : "0%"}</strong><p>Current account data</p></article>
+        <article className="kpi-card kpi-coral"><span className="kpi-icon"><Icon name="alert" /></span><small>NEEDS ACTION</small><strong>{shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length}</strong><p>Exceptions and returns</p></article>
       </section>
       <section className="dashboard-action-grid">
         {[
@@ -886,20 +840,16 @@ export default function DashboardPage() {
 
   const renderExceptions = () => (
     <>
-      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>Exceptions</h1><span>Resolve failed attempts, address issues and delayed movement.</span></div><span className="section-count-pill">3 open cases</span></section>
+      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>Exceptions</h1><span>Resolve failed attempts, address issues and delayed movement.</span></div><span className="section-count-pill">{shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length} open cases</span></section>
       <section className="exception-grid">
-        {[
-          ["PAX-260728", "Customer unavailable", "Nila Studios · Bengaluru", "Call customer", "high"],
-          ["PAX-260719", "Address needs confirmation", "Rohan Mehta · Chennai", "Update address", "medium"],
-          ["PAX-260706", "Movement delayed", "Indigo Home · Pune", "Escalate courier", "low"],
-        ].map(([id, issue, customer, action, priority]) => (
-          <article className="portal-card exception-card" key={id}>
-            <div><span className={`priority-dot priority-${priority}`}></span><small>{priority} priority</small><b>{id}</b></div>
-            <h2>{issue}</h2><p>{customer}</p>
-            <div className="exception-meta"><span>Last update</span><strong>Today · 10:42 AM</strong></div>
-            <button type="button" onClick={() => notify(`${id}: ${action} action saved.`)}>{action} <span>→</span></button>
+        {shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length ? shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).map((shipment) => (
+          <article className="portal-card exception-card" key={shipment.id}>
+            <div><span className="priority-dot priority-high"></span><small>attention required</small><b>{shipment.id}</b></div>
+            <h2>{shipment.status}</h2><p>{shipment.customer} · {shipment.destination}</p>
+            <div className="exception-meta"><span>Last update</span><strong>{shipment.date ? new Date(shipment.date).toLocaleString("en-IN") : "Not provided"}</strong></div>
+            <button type="button" onClick={() => notify(`${shipment.id} opened for review.`)}>Review shipment <span>→</span></button>
           </article>
-        ))}
+        )) : <article className="portal-card portal-tool-empty"><h2>No shipment exceptions</h2><p>Live API records needing attention will appear here.</p></article>}
       </section>
     </>
   );
@@ -910,17 +860,17 @@ export default function DashboardPage() {
       <section className="tracking-workspace">
         <form className="portal-card track-search-card" onSubmit={submitTracking}>
           <small>SHIPMENT REFERENCE</small><h2>Where is your parcel?</h2>
-          <label><input value={trackId} onChange={(event) => setTrackId(event.target.value)} placeholder="PAX-260728" /><button type="submit"><Icon name="search" /> Track</button></label>
-          <p>Try the sample reference <button type="button" onClick={() => { setTrackId("PAX-260728"); setTrackResult("PAX-260728"); }}>PAX-260728</button></p>
+          <label><input value={trackId} onChange={(event) => setTrackId(event.target.value)} placeholder="PAX shipment reference" /><button type="submit"><Icon name="search" /> Track</button></label>
+          <p>Only shipments belonging to your signed-in account are searchable here.</p>
         </form>
         <article className="portal-card tracking-result-card">
-          <div className="tracking-result-head"><div><small>{trackResult}</small><h2>Moving to destination hub</h2></div><StatusBadge status="In transit" /></div>
-          <div className="tracking-route-names"><span><small>FROM</small>Hyderabad, TS</span><i>→</i><span><small>TO</small>Bengaluru, KA</span></div>
+          <div className="tracking-result-head"><div><small>{trackResult?.id || "No shipment selected"}</small><h2>{trackResult?.error || trackResult?.status || "Enter a reference to load its status"}</h2></div>{trackResult?.status && <StatusBadge status={trackResult.status} />}</div>
+          <div className="tracking-route-names"><span><small>FROM</small>{user.city || "Pickup location"}</span><i>→</i><span><small>TO</small>{trackResult?.destination || "Destination"}</span></div>
           <div className="tracking-timeline">
-            <div className="is-done"><i>✓</i><span><b>Shipment booked</b><small>29 Jul · 10:20 AM</small></span></div>
-            <div className="is-done"><i>✓</i><span><b>Picked up</b><small>29 Jul · 4:45 PM</small></span></div>
-            <div className="is-current"><i></i><span><b>In transit to destination hub</b><small>31 Jul · 7:10 AM</small></span></div>
-            <div><i></i><span><b>Out for delivery</b><small>Expected by 01 Aug</small></span></div>
+            <div className="is-done"><i>✓</i><span><b>Shipment booked</b><small>Reference created</small></span></div>
+            <div><i></i><span><b>Picked up</b><small>Updated by operations</small></span></div>
+            <div><i></i><span><b>In transit</b><small>Updated by operations</small></span></div>
+            <div><i></i><span><b>Delivered</b><small>Final milestone</small></span></div>
           </div>
         </article>
       </section>
@@ -929,28 +879,28 @@ export default function DashboardPage() {
 
   const renderFinance = () => (
     <>
-      <section className="section-title-row"><div><p>MONEY MOVEMENT</p><h1>Finance</h1><span>Your wallet, COD settlements and invoices at a glance.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Statement downloaded in demo mode.")}>Download statement</button></section>
+      <section className="section-title-row"><div><p>MONEY MOVEMENT</p><h1>Finance</h1><span>Your wallet, COD settlements and invoices at a glance.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Statement export requires the billing API.")}>Download statement</button></section>
       <section className="finance-grid">
         <article className="finance-hero"><small>AVAILABLE WALLET BALANCE</small><strong>{walletBalanceLabel}</strong><span>Ready for shipping charges and adjustments</span><button type="button" onClick={() => setWalletModal(true)}>+ Add money</button></article>
-        <article className="portal-card settlement-card"><small>COD SETTLEMENT</small><h2>₹18,420</h2><p>Available for remittance</p><div><span>Next settlement</span><b>03 Aug 2026</b></div><button type="button" onClick={() => notify("COD remittance requested.")}>Request remittance →</button></article>
-        <article className="portal-card invoice-card"><div className="portal-card-head"><div><small>RECENT INVOICES</small><h2>Billing history</h2></div></div>{[["INV-0731","31 Jul 2026","₹4,860","Paid"],["INV-0724","24 Jul 2026","₹3,240","Paid"],["INV-0717","17 Jul 2026","₹5,180","Due"]].map((invoice) => <div className="invoice-row" key={invoice[0]}><span><b>{invoice[0]}</b><small>{invoice[1]}</small></span><strong>{invoice[2]}</strong><em className={invoice[3] === "Paid" ? "paid" : "due"}>{invoice[3]}</em><button type="button" onClick={() => notify(`${invoice[0]} downloaded.`)}>↓</button></div>)}</article>
+        <article className="portal-card settlement-card"><small>COD SETTLEMENT</small><h2>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(shipments.filter((item) => item.payment === "COD" && item.status === "Delivered").reduce((sum, item) => sum + Number(item.amount || 0), 0))}</h2><p>Delivered COD value</p><div><span>Settlement schedule</span><b>From billing API</b></div><button type="button" onClick={() => notify("COD remittance requires the billing API.")}>Request remittance →</button></article>
+        <article className="portal-card invoice-card"><div className="portal-card-head"><div><small>RECENT INVOICES</small><h2>Billing history</h2></div></div><div className="portal-tool-empty"><p>No invoice records received from the API.</p></div></article>
       </section>
     </>
   );
 
   const renderAudits = () => (
     <>
-      <section className="section-title-row"><div><p>COMPLIANCE CENTRE</p><h1>Audits</h1><span>Keep shipment documents, COD records and account checks organised.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Audit report prepared in demo mode.")}>Export audit report</button></section>
+      <section className="section-title-row"><div><p>COMPLIANCE CENTRE</p><h1>Audits</h1><span>Keep shipment documents, COD records and account checks organised.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Audit export requires the compliance API.")}>Export audit report</button></section>
       <section className="audit-layout">
-        <article className="portal-card audit-score-card"><small>WORKSPACE HEALTH</small><div className="audit-score"><strong>92</strong><span>/100</span></div><p>All critical checks are complete. Two recommendations remain.</p><div className="audit-progress"><i></i></div></article>
+        <article className="portal-card audit-score-card"><small>WORKSPACE HEALTH</small><div className="audit-score"><strong>—</strong><span>/100</span></div><p>Connect the compliance API to calculate workspace health.</p><div className="audit-progress"><i style={{ width: 0 }}></i></div></article>
         <article className="portal-card audit-checklist">
           <div className="portal-card-head"><div><small>CHECKLIST</small><h2>Compliance status</h2></div></div>
           {[
-            ["✓", "KYC documents", "Verified", "done"],
-            ["✓", "GST information", user.gstin ? "Verified" : "Not applicable", "done"],
-            ["✓", "COD reconciliation", "Matched through 30 Jul", "done"],
-            ["!", "Pickup address proof", "Review recommended", "warn"],
-            ["!", "Invoice numbering", "2 gaps detected", "warn"],
+            ["·", "KYC documents", "Awaiting compliance API", "warn"],
+            ["·", "GST information", user.gstin ? "Provided by account" : "Not provided", "warn"],
+            ["·", "COD reconciliation", "Awaiting billing API", "warn"],
+            ["·", "Pickup address proof", "Awaiting compliance API", "warn"],
+            ["·", "Invoice numbering", "Awaiting billing API", "warn"],
           ].map(([mark, title, copy, tone]) => <div className={`audit-row audit-${tone}`} key={title}><span>{mark}</span><div><strong>{title}</strong><small>{copy}</small></div><button type="button" onClick={() => notify(`${title} opened.`)}>Review</button></div>)}
         </article>
       </section>
@@ -971,12 +921,12 @@ export default function DashboardPage() {
       <section className="tracking-workspace utility-tracker">
         <form className="portal-card track-search-card" onSubmit={submitTracking}>
           <small>SHIPMENT TRACKER</small><h2>Where is your parcel?</h2>
-          <label><input value={trackId} onChange={(event) => setTrackId(event.target.value)} placeholder="PAX-260728" /><button type="submit"><Icon name="search" /> Track</button></label>
-          <p>Try sample reference <button type="button" onClick={() => { setTrackId("PAX-260728"); setTrackResult("PAX-260728"); }}>PAX-260728</button></p>
+          <label><input value={trackId} onChange={(event) => setTrackId(event.target.value)} placeholder="PAX shipment reference" /><button type="submit"><Icon name="search" /> Track</button></label>
+          <p>Search using one of the shipment references in your account.</p>
         </form>
         <article className="portal-card tracking-result-card">
-          <div className="tracking-result-head"><div><small>{trackResult}</small><h2>Moving to destination hub</h2></div><StatusBadge status="In transit" /></div>
-          <div className="tracking-route-names"><span><small>FROM</small>Hyderabad, TS</span><i>→</i><span><small>TO</small>Bengaluru, KA</span></div>
+          <div className="tracking-result-head"><div><small>{trackResult?.id || "No shipment selected"}</small><h2>{trackResult?.error || trackResult?.status || "Enter a reference to load its status"}</h2></div>{trackResult?.status && <StatusBadge status={trackResult.status} />}</div>
+          <div className="tracking-route-names"><span><small>FROM</small>{user.city || "Pickup location"}</span><i>→</i><span><small>TO</small>{trackResult?.destination || "Destination"}</span></div>
           <div className="utility-track-steps"><span className="done">Booked</span><span className="done">Picked up</span><span className="current">In transit</span><span>Delivery</span></div>
         </article>
       </section>
@@ -1094,13 +1044,13 @@ export default function DashboardPage() {
       <section className="section-title-row"><div><p>SELLER ANALYTICS</p><h1>Insights</h1><span>Use route, payment and delivery patterns to plan better dispatches.</span></div><button className="portal-secondary" type="button" onClick={() => notify("Insights date range refreshed.")}>Last 30 days ▾</button></section>
       <section className="insight-layout">
         <article className="portal-card insight-bars">
-          <div className="portal-card-head"><div><small>TOP DESTINATIONS</small><h2>Shipment volume by city</h2></div><span className="trend-pill">+14.8%</span></div>
-          {[["Hyderabad",88,42],["Bengaluru",72,34],["Mumbai",58,27],["Chennai",44,21],["Pune",32,15]].map(([city,width,count]) => <div className="insight-bar-row" key={city}><span>{city}</span><div><i style={{ width: `${width}%` }}></i></div><strong>{count}</strong></div>)}
+          <div className="portal-card-head"><div><small>TOP DESTINATIONS</small><h2>Shipment volume by city</h2></div><span className="trend-pill">Live</span></div>
+          {destinationAnalytics.length ? destinationAnalytics.slice(0, 5).map(([city, data]) => <div className="insight-bar-row" key={city}><span>{city}</span><div><i style={{ width: `${Math.round((data.total / destinationAnalytics[0][1].total) * 100)}%` }}></i></div><strong>{data.total}</strong></div>) : <div className="portal-tool-empty"><p>No destination data received.</p></div>}
         </article>
         <article className="portal-card insight-summary">
           <small>ORDER QUALITY</small><h2>Delivery performance</h2>
-          <div><strong>96.4%</strong><span>Delivered successfully</span></div>
-          <ul><li><span>Average delivery</span><b>2.8 days</b></li><li><span>RTO rate</span><b>3.6%</b></li><li><span>Prepaid / COD</span><b>62% / 38%</b></li><li><span>Average order value</span><b>₹1,180</b></li></ul>
+          <div><strong>{overviewAnalytics["30D"].firstAttempt}</strong><span>Delivered successfully</span></div>
+          <ul><li><span>Average delivery</span><b>—</b></li><li><span>RTO rate</span><b>{overviewAnalytics["30D"].rto}</b></li><li><span>COD share</span><b>{overviewAnalytics["30D"].codShare}</b></li><li><span>Average order value</span><b>{overviewAnalytics["30D"].aov}</b></li></ul>
         </article>
       </section>
     </>
@@ -1111,10 +1061,10 @@ export default function DashboardPage() {
       <section className="section-title-row"><div><p>CONNECTED COMMERCE</p><h1>Channels</h1><span>Bring store orders into the Pax dispatch workflow.</span></div><button className="portal-primary" type="button" onClick={() => notify("Channel connection wizard opened.")}><Icon name="plus" /> Connect store</button></section>
       <section className="channel-grid">
         {[
-          ["SH", "Shopify", "Connected", "1,248 orders synced", true],
+          ["SH", "Shopify", "Not connected", "Connect with store credentials", false],
           ["WC", "WooCommerce", "Not connected", "Connect with store URL", false],
           ["AZ", "Amazon", "Not connected", "Import marketplace orders", false],
-          ["CS", "CSV orders", "Ready", "Upload an order file", true],
+          ["CS", "CSV orders", "Not connected", "Upload requires order import API", false],
         ].map(([code, title, status, copy, connected]) => <article className="portal-card channel-card" key={title}><div className={`channel-logo channel-${code.toLowerCase()}`}>{code}</div><span className={connected ? "channel-status connected" : "channel-status"}><i></i>{status}</span><h2>{title}</h2><p>{copy}</p><button type="button" onClick={() => notify(`${title} ${connected ? "settings opened" : "connection started"}.`)}>{connected ? "Manage" : "Connect"} →</button></article>)}
       </section>
     </>
@@ -1124,7 +1074,7 @@ export default function DashboardPage() {
     <>
       <section className="section-title-row"><div><p>WE’RE HERE TO HELP</p><h1>Support desk</h1><span>Raise a ticket or talk to the local Pax team.</span></div></section>
       <section className="support-grid">
-        <form className="portal-card support-form" onSubmit={(event) => { event.preventDefault(); if (!ticket.subject || !ticket.message) { notify("Add a subject and message."); return; } setTicket({ subject: "", message: "" }); notify("Ticket PAX-SUP-104 created."); }}>
+        <form className="portal-card support-form" onSubmit={(event) => { event.preventDefault(); if (!ticket.subject || !ticket.message) { notify("Add a subject and message."); return; } notify("Ticket submission requires the support API."); }}>
           <small>NEW SUPPORT TICKET</small><h2>What can we solve?</h2>
           <label>Subject<input value={ticket.subject} onChange={(event) => setTicket({ ...ticket, subject: event.target.value })} placeholder="e.g. Pickup not completed" /></label>
           <label>Details<textarea value={ticket.message} onChange={(event) => setTicket({ ...ticket, message: event.target.value })} rows="5" placeholder="Share the shipment ID and what happened..." /></label>
@@ -1172,8 +1122,8 @@ export default function DashboardPage() {
       return;
     }
     if (toolId === "shipments-track") {
-      setTrackId("PAX-260728");
-      setTrackResult("PAX-260728");
+      setTrackId("");
+      setTrackResult(null);
       return;
     }
     if (toolId === "finance-wallet" && (label.includes("Add money") || label.includes("balance"))) {
@@ -1190,10 +1140,13 @@ export default function DashboardPage() {
   const renderFeatureWorkspace = (toolId) => {
     const details = featureDetails[toolId];
     if (!details) return renderOverview();
-    const [eyebrow, title, copy, baseFeatures] = details;
-    const features = toolId === "finance-wallet"
-      ? [`${walletBalanceLabel} balance`, "Add money instantly", "₹860 debited today", "₹240 refunded"]
-      : baseFeatures;
+    const [eyebrow, title, copy] = details;
+    const features = [
+      `${shipments.length} live shipments`,
+      `${enabledCouriers.length} connected couriers`,
+      "API-backed workflow",
+      "No sample records",
+    ];
     return (
       <>
         <section className="section-title-row feature-title-row">
@@ -1444,7 +1397,7 @@ export default function DashboardPage() {
               </div>
             </fieldset>
             <div className="wallet-recharge-summary"><span>Balance after recharge</span><strong>{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(walletBalance + (Number(rechargeAmount) || 0))}</strong></div>
-            <p className="wallet-secure-note"><span>✓</span> Payment is simulated securely for this customer portal demo.</p>
+            <p className="wallet-secure-note"><span>i</span> No balance changes are made until the payment gateway API is connected.</p>
             <div className="wallet-modal-actions"><button className="portal-secondary" type="button" onClick={() => setWalletModal(false)}>Cancel</button><button className="portal-primary" type="submit">Add {Number(rechargeAmount) >= 100 ? `₹${Number(rechargeAmount).toLocaleString("en-IN")}` : "money"} <Icon name="arrow" /></button></div>
           </form>
         </div>
