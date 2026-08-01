@@ -85,6 +85,12 @@ export async function fetchDelhiveryWaybills(count) {
   }));
 }
 
+export async function fetchDelhiverySingleWaybill() {
+  return unwrapApiData(await request("/api/admin/delhivery/waybills/fetch-single", {
+    method: "POST",
+  }));
+}
+
 export async function getDelhiveryWaybills({ status = "", limit = 100, offset = 0 } = {}) {
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) query.set("status", status);

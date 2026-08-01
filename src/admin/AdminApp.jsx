@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   API_BASE_URL,
+  fetchDelhiverySingleWaybill,
   fetchDelhiveryWaybills,
   getAdminExpectedTat,
   getAdminHeavyServiceability,
@@ -332,6 +333,7 @@ function WaybillWorkspace({ flash }) {
   const [inventory, setInventory] = useState({ items: [], summary: { total: 0, stored: 0, reserved: 0, used: 0 } });
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
+  const [fetchingSingle, setFetchingSingle] = useState(false);
   const [error, setError] = useState("");
 
   const loadInventory = async (nextStatus = status) => {
@@ -370,6 +372,20 @@ function WaybillWorkspace({ flash }) {
     }
   };
 
+  const fetchSingle = async () => {
+    setFetchingSingle(true);
+    setError("");
+    try {
+      const result = await fetchDelhiverySingleWaybill();
+      flash(`${result.storedCount} single Delhivery waybill stored${result.duplicateCount ? "; duplicate skipped" : ""}.`);
+      await loadInventory(status);
+    } catch (requestError) {
+      setError(requestError.message || "A single Delhivery waybill could not be fetched.");
+    } finally {
+      setFetchingSingle(false);
+    }
+  };
+
   const summary = inventory.summary || { total: 0, stored: 0, reserved: 0, used: 0 };
   return <>
     <section className="admin-metrics">
@@ -380,10 +396,11 @@ function WaybillWorkspace({ flash }) {
     </section>
     <section className="admin-tool-layout">
       <form className="admin-card admin-tool-form" onSubmit={fetchBatch}>
-        <p>DELHIVERY BULK WAYBILL</p><h2>Fetch a new batch</h2>
+        <p>DELHIVERY WAYBILL INVENTORY</p><h2>Fetch and store waybills</h2>
         <label>Waybill count<input type="number" min="1" max="10000" step="1" value={count} onChange={(event) => setCount(event.target.value)} /></label>
         <button type="submit" disabled={fetching}>{fetching ? "Fetching..." : "Fetch and store"}</button>
-        <span>Maximum 10,000 per request and 50,000 per five minutes. Newly fetched waybills remain stored for later manifestation.</span>
+        <button type="button" disabled={fetchingSingle} onClick={fetchSingle}>{fetchingSingle ? "Fetching one..." : "Fetch single waybill"}</button>
+        <span>Bulk: maximum 10,000 per request and 50,000 per five minutes. Single: one AWB per call. Newly fetched waybills remain stored for later manifestation.</span>
         {error && <p className="is-error">{error}</p>}
       </form>
       <div className="admin-card admin-tool-result"><span>INVENTORY SAFETY</span><h2>Stored before use</h2><p>Duplicate waybills are ignored. A waybill is not assigned to an order until the Delhivery manifestation contract is integrated.</p></div>

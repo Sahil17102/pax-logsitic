@@ -12,6 +12,7 @@ const DEFAULT_HEAVY_RATE_LIMIT_REQUESTS = 2700;
 const DEFAULT_TAT_RATE_LIMIT_REQUESTS = 675;
 const DEFAULT_WAYBILL_RATE_LIMIT_REQUESTS = 5;
 const DEFAULT_WAYBILL_WINDOW_COUNT = 50000;
+const DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS = 675;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 
 export class DelhiveryError extends Error {
@@ -290,6 +291,17 @@ function validateBaseUrl(value) {
   return url.toString().replace(/\/$/, "");
 }
 
+function validateProviderPath(value, variableName) {
+  const path = String(value).trim();
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    throw new DelhiveryError(`${variableName} must be an absolute path on the configured Delhivery host.`, {
+      code: "DELHIVERY_INVALID_CONFIGURATION",
+      status: 503,
+    });
+  }
+  return path;
+}
+
 export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   const environment = String(process.env.DELHIVERY_ENV || "production").trim().toLowerCase();
   const token = String(process.env.DELHIVERY_API_TOKEN || "").trim();
@@ -316,13 +328,12 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   const waybillWindowCount = Number.isInteger(configuredWaybillWindowCount) && configuredWaybillWindowCount > 0
     ? Math.min(configuredWaybillWindowCount, 50000)
     : DEFAULT_WAYBILL_WINDOW_COUNT;
-  const waybillPath = String(process.env.DELHIVERY_WAYBILL_PATH || "/waybill/api/bulk/json/").trim();
-  if (!waybillPath.startsWith("/") || waybillPath.startsWith("//")) {
-    throw new DelhiveryError("DELHIVERY_WAYBILL_PATH must be an absolute path on the configured Delhivery host.", {
-      code: "DELHIVERY_INVALID_CONFIGURATION",
-      status: 503,
-    });
-  }
+  const waybillPath = validateProviderPath(process.env.DELHIVERY_WAYBILL_PATH || "/waybill/api/bulk/json/", "DELHIVERY_WAYBILL_PATH");
+  const configuredSingleWaybillRateLimit = Number(process.env.DELHIVERY_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS);
+  const singleWaybillRateLimitRequests = Number.isInteger(configuredSingleWaybillRateLimit) && configuredSingleWaybillRateLimit > 0
+    ? Math.min(configuredSingleWaybillRateLimit, 750)
+    : DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS;
+  const singleWaybillPath = validateProviderPath(process.env.DELHIVERY_SINGLE_WAYBILL_PATH || "/waybill/api/fetch/json/", "DELHIVERY_SINGLE_WAYBILL_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -375,7 +386,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     waybillCountWindow.count += count;
   }
 
-  async function requestJson(endpoint, rateLimitKey, limit) {
+  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true } = {}) {
     consumeRateLimit(rateLimitKey, limit);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -385,7 +396,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
         method: "GET",
         headers: {
           Accept: "application/json",
-          Authorization: `Token ${token}`,
+          ...(includeAuthorization ? { Authorization: `Token ${token}` } : {}),
         },
         signal: controller.signal,
       });
@@ -478,6 +489,21 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return { provider: "delhivery", requestedCount: count, receivedCount: waybills.length, waybills };
   }
 
+  async function fetchSingleWaybill() {
+    ensureConfigured();
+    const endpoint = new URL(singleWaybillPath, `${baseUrl}/`);
+    endpoint.searchParams.set("token", token);
+    const payload = await requestJson(endpoint, "single-waybill", singleWaybillRateLimitRequests, { includeAuthorization: false });
+    const waybills = normalizeDelhiveryWaybills(payload);
+    if (waybills.length !== 1) {
+      throw new DelhiveryError("Delhivery did not return exactly one valid waybill.", {
+        code: "DELHIVERY_INVALID_RESPONSE",
+        status: 502,
+      });
+    }
+    return { provider: "delhivery", requestedCount: 1, receivedCount: 1, waybills };
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -555,5 +581,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     checkHeavyServiceability,
     getExpectedTat,
     fetchWaybills,
+    fetchSingleWaybill,
   };
 }

@@ -88,6 +88,14 @@ try {
     fetchImpl: async (url, options) => {
       requestCount += 1;
       const endpoint = new URL(url);
+      if (endpoint.pathname === "/waybill/api/fetch/json/") {
+        assert.equal(endpoint.searchParams.get("token"), "test-token");
+        assert.equal(options.headers.Authorization, undefined);
+        return new Response(JSON.stringify({ waybill: "910000000001" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       assert.equal(options.headers.Authorization, "Token test-token");
       if (endpoint.pathname === "/waybill/api/bulk/json/") {
         assert.equal(endpoint.searchParams.get("count"), "2");
@@ -130,7 +138,9 @@ try {
   await client.getExpectedTat(tatRequest);
   const fetchedWaybills = await client.fetchWaybills(2);
   assert.deepEqual(fetchedWaybills.waybills, ["900000000001", "900000000002"]);
-  assert.equal(requestCount, 4, "parcel, Heavy and TAT cache independently; waybill fetch performs one provider request");
+  const fetchedSingleWaybill = await client.fetchSingleWaybill();
+  assert.deepEqual(fetchedSingleWaybill.waybills, ["910000000001"]);
+  assert.equal(requestCount, 5, "parcel, Heavy and TAT cache independently; bulk and single waybill calls each reach the provider");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -142,4 +152,4 @@ try {
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, waybillParser: true, cacheVerified: true }));

@@ -68,6 +68,7 @@ GET   /api/admin/heavy-serviceability/:pincode
 GET   /api/client/expected-tat
 GET   /api/admin/expected-tat
 POST  /api/admin/delhivery/waybills/fetch
+POST  /api/admin/delhivery/waybills/fetch-single
 GET   /api/admin/delhivery/waybills
 GET   /api/tracking/:id
 GET   /api/events
@@ -110,6 +111,8 @@ DELHIVERY_TAT_RATE_LIMIT_REQUESTS=675
 DELHIVERY_WAYBILL_PATH=/waybill/api/bulk/json/
 DELHIVERY_WAYBILL_RATE_LIMIT_REQUESTS=5
 DELHIVERY_WAYBILL_WINDOW_COUNT=50000
+DELHIVERY_SINGLE_WAYBILL_PATH=/waybill/api/fetch/json/
+DELHIVERY_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS=675
 ```
 
 `DELHIVERY_ENV=staging` selects `https://staging-express.delhivery.com`. `DELHIVERY_BASE_URL` is optional and exists for an approved custom gateway or contract-test stub. Plain HTTP is rejected unless `DELHIVERY_ALLOW_INSECURE_HTTP=true`, which is only used by the local automated tests.
@@ -124,6 +127,8 @@ The admin-only bulk waybill endpoint accepts `{ "count": 1..10000 }`, calls the 
 
 The default bulk path is `/waybill/api/bulk/json/`. It is configurable because Delhivery's full authenticated portal contract was not included with the supplied rate-limit documentation. Confirm `DELHIVERY_WAYBILL_PATH` against the account's official staging/production documentation before the live acceptance run. Fetched waybills are intentionally not attached to an order immediately; they remain `stored` until the separate manifestation contract can reserve and consume them safely.
 
+`POST /api/admin/delhivery/waybills/fetch-single` calls Delhivery's documented `/waybill/api/fetch/json/` endpoint and stores its one returned AWB in the same inventory. The provider requires the account token as a query parameter; Pax adds it only in the server-to-server HTTPS request and never returns it to the admin browser or Postman client. This contract has an independent 675-request process window under Delhivery's 750-request/5-minute/IP limit. Override `DELHIVERY_SINGLE_WAYBILL_PATH` only when the account-specific provider contract requires it.
+
 Shipment creation now performs the same server-side check before writing an order. Set `productType` to `Heavy` to use the Heavy contract; omitted or other values use parcel serviceability. NSZ, embargoed, unsupported COD and unsupported prepaid destinations return HTTP `422`; an absent provider token returns `503`; upstream or malformed responses return `502`; and timeouts return `504`. No local shipment is created in those cases. Successful records start as `Pending manifestation`; the API does not claim that a Delhivery pickup is scheduled until the separate manifestation and pickup contracts are integrated.
 
 The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
@@ -133,7 +138,7 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings, Surface/Express Expected TAT, TAT NSZ, invalid transport validation, bulk waybill storage, inventory reads, duplicate protection and count validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings, Surface/Express Expected TAT, TAT NSZ, invalid transport validation, bulk and single waybill storage, shared inventory reads, duplicate protection and count validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
 
 Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, package manifestation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 

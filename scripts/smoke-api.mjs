@@ -130,6 +130,11 @@ try {
     headers: { ...adminAuthorization, "Content-Type": "application/json" },
     body: JSON.stringify({ count: 3 }),
   });
+  const singleWaybill = await request("/api/admin/delhivery/waybills/fetch-single", {
+    method: "POST",
+    headers: adminAuthorization,
+  });
+  const inventoryAfterSingle = await request("/api/admin/delhivery/waybills?status=stored&limit=10", { headers: adminAuthorization });
   const updated = await request(`/api/admin/shipments/${created.data.id}/status`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${adminLogin.token}`, "Content-Type": "application/json" },
@@ -150,6 +155,10 @@ try {
   assert.equal(waybillInventory.data.items.length, 3);
   assert.equal(duplicateWaybills.data.storedCount, 0);
   assert.equal(duplicateWaybills.data.duplicateCount, 3);
+  assert.equal(singleWaybill.data.receivedCount, 1);
+  assert.equal(singleWaybill.data.storedCount, 1);
+  assert.deepEqual(singleWaybill.data.preview, ["910000000001"]);
+  assert.equal(inventoryAfterSingle.data.summary.stored, 4);
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
@@ -179,8 +188,9 @@ try {
     delhiveryHeavyServiceable: heavyServiceability.data.serviceable,
     expectedTatDays: expectedTat.data.tatDays,
     adminExpectedTatDays: adminExpectedTat.data.tatDays,
-    storedWaybills: waybillInventory.data.summary.stored,
+    storedWaybills: inventoryAfterSingle.data.summary.stored,
     duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
+    singleWaybillStored: singleWaybill.data.storedCount,
   }));
 } finally {
   server.kill();

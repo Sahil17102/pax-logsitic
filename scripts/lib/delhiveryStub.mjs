@@ -12,6 +12,15 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
 
+    if (request.method === "GET" && url.pathname === "/waybill/api/fetch/json/") {
+      if (url.searchParams.get("token") !== token) {
+        response.statusCode = 401;
+        response.end(JSON.stringify({ detail: "Invalid token" }));
+        return;
+      }
+      response.end(JSON.stringify({ waybill: "910000000001" }));
+      return;
+    }
     if (request.headers.authorization !== `Token ${token}`) {
       response.statusCode = 401;
       response.end(JSON.stringify({ detail: "Invalid token" }));

@@ -207,6 +207,22 @@ async function readWaybillInventory({ status, limit, offset }) {
   return { items: filtered.slice(offset, offset + limit), summary: waybillInventorySummary(all) };
 }
 
+async function sendStoredWaybillResponse(response, fetched) {
+  const stored = await storeWaybillBatch(fetched.waybills);
+  const inventory = await readWaybillInventory({ status: "", limit: 1, offset: 0 });
+  response.status(stored.inserted.length ? 201 : 200).json({
+    data: {
+      batchId: stored.batchId,
+      requestedCount: fetched.requestedCount,
+      receivedCount: fetched.receivedCount,
+      storedCount: stored.inserted.length,
+      duplicateCount: stored.duplicateCount,
+      preview: stored.inserted.slice(0, 10).map((record) => record.waybill),
+      summary: inventory.summary,
+    },
+  });
+}
+
 function findUserByIdentifier(state, value) {
   const identifier = normalizeLoginIdentifier(value);
   return state.users.find((item) => item.email === identifier || item.phone === identifier);
@@ -348,19 +364,12 @@ app.get("/api/client/expected-tat", requireRole("customer"), handleExpectedTat);
 
 app.post("/api/admin/delhivery/waybills/fetch", requireRole("admin"), async (request, response) => {
   const fetched = await delhivery.fetchWaybills(request.body?.count);
-  const stored = await storeWaybillBatch(fetched.waybills);
-  const inventory = await readWaybillInventory({ status: "", limit: 1, offset: 0 });
-  response.status(stored.inserted.length ? 201 : 200).json({
-    data: {
-      batchId: stored.batchId,
-      requestedCount: fetched.requestedCount,
-      receivedCount: fetched.receivedCount,
-      storedCount: stored.inserted.length,
-      duplicateCount: stored.duplicateCount,
-      preview: stored.inserted.slice(0, 10).map((record) => record.waybill),
-      summary: inventory.summary,
-    },
-  });
+  await sendStoredWaybillResponse(response, fetched);
+});
+
+app.post("/api/admin/delhivery/waybills/fetch-single", requireRole("admin"), async (_request, response) => {
+  const fetched = await delhivery.fetchSingleWaybill();
+  await sendStoredWaybillResponse(response, fetched);
 });
 
 app.get("/api/admin/delhivery/waybills", requireRole("admin"), async (request, response) => {
