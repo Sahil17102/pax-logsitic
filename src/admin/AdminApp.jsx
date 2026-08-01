@@ -83,19 +83,21 @@ const pageTitles = {
 };
 
 const managementPages = {
-  plans: { action: "Add plan", columns: ["Plan", "Monthly fee", "Shipment limit", "Status"], rows: [["Starter", "Rs 0", "50 / month", "Active"], ["Growth", "Rs 1,499", "500 / month", "Active"], ["Enterprise", "Custom", "Unlimited", "Review"]] },
-  couriers: { action: "Add courier", columns: ["Courier", "Service", "Delivery rate", "Status"], rows: [["Pax Express", "Domestic", "97.2%", "Active"], ["Delhivery", "National", "95.8%", "Active"], ["Blue Dart", "Express", "96.1%", "Active"]] },
-  credentials: { action: "Connect courier", columns: ["Connection", "Account", "Last verified", "Status"], rows: [["Pax Express API", "Primary", "Today, 08:42", "Active"], ["Delhivery API", "DLV-2981", "Yesterday", "Active"], ["Blue Dart API", "BD-HYD-04", "31 Jul", "Review"]] },
-  providers: { action: "Add provider", columns: ["Provider", "Type", "Coverage", "Status"], rows: [["Pax Logistics", "First party", "Pan India", "Active"], ["SouthLine Freight", "Surface", "South India", "Active"], ["Metro Sprint", "Last mile", "8 metros", "Review"]] },
-  "pricing-b2b": { action: "Add rate slab", columns: ["Zone", "Weight slab", "Base freight", "Status"], rows: [["Within city", "Up to 10 kg", "Rs 180", "Active"], ["Regional", "10-25 kg", "Rs 420", "Active"], ["National", "25-50 kg", "Rs 890", "Active"]] },
-  "pricing-b2c": { action: "Add rate slab", columns: ["Zone", "Weight slab", "Base rate", "Status"], rows: [["Local", "0.5 kg", "Rs 79", "Active"], ["Metro", "0.5 kg", "Rs 119", "Active"], ["National", "0.5 kg", "Rs 149", "Active"]] },
-  invoices: { action: "Export invoices", columns: ["Invoice", "Customer", "Amount", "Status"], rows: [["INV-260731", "Aarav Retail", "Rs 12,840", "Active"], ["INV-260724", "Nila Studios", "Rs 8,420", "Active"], ["INV-260719", "Kite Office", "Rs 5,960", "Review"]] },
-  cod: { action: "Create remittance", columns: ["Batch", "Seller", "Collected", "Status"], rows: [["COD-731", "Nila Studios", "Rs 18,420", "Active"], ["COD-728", "Rohan Mehta", "Rs 6,850", "Review"], ["COD-724", "Veda Foods", "Rs 4,120", "Active"]] },
-  wallet: { action: "Add adjustment", columns: ["Transaction", "Account", "Amount", "Status"], rows: [["WAL-8042", "Aarav Retail", "+ Rs 5,000", "Active"], ["WAL-8039", "Kite Office", "- Rs 590", "Active"], ["WAL-8032", "Nila Studios", "+ Rs 860", "Review"]] },
-  weight: { action: "Export report", columns: ["Shipment", "Declared", "Measured", "Status"], rows: [["PAX-260714", "2.4 kg", "3.1 kg", "Review"], ["PAX-260702", "5.0 kg", "5.6 kg", "Review"], ["PAX-260691", "1.2 kg", "1.2 kg", "Active"]] },
-  disputes: { action: "Create dispute", columns: ["Dispute", "Shipment", "Amount at risk", "Status"], rows: [["DSP-184", "PAX-260714", "Rs 184", "Review"], ["DSP-172", "PAX-260702", "Rs 96", "Review"], ["DSP-160", "PAX-260691", "Rs 0", "Active"]] },
-  support: { action: "Raise ticket", columns: ["Ticket", "Subject", "Owner", "Status"], rows: [["SUP-104", "Weight mismatch review", "Operations", "Review"], ["SUP-101", "Delivery address query", "Support", "Active"], ["SUP-096", "COD confirmation", "Finance", "Active"]] },
+  plans: { action: "Add plan", columns: ["Plan", "Monthly fee", "Shipment limit", "Status"] },
+  couriers: { action: "Add courier", columns: ["Courier", "Service", "Delivery rate", "Status"] },
+  credentials: { action: "Connect courier", columns: ["Connection", "Account", "Last verified", "Status"] },
+  providers: { action: "Add provider", columns: ["Provider", "Type", "Coverage", "Status"] },
+  "pricing-b2b": { action: "Add rate slab", columns: ["Zone", "Weight slab", "Base freight", "Status"] },
+  "pricing-b2c": { action: "Add rate slab", columns: ["Zone", "Weight slab", "Base rate", "Status"] },
+  invoices: { action: "Export invoices", actionType: "export", columns: ["Invoice", "Customer", "Amount", "Status"] },
+  cod: { action: "Create remittance", columns: ["Batch", "Seller", "Collected", "Status"] },
+  wallet: { action: "Add adjustment", columns: ["Transaction", "Account", "Amount", "Status"] },
+  weight: { action: "Export report", actionType: "export", columns: ["Shipment", "Declared", "Measured", "Status"] },
+  disputes: { action: "Create dispute", columns: ["Dispute", "Shipment", "Amount at risk", "Status"] },
+  support: { action: "Raise ticket", columns: ["Ticket", "Subject", "Owner", "Status"] },
 };
+
+const managementStatusOptions = ["Active", "Review", "Pending", "Paid", "Due", "Processed", "Credit", "Debit", "Open", "Resolved", "Disabled"];
 
 function safeParse(value, fallback) {
   try {
@@ -251,22 +253,66 @@ function ShipmentTable({ shipments, onStatusChange, compact = false }) {
 function ManagementWorkspace({ page, flash, search, records, onRecordsChange }) {
   const config = managementPages[page];
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
     setEditorOpen(false);
+    setEditingId(null);
   }, [page]);
 
   if (!config) return null;
   const query = search.trim().toLowerCase();
-  const visibleRows = records.filter((record) => !query || record.cells.some((cell) => String(cell).toLowerCase().includes(query)));
+  const visibleRows = records.filter((record) => !query || (record.cells || []).some((cell) => String(cell).toLowerCase().includes(query)));
+  const editingRecord = records.find((record) => record.id === editingId) || null;
+
+  const closeEditor = () => {
+    setEditorOpen(false);
+    setEditingId(null);
+  };
+
+  const openNewEditor = () => {
+    setEditingId(null);
+    setEditorOpen(true);
+  };
+
+  const openEditEditor = (record) => {
+    setEditingId(record.id);
+    setEditorOpen(true);
+  };
+
   const saveRecord = (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const label = String(data.get("name") || "New record").trim();
-    const detail = String(data.get("notes") || "Configured").trim() || "Configured";
-    onRecordsChange([{ id: `${page}-${Date.now()}`, cells: [label, detail, "Just now", "Active"], enabled: true, updatedAt: new Date().toISOString() }, ...records]);
-    setEditorOpen(false);
-    flash(`${label} saved in ${pageTitles[page][0]}.`);
+    const cells = config.columns.map((column, index) => String(data.get(`cell-${index}`) || "").trim());
+    if (cells.some((value) => !value)) {
+      flash("Complete every field before saving this record.");
+      return;
+    }
+    const updatedAt = new Date().toISOString();
+    if (editingRecord) {
+      onRecordsChange(records.map((record) => record.id === editingRecord.id ? { ...record, cells, updatedAt } : record));
+      flash(`${cells[0]} updated in ${pageTitles[page][0]}.`);
+    } else {
+      onRecordsChange([{ id: `${page}-${Date.now()}`, cells, enabled: true, updatedAt }, ...records]);
+      flash(`${cells[0]} added to ${pageTitles[page][0]}.`);
+    }
+    closeEditor();
+  };
+
+  const exportRecords = () => {
+    const escapeCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const csv = [config.columns, ...records.map((record) => config.columns.map((_, index) => record.cells?.[index] || ""))]
+      .map((row) => row.map(escapeCell).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${page}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    flash(`${pageTitles[page][0]} exported with ${records.length} records.`);
   };
 
   const toggleRecord = (record) => {
@@ -276,13 +322,24 @@ function ManagementWorkspace({ page, flash, search, records, onRecordsChange }) 
 
   const deleteRecord = (record) => {
     onRecordsChange(records.filter((item) => item.id !== record.id));
+    if (editingId === record.id) closeEditor();
     flash(`${record.cells[0]} removed.`);
   };
 
   return <section className="admin-card admin-table-card admin-full-card">
-    <div className="admin-table-toolbar"><div><strong>{visibleRows.length} records</strong><span>Search, review and manage the current configuration.</span></div><button className="admin-compact-primary" type="button" onClick={() => setEditorOpen((open) => !open)}>{editorOpen ? "Close" : config.action}</button></div>
-    {editorOpen && <form className="admin-inline-editor" onSubmit={saveRecord}><label>Name or reference<input name="name" required placeholder="Enter a value" autoFocus /></label><label>Notes<input name="notes" placeholder="Optional notes" /></label><button type="submit">Save record</button></form>}
-    <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}<th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleRows.map((record) => <tr className={record.enabled ? "" : "is-disabled"} key={record.id}>{record.cells.map((cell, index) => <td key={`${cell}-${index}`}>{index === record.cells.length - 1 ? <StatusBadge status={record.enabled ? cell : "Disabled"} /> : index === 0 ? <strong>{cell}</strong> : cell}</td>)}<td><button className={`admin-switch${record.enabled ? " is-on" : ""}`} type="button" aria-label={`${record.enabled ? "Disable" : "Enable"} ${record.cells[0]}`} onClick={() => toggleRecord(record)}><i></i><span>{record.enabled ? "On" : "Off"}</span></button></td><td><div className="admin-row-actions"><button type="button" onClick={() => flash(`${record.cells[0]} opened for editing.`)}>Edit</button><button className="is-danger" type="button" onClick={() => deleteRecord(record)}>Delete</button></div></td></tr>)}</tbody></table></div>
+    <div className="admin-table-toolbar"><div><strong>{visibleRows.length} records</strong><span>Search, review and manage every field in the current configuration.</span></div><button className="admin-compact-primary" type="button" onClick={config.actionType === "export" ? exportRecords : editorOpen ? closeEditor : openNewEditor}>{editorOpen && config.actionType !== "export" ? "Close editor" : config.action}</button></div>
+    {editorOpen && <form className="admin-inline-editor" key={`${page}-${editingId || "new"}`} onSubmit={saveRecord}>
+      <div className="admin-editor-heading"><strong>{editingRecord ? `Edit ${editingRecord.cells?.[0] || "record"}` : config.action}</strong><span>Complete all {config.columns.length} fields. Changes will be reflected in this table and connected client configuration.</span></div>
+      {config.columns.map((column, index) => {
+        const value = editingRecord?.cells?.[index] || (column === "Status" ? "Active" : "");
+        const statusOptions = managementStatusOptions.includes(value) ? managementStatusOptions : [value, ...managementStatusOptions];
+        return <label key={column}>{column}{column === "Status"
+          ? <select name={`cell-${index}`} defaultValue={value} required>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
+          : <input name={`cell-${index}`} defaultValue={value} required placeholder={`Enter ${column.toLowerCase()}`} autoFocus={index === 0} />}</label>;
+      })}
+      <div className="admin-editor-actions"><button className="admin-editor-cancel" type="button" onClick={closeEditor}>Cancel</button><button type="submit">{editingRecord ? "Save changes" : "Create record"}</button></div>
+    </form>}
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}<th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleRows.map((record) => <tr className={record.enabled ? "" : "is-disabled"} key={record.id}>{config.columns.map((column, index) => { const cell = record.cells?.[index] || "—"; return <td key={`${column}-${index}`}>{index === config.columns.length - 1 ? <StatusBadge status={record.enabled ? cell : "Disabled"} /> : index === 0 ? <strong>{cell}</strong> : cell}</td>; })}<td><button className={`admin-switch${record.enabled ? " is-on" : ""}`} type="button" aria-label={`${record.enabled ? "Disable" : "Enable"} ${record.cells?.[0] || "record"}`} onClick={() => toggleRecord(record)}><i></i><span>{record.enabled ? "On" : "Off"}</span></button></td><td><div className="admin-row-actions"><button type="button" onClick={() => openEditEditor(record)}>Edit</button><button className="is-danger" type="button" onClick={() => deleteRecord(record)}>Delete</button></div></td></tr>)}</tbody></table></div>
   </section>;
 }
 

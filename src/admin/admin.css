@@ -464,22 +464,30 @@ svg {
 .admin-content-editor > button,
 .admin-password-form > button { min-height: 39px; border: 0; border-radius: 8px; background: #3454d1; padding: 0 15px; color: white; cursor: pointer; font-size: .64rem; font-weight: 850; }
 .admin-row-action { border: 0; background: transparent; color: #3454d1; cursor: pointer; font-size: .6rem; font-weight: 850; }
-.admin-inline-editor { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 12px; border-top: 1px solid #e8e9e4; background: #fafaf7; padding: 16px 22px; }
+.admin-inline-editor { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); align-items: end; gap: 14px; border-top: 1px solid #dfe6f1; background: #f8faff; padding: 20px 22px; }
+.admin-editor-heading { display: grid; grid-column: 1 / -1; gap: 4px; margin-bottom: 2px; }
+.admin-editor-heading strong { color: #172238; font-family: "Manrope", sans-serif; font-size: .86rem; }
+.admin-editor-heading span { color: #7e899d; font-size: .6rem; line-height: 1.5; }
 .admin-inline-editor label,
 .admin-tool-form label,
 .admin-content-editor label,
 .admin-password-form label { display: grid; gap: 7px; color: #5d665f; font-size: .62rem; font-weight: 800; }
 .admin-inline-editor input,
+.admin-inline-editor select,
 .admin-tool-form input,
 .admin-tool-form select,
 .admin-content-editor textarea,
 .admin-password-form input { width: 100%; min-height: 43px; border: 1px solid #d9dcd6; border-radius: 8px; outline: 0; background: white; padding: 0 12px; color: #171717; }
 .admin-content-editor textarea { min-height: 220px; resize: vertical; padding: 12px; line-height: 1.6; }
 .admin-inline-editor input:focus,
+.admin-inline-editor select:focus,
 .admin-tool-form input:focus,
 .admin-tool-form select:focus,
 .admin-content-editor textarea:focus,
 .admin-password-form input:focus { border-color: #3454d1; box-shadow: 0 0 0 3px rgba(52,84,209,.08); }
+.admin-editor-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.admin-inline-editor .admin-editor-cancel { border: 1px solid #d6dfed; background: white; color: #52617a; }
+.admin-inline-editor .admin-editor-cancel:hover { border-color: #aebddb; background: #f2f5fa; }
 
 .admin-tool-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr); gap: 15px; }
 .admin-tool-form,
@@ -533,6 +541,7 @@ svg {
   .admin-action-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-health-grid, .admin-insight-grid { grid-template-columns: 1fr; }
   .admin-user > div { display: none; }
+  .admin-inline-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
