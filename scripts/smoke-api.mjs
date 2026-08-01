@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
+import { startDelhiveryStub } from "./lib/delhiveryStub.mjs";
 
 const port = 3105;
 const baseUrl = `http://127.0.0.1:${port}`;
+const delhiveryStub = await startDelhiveryStub(3107, "contract-delhivery-token");
 const server = spawn(process.execPath, ["server/index.js"], {
   cwd: new URL("..", import.meta.url),
   env: {
@@ -11,6 +13,9 @@ const server = spawn(process.execPath, ["server/index.js"], {
     ADMIN_PASSWORD: "",
     ADMIN_PASSWORD_SHA256: "a615a46a9f52e117dffce7d7235b464a910f74508dfb51a27ce8c63d0413d9a0",
     JWT_SECRET: "test-secret-for-contract-smoke",
+    DELHIVERY_API_TOKEN: delhiveryStub.token,
+    DELHIVERY_BASE_URL: delhiveryStub.baseUrl,
+    DELHIVERY_ALLOW_INSECURE_HTTP: "true",
   },
   stdio: "ignore",
 });
@@ -64,6 +69,7 @@ try {
     body: JSON.stringify({ challengeId: otpRequest.data.challengeId, otp: otpRequest.data.previewCode }),
   });
   const before = await request("/api/client/bootstrap", { headers: authorization });
+  const serviceability = await request("/api/client/serviceability/194103", { headers: authorization });
   const created = await request("/api/client/shipments", {
     method: "POST",
     headers: { ...authorization, "Content-Type": "application/json" },
@@ -113,6 +119,8 @@ try {
   });
 
   assert.equal(before.data.shipments.length, 0);
+  assert.equal(serviceability.data.serviceable, true);
+  assert.equal(serviceability.data.cod, true);
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
@@ -138,9 +146,11 @@ try {
     adminCustomers: dashboard.data.customers.length,
     secondCustomerShipments: secondBootstrap.data.shipments.length,
     publicTrackingIsPrivate: !Object.hasOwn(tracked.data, "ownerEmail"),
+    delhiveryServiceable: serviceability.data.serviceable,
   }));
 } finally {
   server.kill();
+  await delhiveryStub.close();
 }
 
 const productionPort = 3106;

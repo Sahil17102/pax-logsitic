@@ -64,6 +64,10 @@ export async function getAdminDashboard() {
   return normalizeAdminDashboard(await request("/api/admin/dashboard"));
 }
 
+export async function getAdminServiceability(pincode) {
+  return unwrapApiData(await request(`/api/admin/serviceability/${encodeURIComponent(pincode)}`));
+}
+
 export async function setShipmentStatus(shipmentId, status) {
   const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/status`, {
     method: "PATCH",

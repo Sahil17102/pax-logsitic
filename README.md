@@ -61,6 +61,8 @@ POST  /api/client/auth/login
 POST  /api/client/auth/otp/request
 POST  /api/client/auth/otp/verify
 POST  /api/client/shipments
+GET   /api/client/serviceability/:pincode
+GET   /api/admin/serviceability/:pincode
 GET   /api/tracking/:id
 GET   /api/events
 ```
@@ -81,9 +83,59 @@ For local preview only, `admin` / `Pax@1234` is available when `VITE_ENABLE_PREV
 
 The repository includes the Express API in `server/index.js`. It stores platform state in PostgreSQL when `DATABASE_URL` is present and uses an empty in-memory store for local development. Legacy seeded sample customers and shipments are removed by the schema-v2 migration. Admin configuration changes are published to client panels through server-sent events, with a 30-second client polling fallback.
 
+PostgreSQL is accessed directly through `pg`; the project does not use an ORM. The existing initialization flow owns one `pax_app_state` table and one JSONB state row. Schema-v3 adds persisted administrators and shared location collections inside that same document. Plans continue to use the existing `configuration.resources.plans` collection, so seeding does not create parallel tables or duplicate models.
+
 The current Render service sets `REQUIRE_DATABASE=false` so the sample-free API can remain healthy while PostgreSQL is being attached. After `DATABASE_URL` is available in the backend service, set `REQUIRE_DATABASE=true`; a fully persistent production health response reports `"storage":"postgres"`.
 
 Run the API contract smoke test with `npm run test:api`. It verifies registration, customer-scoped bootstrap, shipment creation, public tracking and the admin dashboard.
+
+## Delhivery B2C serviceability
+
+The Delhivery token is read only by the Node backend. Configure it on the backend service; never use a `VITE_*` variable for this secret:
+
+```env
+DELHIVERY_ENV=production
+DELHIVERY_API_TOKEN=<Delhivery B2C API token>
+DELHIVERY_BASE_URL=https://track.delhivery.com
+DELHIVERY_REQUEST_TIMEOUT_MS=5000
+DELHIVERY_RATE_LIMIT_REQUESTS=4000
+```
+
+`DELHIVERY_ENV=staging` selects `https://staging-express.delhivery.com`. `DELHIVERY_BASE_URL` is optional and exists for an approved custom gateway or contract-test stub. Plain HTTP is rejected unless `DELHIVERY_ALLOW_INSECURE_HTTP=true`, which is only used by the local automated tests.
+
+The two authenticated Pax serviceability routes normalize Delhivery's `delivery_codes` response into one stable contract. An empty list becomes `non_serviceable`; `Embargo` becomes `embargoed`; and only a blank remark is treated as serviceable. Results are cached for five minutes, simultaneous checks for the same PIN code are coalesced, and the backend reserves headroom under Delhivery's 4,500-request/5-minute/IP provider limit by allowing 4,000 upstream checks per process window.
+
+Shipment creation now performs the same server-side check before writing an order. NSZ, embargoed, unsupported COD and unsupported prepaid destinations return HTTP `422`; an absent provider token returns `503`; upstream or malformed responses return `502`; and timeouts return `504`. No local shipment is created in those cases. Successful records start as `Pending manifestation`; the API does not claim that a Delhivery pickup is scheduled until the separate manifestation and pickup contracts are integrated.
+
+The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
+
+```bash
+npm run test:delhivery
+npm run test:postman
+```
+
+The Postman/Newman suite exercises authentication, serviceable coverage, empty-list NSZ, temporary Embargo, blocked NSZ booking, successful serviceable booking and the admin serviceability endpoint. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
+
+Delhivery's authenticated developer portal lists other B2C contracts such as waybill allocation, warehouse management, package manifestation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+
+## Database seeds
+
+Seed commands require the backend `DATABASE_URL`. Set `DATABASE_SSL=false` only for a local PostgreSQL server that does not use TLS; hosted PostgreSQL defaults to TLS with certificate verification disabled to match the existing Render connection.
+
+For production, set `SEED_ADMIN_PASSWORD` (or `ADMIN_PASSWORD`) before creating the Super Admin. Optional identity overrides are `SEED_ADMIN_ID`, `SEED_ADMIN_USERNAME`, `SEED_ADMIN_NAME` and `SEED_ADMIN_EMAIL`. Development defaults to `admin` / `Pax@1234` only when `NODE_ENV` is not `production`.
+
+Run the seeds in this order:
+
+```bash
+npm run seedAdmin
+npm run seedBasicPlan
+npm run assignBasicPlan
+npm run seedLocations
+```
+
+Every seed runs inside a PostgreSQL transaction, locks the single state row, and upserts by stable IDs/codes. Re-running the commands preserves existing records and does not create duplicates. `assignBasicPlan` requires the first two seeds and assigns `PLAN-BASIC` to the persisted Super Admin because this project has no organization model.
+
+Use `npm run test:seeds` for the isolated idempotency contract. Each command also supports `--dry-run`, for example `npm run seedAdmin -- --dry-run`, which validates its mutation without connecting to or changing a database.
 
 Admin controls currently propagate:
 

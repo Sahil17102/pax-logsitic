@@ -1,11 +1,16 @@
 import crypto from "node:crypto";
-import { promisify } from "node:util";
 import express from "express";
-import pg from "pg";
-import { cloneDefaultControlState } from "../src/data/defaultControlState.js";
-
-const { Pool } = pg;
-const scrypt = promisify(crypto.scrypt);
+import {
+  APP_STATE_SCHEMA_VERSION,
+  createAppStatePool,
+  createInitialAppState,
+  ensureAppStateSchema,
+  migrateAppState,
+  readAppState,
+  writeAppState,
+} from "./appState.js";
+import { createDelhiveryClient, DelhiveryError } from "./integrations/delhivery.js";
+import { hashPassword, passwordMatches } from "./passwords.js";
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const adminUsername = process.env.ADMIN_USERNAME || "admin";
@@ -17,7 +22,7 @@ const configuredTokenSecret = String(process.env.JWT_SECRET || "").trim();
 const tokenSecret = configuredTokenSecret || (isProduction ? crypto.randomBytes(32).toString("hex") : "pax-local-development-secret");
 const otpDeliveryMode = String(process.env.OTP_DELIVERY_MODE || "onscreen").trim().toLowerCase();
 const databaseRequired = isProduction && process.env.REQUIRE_DATABASE === "true";
-const schemaVersion = 2;
+const schemaVersion = APP_STATE_SCHEMA_VERSION;
 const configuredOrigins = String(process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "")
   .split(",")
   .map((value) => value.trim())
@@ -30,22 +35,13 @@ const defaultOrigins = [
 ];
 const allowedOrigins = new Set([...defaultOrigins, ...configuredOrigins]);
 
-const seedState = {
-  schemaVersion,
-  configuration: cloneDefaultControlState(),
-  customers: [],
-  users: [],
-  shipments: [],
-  activities: [],
-  updatedAt: new Date().toISOString(),
-};
-
-let memoryState = JSON.parse(JSON.stringify(seedState));
-let pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
+let memoryState = createInitialAppState();
+let pool = process.env.DATABASE_URL ? createAppStatePool() : null;
 let databaseReady = false;
 const eventClients = new Set();
 const otpChallenges = new Map();
-const adminAuthenticationConfigured = Boolean(adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256));
+const environmentAdminAuthenticationConfigured = Boolean(adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256));
+const delhivery = createDelhiveryClient();
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
@@ -78,68 +74,10 @@ function isAdminPasswordValid(password) {
   return secureEqual(suppliedHash, adminPasswordSha256);
 }
 
-function migrateState(value) {
-  const state = value && typeof value === "object" ? clone(value) : clone(seedState);
-  if (Number(state.schemaVersion || 0) < schemaVersion) {
-    const sampleCustomerIds = new Set(["CUS-1048", "CUS-1042", "CUS-1039", "CUS-1033"]);
-    const sampleShipmentIds = new Set(["PAX-260731", "PAX-260728", "PAX-260724", "PAX-260719", "PAX-260714", "PAX-260709"]);
-    const sampleActivitySignatures = new Set([
-      "PAX-260728 is out for delivery|Bengaluru delivery centre",
-      "New customer account created|Aarav Retail",
-      "Weight exception needs review|PAX-260714",
-      "COD remittance processed|₹18,420",
-    ]);
-    state.customers = (Array.isArray(state.customers) ? state.customers : []).filter((item) => !sampleCustomerIds.has(item.id));
-    state.shipments = (Array.isArray(state.shipments) ? state.shipments : []).filter((item) => !sampleShipmentIds.has(item.id));
-    state.activities = (Array.isArray(state.activities) ? state.activities : []).filter((item) => !sampleActivitySignatures.has(`${item.title}|${item.detail}`));
-    const legacyResourcePrefixes = new Set(["PLAN", "CRR", "KEY", "PRV", "B2B", "B2C", "INV", "COD", "WAL", "WGT", "DSP", "SUP"]);
-    const existingResources = state.configuration?.resources || {};
-    const migratedResources = Object.fromEntries(Object.entries({
-      ...cloneDefaultControlState().resources,
-      ...existingResources,
-    }).map(([key, records]) => [key, (Array.isArray(records) ? records : []).filter((record) => {
-      const [prefix, sequence] = String(record.id || "").split("-");
-      return !(legacyResourcePrefixes.has(prefix) && /^00[1-3]$/.test(sequence));
-    })]));
-    state.configuration = {
-      ...cloneDefaultControlState(),
-      ...(state.configuration || {}),
-      resources: migratedResources,
-    };
-  }
-  state.schemaVersion = schemaVersion;
-  state.customers = Array.isArray(state.customers) ? state.customers : [];
-  state.users = Array.isArray(state.users) ? state.users : [];
-  state.shipments = Array.isArray(state.shipments) ? state.shipments : [];
-  state.activities = Array.isArray(state.activities) ? state.activities : [];
-  state.configuration = state.configuration && typeof state.configuration === "object"
-    ? state.configuration
-    : cloneDefaultControlState();
-  const customerEmails = new Set(state.customers.map((customer) => String(customer.email || "").toLowerCase()));
-  state.users.forEach((user) => {
-    const email = String(user.email || "").toLowerCase();
-    if (!email || customerEmails.has(email)) return;
-    state.customers.push({
-      id: user.id,
-      name: user.fullName || "Pax customer",
-      business: user.businessName || "Individual account",
-      email,
-      phone: user.phone || "",
-      city: user.city || "",
-      shipments: state.shipments.filter((shipment) => shipment.ownerEmail === email || shipment.customerId === user.id).length,
-      joinedAt: user.joinedAt || user.createdAt || state.updatedAt || new Date().toISOString(),
-      status: user.disabled ? "Disabled" : "Active",
-    });
-    customerEmails.add(email);
-  });
-  return state;
-}
-
 async function initializeDatabase() {
   if (!pool || databaseReady) return;
   try {
-    await pool.query("CREATE TABLE IF NOT EXISTS pax_app_state (id INTEGER PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
-    await pool.query("INSERT INTO pax_app_state (id, payload) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING", [JSON.stringify(seedState)]);
+    await ensureAppStateSchema(pool);
     databaseReady = true;
   } catch (error) {
     console.error("Postgres unavailable; using in-memory state:", error.message);
@@ -151,22 +89,16 @@ async function initializeDatabase() {
 async function readState() {
   await initializeDatabase();
   if (!pool) {
-    memoryState = migrateState(memoryState);
+    memoryState = migrateAppState(memoryState);
     return clone(memoryState);
   }
-  const result = await pool.query("SELECT payload FROM pax_app_state WHERE id = 1");
-  const stored = result.rows[0]?.payload || clone(seedState);
-  const migrated = migrateState(stored);
-  if (Number(stored.schemaVersion || 0) < schemaVersion) {
-    await pool.query("UPDATE pax_app_state SET payload = $1::jsonb, updated_at = NOW() WHERE id = 1", [JSON.stringify(migrated)]);
-  }
-  return migrated;
+  return readAppState(pool, { ensure: false });
 }
 
 async function writeState(nextState, event = "state.updated") {
   const next = { ...nextState, updatedAt: new Date().toISOString() };
   await initializeDatabase();
-  if (pool) await pool.query("UPDATE pax_app_state SET payload = $1::jsonb, updated_at = NOW() WHERE id = 1", [JSON.stringify(next)]);
+  if (pool) await writeAppState(pool, next, { ensure: false });
   else memoryState = clone(next);
   broadcast(event, next);
   return clone(next);
@@ -207,16 +139,6 @@ function requireRole(role) {
   };
 }
 
-async function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
-  const derived = await scrypt(password, salt, 64);
-  return { salt, hash: Buffer.from(derived).toString("hex") };
-}
-
-async function passwordMatches(password, record) {
-  const candidate = await hashPassword(password, record.salt);
-  return crypto.timingSafeEqual(Buffer.from(candidate.hash, "hex"), Buffer.from(record.passwordHash, "hex"));
-}
-
 function normalizeLoginIdentifier(value) {
   const identifier = String(value || "").trim();
   return identifier.includes("@") ? identifier.toLowerCase() : identifier.replace(/\D/g, "");
@@ -250,7 +172,10 @@ app.get("/health", async (_request, response) => {
   if (databaseRequired && !pool) {
     return response.status(503).json({ ok: false, storage: "unavailable", service: "pax-logistic-api", schemaVersion, message: "PostgreSQL is required in production." });
   }
-  response.json({ ok: true, storage: pool ? "postgres" : "memory", service: "pax-logistic-api", schemaVersion, adminAuthenticationConfigured, persistentSigningKey: Boolean(configuredTokenSecret) });
+  const state = await readState();
+  const adminAuthenticationConfigured = environmentAdminAuthenticationConfigured
+    || state.admins.some((admin) => !admin.disabled && admin.passwordHash && admin.salt);
+  response.json({ ok: true, storage: pool ? "postgres" : "memory", service: "pax-logistic-api", schemaVersion, adminAuthenticationConfigured, persistentSigningKey: Boolean(configuredTokenSecret), delhiveryConfigured: delhivery.configured });
 });
 
 app.get("/api/events", (request, response) => {
@@ -265,12 +190,37 @@ app.get("/api/events", (request, response) => {
   request.on("close", () => eventClients.delete(response));
 });
 
-app.post("/api/admin/auth/login", (request, response) => {
-  if (!adminAuthenticationConfigured) return response.status(503).json({ message: "Admin authentication is not configured." });
+app.post("/api/admin/auth/login", async (request, response) => {
   const username = String(request.body?.username || "").trim();
   const password = String(request.body?.password || "");
-  if (!secureEqual(username, adminUsername) || !isAdminPasswordValid(password)) return response.status(401).json({ message: "Incorrect administrator username or password." });
-  response.json({ token: issueToken(username, "admin"), admin: { name: "Pax Administrator", username } });
+  const state = await readState();
+  const normalizedUsername = username.toLowerCase();
+  const seededAdmin = state.admins.find((admin) => String(admin.username || "").toLowerCase() === normalizedUsername
+    || String(admin.email || "").toLowerCase() === normalizedUsername);
+  const seededAdminMatches = Boolean(seededAdmin && !seededAdmin.disabled && await passwordMatches(password, seededAdmin));
+  const environmentAdminMatches = environmentAdminAuthenticationConfigured
+    && secureEqual(username, adminUsername)
+    && isAdminPasswordValid(password);
+
+  if (!environmentAdminAuthenticationConfigured && !state.admins.some((admin) => !admin.disabled && admin.passwordHash && admin.salt)) {
+    return response.status(503).json({ message: "Admin authentication is not configured." });
+  }
+  if (!seededAdminMatches && !environmentAdminMatches) {
+    return response.status(401).json({ message: "Incorrect administrator username or password." });
+  }
+
+  const authenticatedAdmin = seededAdminMatches ? seededAdmin : { name: "Pax Administrator", username, role: "super_admin" };
+  response.json({
+    token: issueToken(authenticatedAdmin.username || username, "admin"),
+    admin: {
+      id: authenticatedAdmin.id,
+      name: authenticatedAdmin.name || "Pax Administrator",
+      username: authenticatedAdmin.username || username,
+      email: authenticatedAdmin.email || undefined,
+      role: authenticatedAdmin.role || "super_admin",
+      planId: authenticatedAdmin.planId || undefined,
+    },
+  });
 });
 
 app.get("/api/admin/dashboard", requireRole("admin"), async (_request, response) => {
@@ -290,7 +240,7 @@ app.patch("/api/admin/shipments/:id/status", requireRole("admin"), async (reques
   const state = await readState();
   const shipment = state.shipments.find((item) => item.id === request.params.id);
   if (!shipment) return response.status(404).json({ message: "Shipment not found." });
-  const allowedStatuses = new Set(["Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"]);
+  const allowedStatuses = new Set(["Pending manifestation", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"]);
   const status = String(request.body?.status || "");
   if (!allowedStatuses.has(status)) return response.status(400).json({ message: "A valid shipment status is required." });
   shipment.status = status;
@@ -310,6 +260,14 @@ app.patch("/api/admin/customers/:id/access", requireRole("admin"), async (reques
   await writeState(state, "customer.updated");
   response.json({ data: customer });
 });
+
+async function handleServiceability(request, response) {
+  const data = await delhivery.checkServiceability(request.params.pincode);
+  response.json({ data });
+}
+
+app.get("/api/admin/serviceability/:pincode", requireRole("admin"), handleServiceability);
+app.get("/api/client/serviceability/:pincode", requireRole("customer"), handleServiceability);
 
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();
@@ -423,6 +381,22 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
   if (!customer || !/^\d{10}$/.test(phone) || !address || !city || !/^[1-9]\d{5}$/.test(pincode) || !Number.isFinite(weight) || weight <= 0) {
     return response.status(400).json({ message: "Valid receiver, phone, address, PIN code and parcel weight are required." });
   }
+  const serviceability = await delhivery.checkServiceability(pincode);
+  if (!serviceability.serviceable) {
+    const reason = serviceability.embargoed ? "temporarily embargoed" : "not serviceable";
+    return response.status(422).json({
+      code: serviceability.embargoed ? "PINCODE_EMBARGOED" : "PINCODE_NOT_SERVICEABLE",
+      message: `PIN code ${pincode} is ${reason} by Delhivery.`,
+      data: serviceability,
+    });
+  }
+  const payment = body.payment === "COD" ? "COD" : "Prepaid";
+  if (payment === "COD" && !serviceability.cod) {
+    return response.status(422).json({ code: "COD_NOT_SERVICEABLE", message: `Cash on delivery is unavailable for PIN code ${pincode}.`, data: serviceability });
+  }
+  if (payment === "Prepaid" && !serviceability.prepaid) {
+    return response.status(422).json({ code: "PREPAID_NOT_SERVICEABLE", message: `Prepaid delivery is unavailable for PIN code ${pincode}.`, data: serviceability });
+  }
   const shipment = {
     id: `PAX-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     customer,
@@ -433,10 +407,12 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
     destination: `${city}, ${pincode}`,
     weight,
     amount: Number(body.amount) || 0,
-    payment: body.payment === "COD" ? "COD" : "Prepaid",
+    payment,
+    courier: "Delhivery",
+    serviceabilityCheckedAt: new Date().toISOString(),
     ownerEmail: request.session.subject,
     customerId: user.id,
-    status: "Pickup scheduled",
+    status: "Pending manifestation",
     date: new Date().toISOString(),
   };
   state.shipments.unshift(shipment);
@@ -459,6 +435,9 @@ app.get("/api/tracking/:id", async (request, response) => {
 });
 
 app.use((error, _request, response, _next) => {
+  if (error instanceof DelhiveryError) {
+    return response.status(error.status).json({ code: error.code, message: error.message });
+  }
   console.error(error);
   response.status(500).json({ message: "The Pax API could not complete this request." });
 });

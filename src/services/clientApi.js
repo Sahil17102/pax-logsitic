@@ -74,6 +74,10 @@ export async function createClientShipment(shipment) {
   return normalizeShipment(unwrapApiData(payload));
 }
 
+export async function getClientServiceability(pincode) {
+  return unwrapApiData(await request(`/api/client/serviceability/${encodeURIComponent(pincode)}`));
+}
+
 export async function getClientBootstrap() {
   return normalizeClientBootstrap(await request("/api/client/bootstrap"));
 }

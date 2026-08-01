@@ -30,7 +30,7 @@ export function normalizeShipment(record = {}) {
     destination: String(destination || "—"),
     amount: Number(firstValue(record, ["amount", "orderValue", "order_value", "declaredValue", "declared_value"], 0)) || 0,
     payment: String(firstValue(record, ["payment", "paymentMode", "payment_mode"], "Prepaid")),
-    status: String(firstValue(record, ["status", "shipmentStatus", "shipment_status"], "Pickup scheduled")),
+    status: String(firstValue(record, ["status", "shipmentStatus", "shipment_status"], "Pending manifestation")),
     date: firstValue(record, ["date", "createdAt", "created_at", "bookedAt", "booked_at"], ""),
   };
 }
@@ -67,6 +67,13 @@ export function normalizeConfiguration(configuration) {
     ...configuration,
     resources: { ...defaults.resources, ...(configuration.resources || {}) },
     settings: { ...defaults.settings, ...(configuration.settings || {}) },
+    locations: {
+      ...defaults.locations,
+      ...(configuration.locations || {}),
+      countries: Array.isArray(configuration.locations?.countries) ? configuration.locations.countries : [],
+      states: Array.isArray(configuration.locations?.states) ? configuration.locations.states : [],
+      cities: Array.isArray(configuration.locations?.cities) ? configuration.locations.cities : [],
+    },
     content: { ...defaults.content, ...(configuration.content || {}) },
   };
 }

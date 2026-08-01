@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   API_BASE_URL,
+  getAdminServiceability,
   getAdminDashboard,
   hasAdminToken,
   loginAdmin,
@@ -28,7 +29,7 @@ const navigation = [
   { id: "settings-menu", label: "Settings", icon: "settings", children: [["payment-options", "Payment Options"], ["password", "Change Password"], ["developer", "Developer"]] },
 ];
 
-const statusOptions = ["Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
+const statusOptions = ["Pending manifestation", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
 
 const pageTitles = {
   overview: ["Admin dashboard", "Monitor orders, sellers, revenue and delivery health across the Pax network."],
@@ -348,7 +349,20 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, contro
     flash(`${key} service ${controlState.settings.serviceability[key] ? "disabled" : "enabled"}.`);
   };
 
-  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); if (!/^[1-9]\d{5}$/.test(pin)) { setPinResult({ error: "Enter a valid 6-digit PIN code." }); return; } const digit = Number(pin.at(-1)); setPinResult({ region: pin[0] === "5" ? "South" : "Domestic", express: digit !== 9, cod: digit % 2 === 0 }); }}><p>PIN CODE CHECK</p><h2>Check and control serviceability</h2><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check coverage</button><div className="admin-service-toggles">{[["standard", "Standard"], ["express", "Express"], ["cod", "COD"]].map(([key, label]) => <button className={controlState.settings.serviceability[key] ? "is-on" : ""} type="button" key={key} onClick={() => toggleService(key)}><i></i><span>{label}</span></button>)}</div></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view Standard, Express and COD availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>PIN {pin} · {pinResult.region} zone</span><h2>Service control</h2><ul><li><b>Standard delivery</b><StatusBadge status={controlState.settings.serviceability.standard ? "Active" : "Disabled"} /></li><li><b>Express delivery</b><StatusBadge status={controlState.settings.serviceability.express && pinResult.express ? "Active" : "Disabled"} /></li><li><b>Cash on delivery</b><StatusBadge status={controlState.settings.serviceability.cod && pinResult.cod ? "Active" : "Disabled"} /></li></ul></>}</div></section>;
+  const checkPinServiceability = async (event) => {
+    event.preventDefault();
+    if (!/^[1-9]\d{5}$/.test(pin)) {
+      setPinResult({ error: "Enter a valid 6-digit PIN code." });
+      return;
+    }
+    try {
+      setPinResult(await getAdminServiceability(pin));
+    } catch (error) {
+      setPinResult({ error: error.message || "Delhivery serviceability could not be checked." });
+    }
+  };
+
+  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={checkPinServiceability}><p>DELHIVERY PIN CODE CHECK</p><h2>Check and control serviceability</h2><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check live coverage</button><div className="admin-service-toggles">{[["standard", "Standard"], ["express", "Express"], ["cod", "COD"]].map(([key, label]) => <button className={controlState.settings.serviceability[key] ? "is-on" : ""} type="button" key={key} onClick={() => toggleService(key)}><i></i><span>{label}</span></button>)}</div></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view live Delhivery delivery, prepaid and COD availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>PIN {pin} · {pinResult.stateCode || pinResult.district || "Delhivery"}</span><h2>{pinResult.serviceable ? "Serviceable" : pinResult.embargoed ? "Temporary embargo" : "Not serviceable"}</h2><ul><li><b>Standard delivery</b><StatusBadge status={controlState.settings.serviceability.standard && pinResult.serviceable ? "Active" : "Disabled"} /></li><li><b>Prepaid delivery</b><StatusBadge status={pinResult.prepaid ? "Active" : "Disabled"} /></li><li><b>Cash on delivery</b><StatusBadge status={controlState.settings.serviceability.cod && pinResult.cod ? "Active" : "Disabled"} /></li></ul></>}</div></section>;
 
   if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(rate.weight); if (!/^[1-9]\d{5}$/.test(rate.pickup) || !/^[1-9]\d{5}$/.test(rate.delivery) || weight <= 0) { setRateResult({ error: "Enter two valid PIN codes and parcel weight." }); return; } const sameRegion = rate.pickup[0] === rate.delivery[0]; const base = (sameRegion ? 78 : 128) + Math.ceil(weight * 31) + (rate.payment === "COD" ? 45 : 0); setRateResult({ standard: base, express: Math.round(base * 1.48) }); }}><p>SHIPPING RATE TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer and courier charges.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>ESTIMATED CUSTOMER RATE</span><h2>{formatMoney(rateResult.standard)}</h2><ul><li><b>Pax Standard</b><strong>{formatMoney(rateResult.standard)}</strong></li><li><b>Pax Express</b><strong>{formatMoney(rateResult.express)}</strong></li><li><b>GST</b><span>Calculated at checkout</span></li></ul></>}</div></section>;
 

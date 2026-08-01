@@ -1,0 +1,99 @@
+{
+  "info": {
+    "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
+    "name": "Pax Logistics - Delhivery B2C",
+    "description": "End-to-end contract tests for the Pax server-side Delhivery B2C pincode serviceability integration. Delhivery credentials remain on the backend and are never stored in this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('testEmail')) {",
+          "  const suffix = String(Date.now());",
+          "  pm.collectionVariables.set('testEmail', `postman-${suffix}@example.com`);",
+          "  pm.collectionVariables.set('testPhone', `9${suffix.slice(-9)}`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('API is healthy and Delhivery is configured', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.ok).to.eql(true);", "  pm.expect(body.delhiveryConfigured).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Register test customer",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Postman Test User\",\n  \"businessName\": \"Postman Contract\",\n  \"email\": \"{{testEmail}}\",\n  \"phone\": \"{{testPhone}}\",\n  \"password\": \"Secure123\",\n  \"address\": \"Test pickup address\",\n  \"city\": \"Hyderabad\",\n  \"state\": \"Telangana\",\n  \"pincode\": \"500029\"\n}" },
+        "url": "{{baseUrl}}/api/client/users"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer is registered', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.expect(body.token).to.be.a('string').and.not.empty;", "pm.collectionVariables.set('clientToken', body.token);"] } }]
+    },
+    {
+      "name": "Serviceable pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/serviceability/194103" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable response is normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('serviceable');", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Embargoed pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/serviceability/110001" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Embargo is temporary NSZ', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('embargoed');", "  pm.expect(data.serviceable).to.eql(false);", "  pm.expect(data.embargoed).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Non-serviceable pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/serviceability/999999" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Empty Delhivery list is NSZ', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Block order for NSZ pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Blocked Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Non-serviceable address\",\n  \"city\": \"Unknown\",\n  \"pincode\": \"999999\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('NSZ order is rejected before creation', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('PINCODE_NOT_SERVICEABLE');", "});"] } }]
+    },
+    {
+      "name": "Create order for serviceable pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"COD\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is created', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "});"] } }]
+    },
+    {
+      "name": "Admin login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+        "url": "{{baseUrl}}/api/admin/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Admin serviceability",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/serviceability/500029" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives live normalized coverage', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "  pm.expect(data.cod).to.eql(false);", "});"] } }]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:3110" },
+    { "key": "adminUsername", "value": "admin" },
+    { "key": "adminPassword", "value": "StrongPass123" },
+    { "key": "clientToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "testEmail", "value": "" },
+    { "key": "testPhone", "value": "" }
+  ]
+}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientShipment, getClientBootstrap, logoutClient } from "../services/clientApi.js";
+import { createClientShipment, getClientBootstrap, getClientServiceability, logoutClient } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -476,7 +476,7 @@ export default function DashboardPage() {
       localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
       setShipmentModal(false);
       setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "" });
-      notify(`${shipment.id} created. Pickup is scheduled.`);
+      notify(`${shipment.id} saved. Delhivery serviceability is confirmed; courier booking is pending.`);
     } catch (error) {
       notify(error.message || "Shipment could not be created.");
     }
@@ -535,23 +535,26 @@ export default function DashboardPage() {
     setWeightResult({ actual: values.actual, volumetric, chargeable: Math.max(values.actual, volumetric) });
   };
 
-  const checkServiceability = (event) => {
+  const checkServiceability = async (event) => {
     event.preventDefault();
     const pin = servicePin.trim();
     if (!/^[1-9]\d{5}$/.test(pin)) {
       setServiceResult({ error: "Enter a valid 6-digit Indian PIN code." });
       return;
     }
-    const regions = { 1: "North", 2: "North", 3: "West", 4: "West", 5: "South", 6: "South", 7: "East", 8: "East", 9: "Central" };
-    const lastDigit = Number(pin.at(-1));
-    setServiceResult({
-      pin,
-      region: regions[pin[0]] || "Domestic",
-      standard: controlState.settings.serviceability.standard,
-      express: controlState.settings.serviceability.express && lastDigit !== 9,
-      cod: controlState.settings.serviceability.cod && controlState.settings.paymentOptions.cod && lastDigit % 2 === 0,
-      eta: lastDigit < 4 ? "2–3 business days" : "3–5 business days",
-    });
+    try {
+      const result = await getClientServiceability(pin);
+      setServiceResult({
+        ...result,
+        pin,
+        region: result.stateCode || result.district || "Delhivery",
+        standard: result.serviceable && controlState.settings.serviceability.standard,
+        prepaid: result.prepaid && controlState.settings.paymentOptions.prepaid,
+        cod: result.cod && controlState.settings.serviceability.cod && controlState.settings.paymentOptions.cod,
+      });
+    } catch (error) {
+      setServiceResult({ error: error.message || "Delhivery serviceability could not be checked." });
+    }
   };
 
   const generateShippingLabel = (event) => {
@@ -1003,12 +1006,12 @@ export default function DashboardPage() {
           <button className="portal-primary portal-tool-submit" type="submit"><Icon name="search" /> Check serviceability</button>
         </form>
         <article className="portal-card portal-tool-result" aria-live="polite">
-          {!serviceResult && <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>Coverage details appear here</h2><p>Check Standard, Express and COD availability for any valid PIN.</p></div>}
-          {serviceResult?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>PIN code required</h2><p>{serviceResult.error}</p></div>}
+          {!serviceResult && <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>Coverage details appear here</h2><p>Check delivery, prepaid and COD availability for any valid PIN.</p></div>}
+          {serviceResult?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Coverage unavailable</h2><p>{serviceResult.error}</p></div>}
           {serviceResult && !serviceResult.error && <div className="serviceability-result">
-            <div className="serviceability-head"><span>✓</span><div><small>{serviceResult.region.toUpperCase()} REGION</small><h2>{serviceResult.pin} is serviceable</h2><p>Estimated delivery: {serviceResult.eta}</p></div></div>
-            {[['Standard delivery', serviceResult.standard], ['Express delivery', serviceResult.express], ['Cash on delivery', serviceResult.cod]].map(([label, available]) => <div className="serviceability-row" key={label}><span>{label}</span><b className={available ? "is-available" : "is-unavailable"}>{available ? "Available" : "Unavailable"}</b></div>)}
-            <button className="portal-primary" type="button" onClick={openShipment}>Create shipment <Icon name="arrow" /></button>
+            <div className="serviceability-head"><span>{serviceResult.serviceable ? "✓" : "!"}</span><div><small>{serviceResult.region.toUpperCase()}</small><h2>{serviceResult.pin} is {serviceResult.serviceable ? "serviceable" : serviceResult.embargoed ? "temporarily embargoed" : "not serviceable"}</h2><p>{serviceResult.serviceable ? "Live coverage confirmed by Delhivery." : serviceResult.remark || "No Delhivery delivery code was returned."}</p></div></div>
+            {[["Standard delivery", serviceResult.standard], ["Prepaid delivery", serviceResult.prepaid], ["Cash on delivery", serviceResult.cod]].map(([label, available]) => <div className="serviceability-row" key={label}><span>{label}</span><b className={available ? "is-available" : "is-unavailable"}>{available ? "Available" : "Unavailable"}</b></div>)}
+            {serviceResult.serviceable && <button className="portal-primary" type="button" onClick={openShipment}>Create shipment <Icon name="arrow" /></button>}
           </div>}
         </article>
       </section>
@@ -1371,7 +1374,7 @@ export default function DashboardPage() {
               <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
             </div>
-            <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Create & schedule pickup <Icon name="arrow" /></button></div>
+            <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Validate & create order <Icon name="arrow" /></button></div>
           </form>
         </div>
       )}
