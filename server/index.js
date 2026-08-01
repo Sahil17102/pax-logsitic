@@ -12,7 +12,7 @@ const adminUsername = process.env.ADMIN_USERNAME || "admin";
 const isProduction = process.env.NODE_ENV === "production";
 const adminPassword = process.env.ADMIN_PASSWORD || (isProduction ? "" : "Pax@1234");
 const tokenSecret = process.env.JWT_SECRET || (isProduction ? "" : "pax-local-development-secret");
-const databaseRequired = isProduction && process.env.REQUIRE_DATABASE !== "false";
+const databaseRequired = isProduction && process.env.REQUIRE_DATABASE === "true";
 const schemaVersion = 2;
 const configuredOrigins = String(process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "")
   .split(",")
