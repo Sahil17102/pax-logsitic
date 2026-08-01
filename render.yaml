@@ -43,7 +43,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: REQUIRE_DATABASE
-        value: true
+        value: false
       - key: FRONTEND_URLS
         value: https://paxlogistic.onrender.com,https://pax-logsiticadmin-utus.onrender.com
       - key: ADMIN_USERNAME
