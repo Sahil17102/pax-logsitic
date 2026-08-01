@@ -13,7 +13,8 @@ const isProduction = process.env.NODE_ENV === "production";
 const adminPassword = process.env.ADMIN_PASSWORD !== undefined ? process.env.ADMIN_PASSWORD : (isProduction ? "" : "Pax@1234");
 const bundledAdminPasswordSha256 = "d3471dde926ef8d5d96a61f5fe9e43627b5fb1b433ddd39f4b03739f3a7485cd";
 const adminPasswordSha256 = String(process.env.ADMIN_PASSWORD_SHA256 || (isProduction ? bundledAdminPasswordSha256 : "")).trim().toLowerCase();
-const tokenSecret = process.env.JWT_SECRET || (isProduction ? "" : "pax-local-development-secret");
+const configuredTokenSecret = String(process.env.JWT_SECRET || "").trim();
+const tokenSecret = configuredTokenSecret || (isProduction ? crypto.randomBytes(32).toString("hex") : "pax-local-development-secret");
 const databaseRequired = isProduction && process.env.REQUIRE_DATABASE === "true";
 const schemaVersion = 2;
 const configuredOrigins = String(process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "")
@@ -42,7 +43,7 @@ let memoryState = JSON.parse(JSON.stringify(seedState));
 let pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 let databaseReady = false;
 const eventClients = new Set();
-const adminAuthenticationConfigured = Boolean((adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256)) && tokenSecret);
+const adminAuthenticationConfigured = Boolean(adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256));
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
@@ -224,7 +225,7 @@ app.get("/health", async (_request, response) => {
   if (databaseRequired && !pool) {
     return response.status(503).json({ ok: false, storage: "unavailable", service: "pax-logistic-api", schemaVersion, message: "PostgreSQL is required in production." });
   }
-  response.json({ ok: true, storage: pool ? "postgres" : "memory", service: "pax-logistic-api", schemaVersion, adminAuthenticationConfigured });
+  response.json({ ok: true, storage: pool ? "postgres" : "memory", service: "pax-logistic-api", schemaVersion, adminAuthenticationConfigured, persistentSigningKey: Boolean(configuredTokenSecret) });
 });
 
 app.get("/api/events", (request, response) => {
