@@ -63,9 +63,15 @@ function migrateState(value) {
   if (Number(state.schemaVersion || 0) < schemaVersion) {
     const sampleCustomerIds = new Set(["CUS-1048", "CUS-1042", "CUS-1039", "CUS-1033"]);
     const sampleShipmentIds = new Set(["PAX-260731", "PAX-260728", "PAX-260724", "PAX-260719", "PAX-260714", "PAX-260709"]);
+    const sampleActivitySignatures = new Set([
+      "PAX-260728 is out for delivery|Bengaluru delivery centre",
+      "New customer account created|Aarav Retail",
+      "Weight exception needs review|PAX-260714",
+      "COD remittance processed|₹18,420",
+    ]);
     state.customers = (Array.isArray(state.customers) ? state.customers : []).filter((item) => !sampleCustomerIds.has(item.id));
     state.shipments = (Array.isArray(state.shipments) ? state.shipments : []).filter((item) => !sampleShipmentIds.has(item.id));
-    state.activities = [];
+    state.activities = (Array.isArray(state.activities) ? state.activities : []).filter((item) => !sampleActivitySignatures.has(`${item.title}|${item.detail}`));
     const legacyResourcePrefixes = new Set(["PLAN", "CRR", "KEY", "PRV", "B2B", "B2C", "INV", "COD", "WAL", "WGT", "DSP", "SUP"]);
     const existingResources = state.configuration?.resources || {};
     const migratedResources = Object.fromEntries(Object.entries({
@@ -89,6 +95,23 @@ function migrateState(value) {
   state.configuration = state.configuration && typeof state.configuration === "object"
     ? state.configuration
     : cloneDefaultControlState();
+  const customerEmails = new Set(state.customers.map((customer) => String(customer.email || "").toLowerCase()));
+  state.users.forEach((user) => {
+    const email = String(user.email || "").toLowerCase();
+    if (!email || customerEmails.has(email)) return;
+    state.customers.push({
+      id: user.id,
+      name: user.fullName || "Pax customer",
+      business: user.businessName || "Individual account",
+      email,
+      phone: user.phone || "",
+      city: user.city || "",
+      shipments: state.shipments.filter((shipment) => shipment.ownerEmail === email || shipment.customerId === user.id).length,
+      joinedAt: user.joinedAt || user.createdAt || state.updatedAt || new Date().toISOString(),
+      status: user.disabled ? "Disabled" : "Active",
+    });
+    customerEmails.add(email);
+  });
   return state;
 }
 

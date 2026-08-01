@@ -101,6 +101,9 @@ try {
   assert.equal(secondBootstrap.data.shipments.length, 0);
   assert.equal(dashboard.data.shipments.length, 1);
   assert.equal(dashboard.data.customers.length, 2);
+  assert.deepEqual(dashboard.data.customers.map((customer) => customer.name).sort(), ["API Test User", "Second API User"]);
+  assert.equal(dashboard.data.customers.some((customer) => ["CUS-1048", "CUS-1042", "CUS-1039", "CUS-1033"].includes(customer.id)), false);
+  assert.equal(dashboard.data.shipments.some((shipment) => ["PAX-260731", "PAX-260728", "PAX-260724", "PAX-260719", "PAX-260714", "PAX-260709"].includes(shipment.id)), false);
   assert.equal(updated.data.status, "Delivered");
   assert.equal(Object.hasOwn(tracked.data, "ownerEmail"), false);
   assert.equal(Object.hasOwn(tracked.data, "phone"), false);

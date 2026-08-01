@@ -175,12 +175,30 @@ export default function SignInPage() {
       return;
     }
 
+    const savedUser = findLoginUser();
     try {
       const apiUser = await loginClient(loginId.trim().toLowerCase(), loginPassword, remember);
       saveSession({ ...apiUser, authVersion: 2 }, remember);
       goTo("/dashboard");
     } catch (apiError) {
-      setLoginError(apiError.message);
+      const canMigrateLegacyAccount = apiError.status === 401
+        && savedUser
+        && !savedUser.disabled
+        && savedUser.password === loginPassword;
+      if (!canMigrateLegacyAccount) {
+        setLoginError(apiError.message);
+        return;
+      }
+      try {
+        const apiUser = await registerClient({ ...savedUser, password: loginPassword }, remember);
+        const migratedUser = { ...savedUser, ...apiUser, authVersion: 2 };
+        const { password, ...safeMigratedUser } = migratedUser;
+        localStorage.setItem(USERS_KEY, JSON.stringify(getSavedUsers().map((user) => user.email?.toLowerCase() === safeMigratedUser.email?.toLowerCase() ? safeMigratedUser : user)));
+        saveSession(safeMigratedUser, remember);
+        goTo("/dashboard");
+      } catch (migrationError) {
+        setLoginError(migrationError.message || "Your existing account could not be connected to the live API.");
+      }
     }
   };
 

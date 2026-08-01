@@ -41,9 +41,9 @@ function saveToken(token, remember = true) {
   (remember ? localStorage : sessionStorage).setItem(CLIENT_TOKEN_KEY, token);
 }
 
-export async function registerClient(account) {
+export async function registerClient(account, remember = true) {
   const payload = await request("/api/client/users", { method: "POST", body: JSON.stringify(account) });
-  saveToken(payload.token, true);
+  saveToken(payload.token, remember);
   return unwrapApiData(payload);
 }
 
