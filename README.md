@@ -89,4 +89,4 @@ Admin controls currently propagate:
 - courier enable/disable to customer rate options;
 - plans, pricing, providers, billing, reconciliation, support and page-content configuration through the shared control document.
 
-Run the API locally with `npm start` (or `npm run start:api`). Render Blueprint creates separate client/admin static services, the Node API service and PostgreSQL database. Set a strong `ADMIN_PASSWORD` in Render to override the hashed bootstrap credential and rotate production access.
+Run the API locally with `npm start` (or `npm run start:api`). Render Blueprint creates separate client/admin static services, the Node API service and PostgreSQL database. Set a strong `ADMIN_PASSWORD` in Render to override the hashed bootstrap credential and rotate production access. If `JWT_SECRET` is absent, production generates a cryptographically random runtime signing key; set a permanent Render secret to keep login sessions valid across service restarts.
