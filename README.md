@@ -113,6 +113,10 @@ DELHIVERY_WAYBILL_RATE_LIMIT_REQUESTS=5
 DELHIVERY_WAYBILL_WINDOW_COUNT=50000
 DELHIVERY_SINGLE_WAYBILL_PATH=/waybill/api/fetch/json/
 DELHIVERY_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS=675
+DELHIVERY_MANIFEST_PATH=/api/cmu/create.json
+DELHIVERY_MANIFEST_RATE_LIMIT_REQUESTS=18000
+DELHIVERY_PICKUP_LOCATION=<exact registered warehouse name>
+DELHIVERY_CLIENT_NAME=<exact registered Delhivery client name>
 ```
 
 `DELHIVERY_ENV=staging` selects `https://staging-express.delhivery.com`. `DELHIVERY_BASE_URL` is optional and exists for an approved custom gateway or contract-test stub. Plain HTTP is rejected unless `DELHIVERY_ALLOW_INSECURE_HTTP=true`, which is only used by the local automated tests.
@@ -125,11 +129,13 @@ Expected TAT routes accept `originPin`, `destinationPin`, `mot` (`S`, `E` or `N`
 
 The admin-only bulk waybill endpoint accepts `{ "count": 1..10000 }`, calls the configured Delhivery waybill path and stores every unique numeric AWB in PostgreSQL. `delhivery_waybills` is created by the existing database initialization flow and tracks `stored`, `reserved` and `used` states without duplicating existing application data. Re-fetching the same AWB is safe because `waybill` is the primary key and duplicates are reported rather than inserted. The integration enforces five provider requests and at most 50,000 generated waybills per five-minute process window. `GET /api/admin/delhivery/waybills` supports `status`, `limit` (1-200) and `offset` filters; the admin panel exposes the same real inventory.
 
-The default bulk path is `/waybill/api/bulk/json/`. It is configurable because Delhivery's full authenticated portal contract was not included with the supplied rate-limit documentation. Confirm `DELHIVERY_WAYBILL_PATH` against the account's official staging/production documentation before the live acceptance run. Fetched waybills are intentionally not attached to an order immediately; they remain `stored` until the separate manifestation contract can reserve and consume them safely.
+The default bulk path is `/waybill/api/bulk/json/`. It is configurable because Delhivery's full authenticated portal contract was not included with the supplied rate-limit documentation. Confirm `DELHIVERY_WAYBILL_PATH` against the account's official staging/production documentation before the live acceptance run. Fetched waybills remain `stored` until an explicitly supplied waybill is successfully manifested.
 
 `POST /api/admin/delhivery/waybills/fetch-single` calls Delhivery's documented `/waybill/api/fetch/json/` endpoint and stores its one returned AWB in the same inventory. The provider requires the account token as a query parameter; Pax adds it only in the server-to-server HTTPS request and never returns it to the admin browser or Postman client. This contract has an independent 675-request process window under Delhivery's 750-request/5-minute/IP limit. Override `DELHIVERY_SINGLE_WAYBILL_PATH` only when the account-specific provider contract requires it.
 
-Shipment creation now performs the same server-side check before writing an order. Set `productType` to `Heavy` to use the Heavy contract; omitted or other values use parcel serviceability. NSZ, embargoed, unsupported COD and unsupported prepaid destinations return HTTP `422`; an absent provider token returns `503`; upstream or malformed responses return `502`; and timeouts return `504`. No local shipment is created in those cases. Successful records start as `Pending manifestation`; the API does not claim that a Delhivery pickup is scheduled until the separate manifestation and pickup contracts are integrated.
+Shipment creation now checks serviceability and then posts `format=json&data=<URL-encoded JSON>` to Delhivery's `/api/cmu/create.json`; the local order is saved only after every returned package is successful and has a valid waybill. The server generates the unique order ID and maps all documented optional fields without exposing the provider token. `DELHIVERY_PICKUP_LOCATION` and `DELHIVERY_CLIENT_NAME` are mandatory exact, case-sensitive account values. A missing value returns `503` rather than sending sample warehouse data.
+
+Forward (`Prepaid`/`COD`), reverse (`Pickup`) and replacement (`REPL`) flows are supported. Multi-piece requests use a `pieces` array and require a distinct explicit waybill per box; successful pre-fetched waybills move to `used` in the shared inventory. Values at or above INR 50,000 require `ewbn`. Provider failures, incomplete package lists and malformed responses do not create a local shipment. A manifested shipment receives `status: "Manifested"`, `waybill`, `waybills`, `packageCount` and `manifestedAt`; this does not imply that a physical pickup request has been scheduled.
 
 The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
 
@@ -138,9 +144,9 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings, Surface/Express Expected TAT, TAT NSZ, invalid transport validation, bulk and single waybill storage, shared inventory reads, duplicate protection and count validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded special characters, high-value e-waybill enforcement, multi-piece waybills, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
 
-Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, package manifestation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, shipment updates/cancellation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 
 ## Database seeds
 

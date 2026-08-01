@@ -364,6 +364,7 @@ svg {
 .admin-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: #eef2ff; padding: 6px 8px; color: #4463ca; font-size: .56rem; font-weight: 800; }
 .admin-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .admin-status--delivered, .admin-status--active { background: #eaf0ff; color: #3454d1; }
+.admin-status--manifested { background: #e8f1fa; color: #315f9a; }
 .admin-status--out-for-delivery { background: #edf1ff; color: #4a64c4; }
 .admin-status--pickup-scheduled { background: #f2efff; color: #7654b1; }
 .admin-status--exception, .admin-status--rto, .admin-status--review { background: #fff0e9; color: #c45f36; }

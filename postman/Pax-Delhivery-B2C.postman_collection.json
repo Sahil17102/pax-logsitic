@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for the Pax server-side Delhivery B2C serviceability, expected TAT, bulk waybill and single-waybill inventory integrations. Delhivery credentials remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, waybill inventory and forward/reverse/replacement shipment manifestation. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -79,7 +79,7 @@
         "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Heavy Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Heavy serviceable address\",\n  \"city\": \"Mumbai\",\n  \"pincode\": \"400086\",\n  \"weight\": 50,\n  \"productType\": \"Heavy\",\n  \"payment\": \"COD\",\n  \"amount\": 1000\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable Heavy order is created', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.pincode).to.eql('400086');", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable Heavy order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.pincode).to.eql('400086');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "});"] } }]
     },
     {
       "name": "Block order for NSZ pincode",
@@ -99,7 +99,52 @@
         "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"COD\",\n  \"amount\": 100\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is created', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "});"] } }]
+    },
+    {
+      "name": "Create reverse pickup shipment",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Reverse Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Pickup address & market #2\",\n  \"city\": \"Leh\",\n  \"state\": \"Ladakh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1.2,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"productsDescription\": \"Returned shoes\",\n  \"quantity\": \"1\",\n  \"amount\": 800\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Reverse Pickup flow is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.packageCount).to.eql(1);", "});"] } }]
+    },
+    {
+      "name": "Create replacement shipment",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Replacement Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Exchange address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"REPL\",\n  \"productsDescription\": \"Replacement item\",\n  \"quantity\": \"1\",\n  \"amount\": 1200\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Replacement flow is manifested with one waybill', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('REPL');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybills).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Reject high-value shipment without e-waybill",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"High Value Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 50000\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('E-waybill is mandatory at INR 50,000', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('EWAYBILL_REQUIRED');", "});"] } }]
+    },
+    {
+      "name": "Reject provider-declined manifestation",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Reject Manifest\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200 provider rejection is not saved locally', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('DELHIVERY_MANIFEST_REJECTED');", "});"] } }]
+    },
+    {
+      "name": "Verify only manifested shipments were saved",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/bootstrap" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(4);", "  pm.expect(shipments.every((item) => item.status === 'Manifested')).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
     },
     {
       "name": "Expected TAT - Surface",
@@ -174,6 +219,21 @@
       "name": "List inventory after single waybill",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=stored&limit=10" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Single and bulk waybills share one inventory', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(4);", "  pm.expect(data.summary.stored).to.eql(4);", "  pm.expect(data.items).to.have.lengthOf(4);", "  pm.expect(data.items.some((item) => item.waybill === '910000000001')).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Create multi-piece shipment with stored waybills",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box is manifested with its supplied waybill', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "});"] } }]
+    },
+    {
+      "name": "Verify manifested waybills are used",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=used&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('MPS waybills move from stored to used', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(4);", "  pm.expect(data.summary.stored).to.eql(2);", "  pm.expect(data.summary.used).to.eql(2);", "  pm.expect(data.items).to.have.lengthOf(2);", "});"] } }]
     },
     {
       "name": "Admin serviceability",

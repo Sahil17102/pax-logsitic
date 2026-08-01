@@ -34,7 +34,7 @@ const navigation = [
   { id: "settings-menu", label: "Settings", icon: "settings", children: [["payment-options", "Payment Options"], ["password", "Change Password"], ["developer", "Developer"]] },
 ];
 
-const statusOptions = ["Pending manifestation", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
+const statusOptions = ["Pending manifestation", "Manifested", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
 
 const pageTitles = {
   overview: ["Admin dashboard", "Monitor orders, sellers, revenue and delivery health across the Pax network."],

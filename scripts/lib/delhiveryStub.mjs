@@ -8,7 +8,9 @@ const SERVICEABILITY_FIXTURES = {
 };
 
 export async function startDelhiveryStub(port, token = "postman-delhivery-token") {
-  const server = createServer((request, response) => {
+  let manifestSequence = 0;
+  const manifestedOrders = new Set();
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
 
@@ -24,6 +26,38 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
     if (request.headers.authorization !== `Token ${token}`) {
       response.statusCode = 401;
       response.end(JSON.stringify({ detail: "Invalid token" }));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/cmu/create.json") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+      if (form.get("format") !== "json" || !form.get("data")) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ message: "format key missing in the post" }));
+        return;
+      }
+      let manifest;
+      try {
+        manifest = JSON.parse(form.get("data"));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ message: "invalid manifest JSON" }));
+        return;
+      }
+      if (manifest?.pickup_location?.name !== "Pax Test Warehouse" || !Array.isArray(manifest?.shipments) || !manifest.shipments.length) {
+        response.end(JSON.stringify({ packages: [], rmk: "shipment list contains no data" }));
+        return;
+      }
+      const packages = manifest.shipments.map((shipment) => {
+        if (shipment.name === "Reject Manifest" || shipment.client !== "Pax Test Client" || manifestedOrders.has(`${shipment.order}:${shipment.waybill || "dynamic"}`)) {
+          return { status: "Failure", remarks: "Invalid client or duplicate order", refnum: shipment.order };
+        }
+        manifestedOrders.add(`${shipment.order}:${shipment.waybill || "dynamic"}`);
+        manifestSequence += 1;
+        return { status: "Success", waybill: shipment.waybill || String(920000000000 + manifestSequence), refnum: shipment.order, remarks: "" };
+      });
+      response.end(JSON.stringify({ packages, package_count: packages.length, upload_wbn: `UP-${manifestSequence}` }));
       return;
     }
     if (request.method === "GET" && url.pathname === "/waybill/api/bulk/json/") {

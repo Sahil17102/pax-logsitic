@@ -13,7 +13,15 @@ const DEFAULT_TAT_RATE_LIMIT_REQUESTS = 675;
 const DEFAULT_WAYBILL_RATE_LIMIT_REQUESTS = 5;
 const DEFAULT_WAYBILL_WINDOW_COUNT = 50000;
 const DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS = 675;
+const DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS = 18000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
+const PAYMENT_MODES = new Map([
+  ["prepaid", "Prepaid"],
+  ["pre-paid", "Prepaid"],
+  ["cod", "COD"],
+  ["pickup", "Pickup"],
+  ["repl", "REPL"],
+]);
 
 export class DelhiveryError extends Error {
   constructor(message, { code = "DELHIVERY_ERROR", status = 502, cause } = {}) {
@@ -56,6 +64,149 @@ export function normalizeDelhiveryWaybills(payload) {
     ? payload
     : firstDefined(payload, ["waybills", "waybill", "data", "results", "awb_numbers", "awbs"]);
   return [...new Set(waybillValuesFrom(source))];
+}
+
+function optionalValue(value) {
+  return value === undefined || value === null || value === "" ? undefined : value;
+}
+
+function requiredText(value, field) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    throw new DelhiveryError(`${field} is required for Delhivery shipment creation.`, {
+      code: "INVALID_SHIPMENT",
+      status: 400,
+    });
+  }
+  return normalized;
+}
+
+export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, shipments }) {
+  const warehouse = requiredText(pickupLocation, "Pickup location");
+  const client = requiredText(clientName, "Delhivery client name");
+  if (!Array.isArray(shipments) || !shipments.length) {
+    throw new DelhiveryError("At least one shipment piece is required.", { code: "INVALID_SHIPMENT", status: 400 });
+  }
+  const multiPiece = shipments.length > 1;
+  const providerShipments = shipments.map((shipment, index) => {
+    const paymentMode = PAYMENT_MODES.get(String(shipment.paymentMode || "").trim().toLowerCase());
+    const phone = String(shipment.phone || "").replace(/\D/g, "");
+    const pin = String(shipment.pin || "").trim();
+    const waybill = String(shipment.waybill || "").trim();
+    const totalAmount = Number(shipment.totalAmount || 0);
+    const weightGrams = Number(shipment.weightGrams);
+    const returnPhone = String(shipment.returnPhone || "").replace(/\D/g, "");
+    const returnPin = String(shipment.returnPin || "").trim();
+    const shippingMode = String(shipment.shippingMode || "").trim();
+    const transportSpeed = String(shipment.transportSpeed || "").trim().toUpperCase();
+    const addressType = String(shipment.addressType || "").trim().toLowerCase();
+    if (!paymentMode) throw new DelhiveryError("Payment mode must be Prepaid, COD, Pickup or REPL.", { code: "INVALID_PAYMENT_MODE", status: 400 });
+    if (!/^\d{10}$/.test(phone) || !/^[1-9]\d{5}$/.test(pin)) {
+      throw new DelhiveryError("Every shipment piece requires a valid phone and PIN code.", { code: "INVALID_SHIPMENT", status: 400 });
+    }
+    if (multiPiece && !/^\d{8,20}$/.test(waybill)) {
+      throw new DelhiveryError(`Multi-piece shipment piece ${index + 1} requires a valid waybill.`, { code: "MPS_WAYBILL_REQUIRED", status: 400 });
+    }
+    if (waybill && !/^\d{8,20}$/.test(waybill)) {
+      throw new DelhiveryError(`Shipment piece ${index + 1} has an invalid waybill.`, { code: "INVALID_WAYBILL", status: 400 });
+    }
+    if (!Number.isFinite(weightGrams) || weightGrams <= 0) {
+      throw new DelhiveryError(`Shipment piece ${index + 1} requires a positive weight in grams.`, { code: "INVALID_SHIPMENT_WEIGHT", status: 400 });
+    }
+    if (!Number.isFinite(totalAmount) || totalAmount < 0) {
+      throw new DelhiveryError(`Shipment piece ${index + 1} has an invalid total amount.`, { code: "INVALID_SHIPMENT_AMOUNT", status: 400 });
+    }
+    if (returnPhone && !/^\d{10}$/.test(returnPhone)) {
+      throw new DelhiveryError(`Shipment piece ${index + 1} has an invalid return phone.`, { code: "INVALID_RETURN_ADDRESS", status: 400 });
+    }
+    if (returnPin && !/^[1-9]\d{5}$/.test(returnPin)) {
+      throw new DelhiveryError(`Shipment piece ${index + 1} has an invalid return PIN code.`, { code: "INVALID_RETURN_ADDRESS", status: 400 });
+    }
+    if (shippingMode && !["Surface", "Express"].includes(shippingMode)) {
+      throw new DelhiveryError("Shipping mode must be Surface or Express.", { code: "INVALID_SHIPPING_MODE", status: 400 });
+    }
+    if (transportSpeed && !["D", "F"].includes(transportSpeed)) {
+      throw new DelhiveryError("Transport speed must be D or F.", { code: "INVALID_TRANSPORT_SPEED", status: 400 });
+    }
+    if (addressType && !["home", "office"].includes(addressType)) {
+      throw new DelhiveryError("Address type must be home or office.", { code: "INVALID_ADDRESS_TYPE", status: 400 });
+    }
+    if (Number.isFinite(totalAmount) && totalAmount >= 50000 && !String(shipment.ewbn || "").trim()) {
+      throw new DelhiveryError("An e-waybill number is required when the shipment value is at least INR 50,000.", { code: "EWAYBILL_REQUIRED", status: 400 });
+    }
+    const providerShipment = {
+      name: requiredText(shipment.name, "Consignee name"),
+      order: requiredText(shipment.order, "Order ID"),
+      phone,
+      add: requiredText(shipment.address, "Consignee address"),
+      pin,
+      client,
+      payment_mode: paymentMode,
+      address_type: optionalValue(addressType),
+      ewbn: optionalValue(shipment.ewbn),
+      hsn_code: optionalValue(shipment.hsnCode),
+      shipping_mode: optionalValue(shippingMode),
+      seller_inv: optionalValue(shipment.sellerInvoice),
+      city: optionalValue(shipment.city),
+      weight: weightGrams,
+      return_name: optionalValue(shipment.returnName),
+      return_add: optionalValue(shipment.returnAddress),
+      return_city: optionalValue(shipment.returnCity),
+      return_phone: optionalValue(returnPhone),
+      return_state: optionalValue(shipment.returnState),
+      return_country: optionalValue(shipment.returnCountry),
+      return_pin: optionalValue(returnPin),
+      seller_name: optionalValue(shipment.sellerName),
+      shipment_height: optionalValue(shipment.heightCm),
+      shipment_width: optionalValue(shipment.widthCm),
+      shipment_length: optionalValue(shipment.lengthCm),
+      cod_amount: paymentMode === "COD" ? Math.max(0, Number(shipment.codAmount || totalAmount || 0)) : undefined,
+      products_desc: optionalValue(shipment.productsDescription),
+      state: optionalValue(shipment.state),
+      dangerous_good: optionalValue(shipment.dangerousGood),
+      waybill: optionalValue(waybill),
+      total_amount: totalAmount,
+      seller_add: optionalValue(shipment.sellerAddress),
+      country: optionalValue(shipment.country),
+      plastic_packaging: optionalValue(shipment.plasticPackaging),
+      quantity: optionalValue(shipment.quantity),
+      transport_speed: optionalValue(transportSpeed),
+    };
+    return Object.fromEntries(Object.entries(providerShipment).filter(([, value]) => value !== undefined));
+  });
+  if (multiPiece && new Set(providerShipments.map((shipment) => shipment.waybill)).size !== providerShipments.length) {
+    throw new DelhiveryError("Every multi-piece shipment box requires a distinct waybill.", { code: "DUPLICATE_MPS_WAYBILL", status: 400 });
+  }
+  return {
+    shipments: providerShipments,
+    pickup_location: { name: warehouse },
+    ...(shipments.some((shipment) => shipment.fragileShipment === true) ? { fragile_shipment: true } : {}),
+  };
+}
+
+export function normalizeDelhiveryShipmentCreation(payload, expectedCount) {
+  const packages = Array.isArray(payload?.packages) ? payload.packages : Array.isArray(payload?.data?.packages) ? payload.data.packages : [];
+  const normalized = packages.map((item) => ({
+    waybill: String(firstDefined(item, ["waybill", "waybill_number", "awb", "wbn"]) || "").trim(),
+    orderId: String(firstDefined(item, ["refnum", "order", "order_id", "reference_number"]) || "").trim(),
+    status: String(firstDefined(item, ["status", "success"]) || "").trim(),
+    remark: String(firstDefined(item, ["remarks", "remark", "message", "error"]) || "").trim(),
+  }));
+  const accepted = normalized.length === expectedCount && normalized.every((item) => /^\d{8,20}$/.test(item.waybill) && /^(success|successful|true)$/i.test(item.status));
+  if (!accepted) {
+    const providerRemark = [payload?.rmk, payload?.remark, payload?.message, ...(Array.isArray(payload?.remarks) ? payload.remarks : []), ...normalized.map((item) => item.remark)].filter(Boolean).join("; ");
+    throw new DelhiveryError(providerRemark || "Delhivery rejected the shipment manifestation.", {
+      code: "DELHIVERY_MANIFEST_REJECTED",
+      status: 422,
+    });
+  }
+  return {
+    provider: "delhivery",
+    manifested: true,
+    packageCount: normalized.length,
+    uploadWaybill: String(firstDefined(payload, ["upload_wbn", "uploadWaybill"]) || "").trim(),
+    packages: normalized,
+  };
 }
 
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
@@ -334,6 +485,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredSingleWaybillRateLimit, 750)
     : DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS;
   const singleWaybillPath = validateProviderPath(process.env.DELHIVERY_SINGLE_WAYBILL_PATH || "/waybill/api/fetch/json/", "DELHIVERY_SINGLE_WAYBILL_PATH");
+  const configuredManifestRateLimit = Number(process.env.DELHIVERY_MANIFEST_RATE_LIMIT_REQUESTS);
+  const manifestRateLimitRequests = Number.isInteger(configuredManifestRateLimit) && configuredManifestRateLimit > 0
+    ? Math.min(configuredManifestRateLimit, 20000)
+    : DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS;
+  const manifestPath = validateProviderPath(process.env.DELHIVERY_MANIFEST_PATH || "/api/cmu/create.json", "DELHIVERY_MANIFEST_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -386,18 +542,20 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     waybillCountWindow.count += count;
   }
 
-  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true } = {}) {
+  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true, method = "GET", headers = {}, body } = {}) {
     consumeRateLimit(rateLimitKey, limit);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetchImpl(endpoint, {
-        method: "GET",
+        method,
         headers: {
           Accept: "application/json",
           ...(includeAuthorization ? { Authorization: `Token ${token}` } : {}),
+          ...headers,
         },
+        ...(body === undefined ? {} : { body }),
         signal: controller.signal,
       });
 
@@ -504,6 +662,19 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return { provider: "delhivery", requestedCount: 1, receivedCount: 1, waybills };
   }
 
+  async function createShipment(input) {
+    ensureConfigured();
+    const manifest = buildDelhiveryShipmentPayload(input);
+    const endpoint = new URL(manifestPath, `${baseUrl}/`);
+    const form = new URLSearchParams({ format: "json", data: JSON.stringify(manifest) });
+    const payload = await requestJson(endpoint, "manifest", manifestRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+    return normalizeDelhiveryShipmentCreation(payload, manifest.shipments.length);
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -582,5 +753,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     getExpectedTat,
     fetchWaybills,
     fetchSingleWaybill,
+    createShipment,
   };
 }

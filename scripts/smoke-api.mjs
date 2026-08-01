@@ -16,6 +16,8 @@ const server = spawn(process.execPath, ["server/index.js"], {
     DELHIVERY_API_TOKEN: delhiveryStub.token,
     DELHIVERY_BASE_URL: delhiveryStub.baseUrl,
     DELHIVERY_ALLOW_INSECURE_HTTP: "true",
+    DELHIVERY_PICKUP_LOCATION: "Pax Test Warehouse",
+    DELHIVERY_CLIENT_NAME: "Pax Test Client",
   },
   stdio: "ignore",
 });
@@ -78,7 +80,7 @@ try {
     body: JSON.stringify({
       customer: "Receiver Name",
       phone: "9123456789",
-      address: "Delivery address",
+      address: "Delivery address & market #2",
       city: "Pune",
       pincode: "400086",
       weight: 2.5,
@@ -163,6 +165,9 @@ try {
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
   assert.equal(after.data.shipments.length, 1);
+  assert.equal(created.data.status, "Manifested");
+  assert.match(created.data.waybill, /^\d{8,20}$/);
+  assert.equal(created.data.packageCount, 1);
   assert.equal(secondBootstrap.data.shipments.length, 0);
   assert.equal(dashboard.data.shipments.length, 1);
   assert.equal(dashboard.data.customers.length, 2);
@@ -173,6 +178,7 @@ try {
   assert.equal(Object.hasOwn(tracked.data, "ownerEmail"), false);
   assert.equal(Object.hasOwn(tracked.data, "phone"), false);
   assert.equal(Object.hasOwn(tracked.data, "address"), false);
+  assert.equal(Object.hasOwn(tracked.data, "pickupLocation"), false);
 
   console.log(JSON.stringify({
     initialShipments: before.data.shipments.length,

@@ -1160,6 +1160,7 @@
 }
 
 .status-delivered { background:#e4f5ed; color:#16795c; }
+.status-manifested { background:#e8f1fa; color:#315f9a; }
 .status-in-transit { background:#ece9ff; color:#5d4fd4; }
 .status-out-for-delivery { background:#fff2c9; color:#896711; }
 .status-pickup-scheduled { background:#e8f1fa; color:#397099; }

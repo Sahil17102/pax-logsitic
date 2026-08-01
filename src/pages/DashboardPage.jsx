@@ -302,7 +302,7 @@ export default function DashboardPage() {
   const [labelShipmentId, setLabelShipmentId] = useState(() => shipments[0]?.id || "");
   const [generatedLabel, setGeneratedLabel] = useState(null);
   const [newShipment, setNewShipment] = useState({
-    customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", productType: "Parcel", amount: "",
+    customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "",
   });
   const notificationMenuRef = useRef(null);
   const walletMenuRef = useRef(null);
@@ -462,13 +462,14 @@ export default function DashboardPage() {
       notify("Complete the receiver details and enter a valid PIN code.");
       return;
     }
-    if (!availablePaymentOptions.length) {
+    if (newShipment.flow === "Forward" && !availablePaymentOptions.length) {
       notify("Shipment booking is temporarily disabled by the Pax administrator.");
       return;
     }
     try {
       const shipment = await createClientShipment({
         ...newShipment,
+        paymentMode: newShipment.flow === "Reverse" ? "Pickup" : newShipment.flow === "Replacement" ? "REPL" : newShipment.payment,
         weight: Number(newShipment.weight),
         amount: Number(newShipment.amount) || 0,
       });
@@ -476,8 +477,8 @@ export default function DashboardPage() {
       setShipments(next);
       localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
       setShipmentModal(false);
-      setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", productType: "Parcel", amount: "" });
-      notify(`${shipment.id} saved. Delhivery serviceability is confirmed; courier booking is pending.`);
+      setNewShipment({ customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "" });
+      notify(`${shipment.id} manifested with Delhivery waybill ${shipment.waybill}.`);
     } catch (error) {
       notify(error.message || "Shipment could not be created.");
     }
@@ -1383,11 +1384,19 @@ export default function DashboardPage() {
               <label>Mobile number *<input value={newShipment.phone} onChange={(event) => setNewShipment({ ...newShipment, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" placeholder="10-digit number" /></label>
               <label className="span-two">Delivery address *<textarea value={newShipment.address} onChange={(event) => setNewShipment({ ...newShipment, address: event.target.value })} rows="2" placeholder="House/building, street, area" /></label>
               <label>City *<input value={newShipment.city} onChange={(event) => setNewShipment({ ...newShipment, city: event.target.value })} placeholder="Destination city" /></label>
+              <label>State<input value={newShipment.state} onChange={(event) => setNewShipment({ ...newShipment, state: event.target.value })} placeholder="Destination state" /></label>
               <label>PIN code *<input value={newShipment.pincode} onChange={(event) => setNewShipment({ ...newShipment, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="6-digit PIN" /></label>
               <label>Weight (kg)<input value={newShipment.weight} onChange={(event) => setNewShipment({ ...newShipment, weight: event.target.value })} type="number" min=".1" step=".1" /></label>
               <label>Product type<select value={newShipment.productType} onChange={(event) => setNewShipment({ ...newShipment, productType: event.target.value })}><option>Parcel</option><option>Heavy</option></select></label>
-              <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
+              <label>Shipment flow<select value={newShipment.flow} onChange={(event) => setNewShipment({ ...newShipment, flow: event.target.value, productType: event.target.value === "Forward" ? newShipment.productType : "Parcel" })}><option>Forward</option><option>Reverse</option><option>Replacement</option></select></label>
+              {newShipment.flow === "Forward" && <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>}
+              <label>Shipping mode<select value={newShipment.shippingMode} onChange={(event) => setNewShipment({ ...newShipment, shippingMode: event.target.value })}><option>Surface</option><option>Express</option></select></label>
+              <label>Transport speed<select value={newShipment.transportSpeed} onChange={(event) => setNewShipment({ ...newShipment, transportSpeed: event.target.value })}><option value="D">Standard</option><option value="F">Next Day Delivery</option></select></label>
+              <label className="span-two">Product description<input value={newShipment.productsDescription} onChange={(event) => setNewShipment({ ...newShipment, productsDescription: event.target.value })} placeholder="Items packed in this shipment" /></label>
+              <label>Quantity<input value={newShipment.quantity} onChange={(event) => setNewShipment({ ...newShipment, quantity: event.target.value.replace(/\D/g, "") })} inputMode="numeric" /></label>
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
+              {Number(newShipment.amount) >= 50000 && <label className="span-two">E-waybill number *<input value={newShipment.ewbn} onChange={(event) => setNewShipment({ ...newShipment, ewbn: event.target.value })} required /></label>}
+              {newShipment.flow !== "Forward" && <><label className="span-two">Return address<textarea value={newShipment.returnAddress} onChange={(event) => setNewShipment({ ...newShipment, returnAddress: event.target.value })} rows="2" placeholder="Optional; registered warehouse is used if blank" /></label><label>Return city<input value={newShipment.returnCity} onChange={(event) => setNewShipment({ ...newShipment, returnCity: event.target.value })} /></label><label>Return state<input value={newShipment.returnState} onChange={(event) => setNewShipment({ ...newShipment, returnState: event.target.value })} /></label><label>Return PIN<input value={newShipment.returnPincode} onChange={(event) => setNewShipment({ ...newShipment, returnPincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></label></>}
             </div>
             <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Validate & create order <Icon name="arrow" /></button></div>
           </form>

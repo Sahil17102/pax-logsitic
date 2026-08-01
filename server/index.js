@@ -223,6 +223,69 @@ async function sendStoredWaybillResponse(response, fetched) {
   });
 }
 
+async function markWaybillsUsed(waybills, shipmentId) {
+  const uniqueWaybills = [...new Set(waybills.filter((waybill) => /^\d{8,20}$/.test(String(waybill))))];
+  if (!uniqueWaybills.length) return;
+  await initializeDatabase();
+  if (pool) {
+    await pool.query(`
+      UPDATE delhivery_waybills
+      SET status = 'used', used_at = NOW(), reserved_at = NULL, shipment_id = $2
+      WHERE waybill = ANY($1::text[])
+    `, [uniqueWaybills, shipmentId]);
+    return;
+  }
+  uniqueWaybills.forEach((waybill) => {
+    const record = memoryWaybills.get(waybill);
+    if (!record) return;
+    memoryWaybills.set(waybill, { ...record, status: "used", usedAt: new Date().toISOString(), reservedAt: null, shipmentId });
+  });
+}
+
+function manifestPiece(body, piece, user, orderId, paymentMode) {
+  const value = (key, fallback) => piece?.[key] ?? body?.[key] ?? fallback;
+  const weightKg = Number(value("weight", 0));
+  const explicitWeightGrams = Number(value("weightGrams", 0));
+  return {
+    name: value("customer", value("receiverName", "")),
+    order: orderId,
+    phone: value("phone", ""),
+    address: value("address", ""),
+    pin: value("pincode", ""),
+    paymentMode,
+    addressType: value("addressType"),
+    ewbn: value("ewbn"),
+    hsnCode: value("hsnCode"),
+    shippingMode: value("shippingMode"),
+    sellerInvoice: value("sellerInvoice"),
+    city: value("city"),
+    weightGrams: explicitWeightGrams > 0 ? explicitWeightGrams : Math.round(weightKg * 1000),
+    returnName: value("returnName"),
+    returnAddress: value("returnAddress"),
+    returnCity: value("returnCity"),
+    returnPhone: value("returnPhone"),
+    returnState: value("returnState"),
+    returnCountry: value("returnCountry"),
+    returnPin: value("returnPincode"),
+    sellerName: value("sellerName", user.businessName),
+    fragileShipment: value("fragileShipment"),
+    heightCm: value("heightCm"),
+    widthCm: value("widthCm"),
+    lengthCm: value("lengthCm"),
+    codAmount: value("codAmount", value("amount", 0)),
+    productsDescription: value("productsDescription"),
+    state: value("state"),
+    dangerousGood: value("dangerousGood"),
+    waybill: value("waybill"),
+    totalAmount: value("totalAmount", value("amount", 0)),
+    sellerAddress: value("sellerAddress", user.address),
+    country: value("country"),
+    plasticPackaging: value("plasticPackaging"),
+    quantity: value("quantity"),
+    transportSpeed: value("transportSpeed"),
+  };
+}
+
 function findUserByIdentifier(state, value) {
   const identifier = normalizeLoginIdentifier(value);
   return state.users.find((item) => item.email === identifier || item.phone === identifier);
@@ -319,7 +382,7 @@ app.patch("/api/admin/shipments/:id/status", requireRole("admin"), async (reques
   const state = await readState();
   const shipment = state.shipments.find((item) => item.id === request.params.id);
   if (!shipment) return response.status(404).json({ message: "Shipment not found." });
-  const allowedStatuses = new Set(["Pending manifestation", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"]);
+  const allowedStatuses = new Set(["Pending manifestation", "Manifested", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"]);
   const status = String(request.body?.status || "");
   if (!allowedStatuses.has(status)) return response.status(400).json({ message: "A valid shipment status is required." });
   shipment.status = status;
@@ -514,15 +577,35 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
       data: serviceability,
     });
   }
-  const payment = body.payment === "COD" ? "COD" : "Prepaid";
+  const paymentLookup = { prepaid: "Prepaid", "pre-paid": "Prepaid", cod: "COD", pickup: "Pickup", repl: "REPL" };
+  const payment = paymentLookup[String(body.paymentMode || body.payment || "Prepaid").trim().toLowerCase()];
+  if (!payment) return response.status(400).json({ code: "INVALID_PAYMENT_MODE", message: "Payment mode must be Prepaid, COD, Pickup or REPL." });
+  if (productType === "Heavy" && ["Pickup", "REPL"].includes(payment)) {
+    return response.status(400).json({ code: "UNSUPPORTED_HEAVY_FLOW", message: "Heavy reverse and replacement manifestation are not available in the current Delhivery Heavy contract." });
+  }
   if (payment === "COD" && !serviceability.cod) {
     return response.status(422).json({ code: "COD_NOT_SERVICEABLE", message: `Cash on delivery is unavailable for PIN code ${pincode}.`, data: serviceability });
   }
   if (payment === "Prepaid" && !serviceability.prepaid) {
     return response.status(422).json({ code: "PREPAID_NOT_SERVICEABLE", message: `Prepaid delivery is unavailable for PIN code ${pincode}.`, data: serviceability });
   }
+  if (["Pickup", "REPL"].includes(payment) && !serviceability.pickup) {
+    return response.status(422).json({ code: "PICKUP_NOT_SERVICEABLE", message: `Reverse pickup is unavailable for PIN code ${pincode}.`, data: serviceability });
+  }
+  const pickupLocation = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
+  const clientName = String(process.env.DELHIVERY_CLIENT_NAME || "").trim();
+  if (!pickupLocation || !clientName) {
+    throw new DelhiveryError("Delhivery pickup location and client name are not configured.", { code: "DELHIVERY_MANIFEST_NOT_CONFIGURED", status: 503 });
+  }
+  const id = `PAX-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+  const inputPieces = Array.isArray(body.pieces) && body.pieces.length ? body.pieces : [body];
+  if (inputPieces.length > 100) return response.status(400).json({ code: "TOO_MANY_PIECES", message: "A multi-piece shipment cannot contain more than 100 boxes." });
+  const providerPieces = inputPieces.map((piece) => manifestPiece(body, piece, user, id, payment));
+  const manifestation = await delhivery.createShipment({ pickupLocation, clientName, shipments: providerPieces });
+  const waybills = manifestation.packages.map((item) => item.waybill);
+  const latestState = await readState();
   const shipment = {
-    id: `PAX-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    id,
     customer,
     phone,
     address,
@@ -537,15 +620,22 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
     serviceabilityCheckedAt: new Date().toISOString(),
     ownerEmail: request.session.subject,
     customerId: user.id,
-    status: "Pending manifestation",
+    status: "Manifested",
+    waybill: waybills[0],
+    waybills,
+    packageCount: manifestation.packageCount,
+    providerStatus: "Manifested",
+    manifestedAt: new Date().toISOString(),
+    pickupLocation,
     date: new Date().toISOString(),
   };
-  state.shipments.unshift(shipment);
-  const customerRecord = state.customers.find((item) => item.id === user.id);
+  latestState.shipments.unshift(shipment);
+  const customerRecord = latestState.customers.find((item) => item.id === user.id);
   if (customerRecord) customerRecord.shipments = Number(customerRecord.shipments || 0) + 1;
-  state.activities.unshift({ title: `${shipment.id} created`, detail: user.businessName || user.email, tone: "green", createdAt: shipment.date });
-  state.activities = state.activities.slice(0, 50);
-  await writeState(state, "shipment.created");
+  latestState.activities.unshift({ title: `${shipment.id} manifested`, detail: user.businessName || user.email, tone: "green", createdAt: shipment.date });
+  latestState.activities = latestState.activities.slice(0, 50);
+  await writeState(latestState, "shipment.created");
+  await markWaybillsUsed(waybills, shipment.id);
   response.status(201).json({ data: shipment });
 });
 
@@ -555,7 +645,7 @@ app.get("/api/tracking/:id", async (request, response) => {
   const state = await readState();
   const shipment = state.shipments.find((item) => String(item.id).toUpperCase() === reference);
   if (!shipment) return response.status(404).json({ message: "Shipment not found." });
-  const { ownerEmail, customerId, phone, address, ...publicShipment } = shipment;
+  const { ownerEmail, customerId, phone, address, pickupLocation: _pickupLocation, ...publicShipment } = shipment;
   response.json({ data: publicShipment });
 });
 

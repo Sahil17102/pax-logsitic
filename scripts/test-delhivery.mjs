@@ -1,8 +1,25 @@
 import assert from "node:assert/strict";
-import { createDelhiveryClient, DelhiveryError, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
+import { buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCreation, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
+
+const manifestInput = {
+  pickupLocation: "Pax Test Warehouse",
+  clientName: "Pax Test Client",
+  shipments: [{ name: "Receiver", order: "PAX-ORDER-1", phone: "9123456789", address: "House & Market #2", pin: "194103", paymentMode: "COD", weightGrams: 1250, totalAmount: 999, codAmount: 999, productsDescription: "Shoes; shampoo", quantity: "2", shippingMode: "Surface", transportSpeed: "D" }],
+};
+const manifestPayload = buildDelhiveryShipmentPayload(manifestInput);
+assert.equal(manifestPayload.pickup_location.name, "Pax Test Warehouse");
+assert.equal(manifestPayload.shipments[0].add, "House & Market #2");
+assert.equal(manifestPayload.shipments[0].payment_mode, "COD");
+assert.equal(manifestPayload.shipments[0].cod_amount, 999);
+assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [{ ...manifestInput.shipments[0], totalAmount: 50000 }] }), (error) => error instanceof DelhiveryError && error.code === "EWAYBILL_REQUIRED");
+assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [manifestInput.shipments[0], { ...manifestInput.shipments[0], order: "PAX-ORDER-2" }] }), (error) => error instanceof DelhiveryError && error.code === "MPS_WAYBILL_REQUIRED");
+assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [{ ...manifestInput.shipments[0], waybill: "900000000001" }, { ...manifestInput.shipments[0], order: "PAX-ORDER-2", waybill: "900000000001" }] }), (error) => error instanceof DelhiveryError && error.code === "DUPLICATE_MPS_WAYBILL");
+const normalizedManifest = normalizeDelhiveryShipmentCreation({ packages: [{ status: "Success", waybill: "920000000001", refnum: "PAX-ORDER-1" }], upload_wbn: "UP-1" }, 1);
+assert.equal(normalizedManifest.manifested, true);
+assert.equal(normalizedManifest.packages[0].waybill, "920000000001");
 
 const serviceable = normalizeDelhiveryServiceability({
   delivery_codes: [{ postal_code: { pin: 194103, cod: "Y", pre_paid: "Y", pickup: "N", reverse_pickup: "Y", remarks: "", district: "Leh", state_code: "LA" } }],
@@ -97,6 +114,17 @@ try {
         });
       }
       assert.equal(options.headers.Authorization, "Token test-token");
+      if (endpoint.pathname === "/api/cmu/create.json") {
+        assert.equal(options.method, "POST");
+        assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded");
+        const form = new URLSearchParams(options.body);
+        assert.equal(form.get("format"), "json");
+        assert.deepEqual(JSON.parse(form.get("data")), manifestPayload);
+        return new Response(JSON.stringify({ packages: [{ status: "Success", waybill: "920000000001", refnum: "PAX-ORDER-1" }], upload_wbn: "UP-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/waybill/api/bulk/json/") {
         assert.equal(endpoint.searchParams.get("count"), "2");
         return new Response(JSON.stringify({ data: { waybills: ["900000000001", "900000000002"] } }), {
@@ -140,7 +168,9 @@ try {
   assert.deepEqual(fetchedWaybills.waybills, ["900000000001", "900000000002"]);
   const fetchedSingleWaybill = await client.fetchSingleWaybill();
   assert.deepEqual(fetchedSingleWaybill.waybills, ["910000000001"]);
-  assert.equal(requestCount, 5, "parcel, Heavy and TAT cache independently; bulk and single waybill calls each reach the provider");
+  const manifested = await client.createShipment(manifestInput);
+  assert.equal(manifested.packages[0].waybill, "920000000001");
+  assert.equal(requestCount, 6, "each Delhivery contract uses its independent provider request path");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -152,4 +182,4 @@ try {
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
