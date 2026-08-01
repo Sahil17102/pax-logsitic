@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { trackShipment } from "./services/clientApi.js";
 
 export function usePageInteractions(location, navigate) {
   useEffect(() => {
@@ -92,26 +93,39 @@ export function usePageInteractions(location, navigate) {
       const input = document.querySelector("#tracking-id");
       const error = document.querySelector("#tracking-error");
       const panel = document.querySelector("#tracking-panel");
-      const showTracking = (reference) => {
-        document.querySelector("#shown-tracking-id").textContent = reference;
+      const showTracking = (shipment) => {
+        document.querySelector("#shown-tracking-id").textContent = shipment.id;
+        const status = document.querySelector("#tracking-status");
+        const update = document.querySelector("#tracking-current-update");
+        const note = document.querySelector("#tracking-note");
+        if (status) status.textContent = shipment.status;
+        if (update) update.textContent = shipment.status;
+        if (note) note.textContent = shipment.destination ? `Latest destination: ${shipment.destination}` : "Latest status received from Pax operations.";
+        const stageByStatus = { "Pickup scheduled": 0, "In transit": 2, "Out for delivery": 2, Delivered: 3, Exception: 2, RTO: 2 };
+        const activeStage = stageByStatus[shipment.status] ?? 0;
+        document.querySelectorAll("#tracking-panel .tracking-steps li").forEach((step, index) => {
+          step.classList.toggle("done", index < activeStage || shipment.status === "Delivered");
+          step.classList.toggle("active", index === activeStage && shipment.status !== "Delivered");
+        });
         error.textContent = "";
         panel.classList.remove("flash");
         void panel.offsetWidth;
         panel.classList.add("flash");
         panel.scrollIntoView({ behavior: "smooth", block: "center" });
       };
-      listen(trackingForm, "submit", (event) => {
+      listen(trackingForm, "submit", async (event) => {
         event.preventDefault();
         const reference = input.value.trim().toUpperCase();
-        if (!/^PAX[-\s]?[A-Z0-9]{6,12}$/.test(reference)) {
-          error.textContent = "Enter a Pax reference such as PAX-260729.";
+        if (!/^PAX[-\s]?[A-Z0-9]{6,20}$/.test(reference)) {
+          error.textContent = "Enter a valid Pax shipment reference.";
           return;
         }
-        showTracking(reference.replace(/\s/g, "-"));
-      });
-      listen(document.querySelector("#demo-code"), "click", () => {
-        input.value = "PAX-260729";
-        showTracking("PAX-260729");
+        error.textContent = "Checking live shipment status…";
+        try {
+          showTracking(await trackShipment(reference.replace(/\s/g, "-")));
+        } catch (requestError) {
+          error.textContent = requestError.message || "Shipment status could not be loaded.";
+        }
       });
     }
 

@@ -9,34 +9,12 @@ import {
   setCustomerAccess,
   setShipmentStatus,
 } from "../services/adminApi.js";
-import { readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
+import { ENABLE_PREVIEW_MODE } from "../config.js";
+import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
 
 const PREVIEW_SESSION_KEY = "pax-admin-preview-session";
 const CLIENT_USERS_KEY = "pax-demo-users";
 const CLIENT_SHIPMENTS_KEY = "pax-demo-shipments";
-
-const sampleCustomers = [
-  { id: "CUS-1048", name: "Aarav Sharma", business: "Aarav Retail", email: "aarav@retail.in", phone: "+91 98765 41048", city: "Hyderabad", shipments: 18, joinedAt: "28 Jul 2026", status: "Active" },
-  { id: "CUS-1042", name: "Nila Reddy", business: "Nila Studios", email: "hello@nilastudios.in", phone: "+91 98490 22117", city: "Secunderabad", shipments: 12, joinedAt: "24 Jul 2026", status: "Active" },
-  { id: "CUS-1039", name: "Rohan Mehta", business: "Mehta Home", email: "rohan@mehtahome.in", phone: "+91 97012 84530", city: "Hyderabad", shipments: 7, joinedAt: "19 Jul 2026", status: "Review" },
-  { id: "CUS-1033", name: "Kavya Rao", business: "Kite Office", email: "ops@kiteoffice.in", phone: "+91 99596 31022", city: "Warangal", shipments: 22, joinedAt: "12 Jul 2026", status: "Active" },
-];
-
-const sampleShipments = [
-  { id: "PAX-260731", customer: "Aarav Retail", destination: "Mumbai, MH", amount: 1240, payment: "Prepaid", status: "In transit", date: "31 Jul 2026" },
-  { id: "PAX-260728", customer: "Nila Studios", destination: "Bengaluru, KA", amount: 860, payment: "COD", status: "Out for delivery", date: "30 Jul 2026" },
-  { id: "PAX-260724", customer: "Kite Office", destination: "Pune, MH", amount: 590, payment: "Prepaid", status: "Delivered", date: "29 Jul 2026" },
-  { id: "PAX-260719", customer: "Rohan Mehta", destination: "Chennai, TN", amount: 1720, payment: "COD", status: "Pickup scheduled", date: "28 Jul 2026" },
-  { id: "PAX-260714", customer: "Veda Foods", destination: "Vijayawada, AP", amount: 940, payment: "COD", status: "Exception", date: "27 Jul 2026" },
-  { id: "PAX-260709", customer: "Mint Bazaar", destination: "Delhi, DL", amount: 1480, payment: "Prepaid", status: "Delivered", date: "26 Jul 2026" },
-];
-
-const sampleActivities = [
-  { title: "PAX-260728 is out for delivery", detail: "Bengaluru delivery centre · 8 min ago", tone: "blue" },
-  { title: "New customer account created", detail: "Aarav Retail · 24 min ago", tone: "green" },
-  { title: "Weight exception needs review", detail: "PAX-260714 · 42 min ago", tone: "amber" },
-  { title: "COD remittance processed", detail: "₹18,420 · 1 hr ago", tone: "purple" },
-];
 
 const navigation = [
   { id: "overview", label: "Dashboard", icon: "grid" },
@@ -111,7 +89,7 @@ function safeParse(value, fallback) {
 function buildPreviewDashboard() {
   const cachedShipments = safeParse(localStorage.getItem(CLIENT_SHIPMENTS_KEY), []);
   const cachedUsers = safeParse(localStorage.getItem(CLIENT_USERS_KEY), []);
-  const shipments = Array.isArray(cachedShipments) && cachedShipments.length ? cachedShipments : sampleShipments;
+  const shipments = Array.isArray(cachedShipments) ? cachedShipments : [];
   const customers = Array.isArray(cachedUsers) && cachedUsers.length
     ? cachedUsers.map((user, index) => ({
       id: user.id || `CUS-${String(1100 + index)}`,
@@ -124,9 +102,9 @@ function buildPreviewDashboard() {
       joinedAt: user.joinedAt || "Recently",
       status: "Active",
     }))
-    : sampleCustomers;
+    : [];
 
-  return { shipments, customers, activities: sampleActivities };
+  return { shipments, customers, activities: [] };
 }
 
 function Icon({ name }) {
@@ -183,11 +161,11 @@ function AdminLogin({ onLogin, onPreview }) {
       const admin = await loginAdmin(form);
       onLogin(admin);
     } catch (loginError) {
-      if (form.username.trim().toLowerCase() === "admin" && form.password === "Pax@1234") {
+      if (ENABLE_PREVIEW_MODE && form.username.trim().toLowerCase() === "admin" && form.password === "Pax@1234") {
         onPreview();
         return;
       }
-      setError(`${loginError.message} You can open preview mode while the API is being connected.`);
+      setError(loginError.message);
     } finally {
       setLoading(false);
     }
@@ -218,8 +196,7 @@ function AdminLogin({ onLogin, onPreview }) {
           <label className="admin-remember"><input type="checkbox" checked={form.remember} onChange={(event) => setForm({ ...form, remember: event.target.checked })} /> Keep me signed in</label>
           {error && <p className="admin-form-error" role="alert">{error}</p>}
           <button className="admin-primary-button" type="submit" disabled={loading}>{loading ? "Connecting…" : "Sign in to operations"}<Icon name="arrow" /></button>
-          <div className="admin-demo-credentials"><span>Preview credentials</span><strong>admin</strong><i>/</i><strong>Pax@1234</strong></div>
-          <button className="admin-preview-button" type="button" onClick={onPreview}>Open connected preview directly</button>
+          {ENABLE_PREVIEW_MODE && <><div className="admin-demo-credentials"><span>Preview credentials</span><strong>admin</strong><i>/</i><strong>Pax@1234</strong></div><button className="admin-preview-button" type="button" onClick={onPreview}>Open local preview</button></>}
           <small className="admin-api-caption">API: {API_BASE_URL}</small>
         </form>
       </section>
@@ -348,7 +325,7 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, contro
   const [pinResult, setPinResult] = useState(null);
   const [rate, setRate] = useState({ pickup: "500029", delivery: "560001", weight: "1", payment: "Prepaid" });
   const [rateResult, setRateResult] = useState(null);
-  const [trackingId, setTrackingId] = useState(shipments[0]?.id || "PAX-260731");
+  const [trackingId, setTrackingId] = useState(shipments[0]?.id || "");
   const [trackingResult, setTrackingResult] = useState(null);
   const [content, setContent] = useState(controlState.content[page === "rate-terms" ? "rateTerms" : "about"] || "");
   const [options, setOptions] = useState({ ...controlState.settings.paymentOptions, ...controlState.settings.billing });
@@ -375,7 +352,7 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, contro
 
   if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(rate.weight); if (!/^[1-9]\d{5}$/.test(rate.pickup) || !/^[1-9]\d{5}$/.test(rate.delivery) || weight <= 0) { setRateResult({ error: "Enter two valid PIN codes and parcel weight." }); return; } const sameRegion = rate.pickup[0] === rate.delivery[0]; const base = (sameRegion ? 78 : 128) + Math.ceil(weight * 31) + (rate.payment === "COD" ? 45 : 0); setRateResult({ standard: base, express: Math.round(base * 1.48) }); }}><p>SHIPPING RATE TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer and courier charges.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>ESTIMATED CUSTOMER RATE</span><h2>{formatMoney(rateResult.standard)}</h2><ul><li><b>Pax Standard</b><strong>{formatMoney(rateResult.standard)}</strong></li><li><b>Pax Express</b><strong>{formatMoney(rateResult.express)}</strong></li><li><b>GST</b><span>Calculated at checkout</span></li></ul></>}</div></section>;
 
-  if (page === "tracking") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const found = shipments.find((item) => item.id.toLowerCase() === trackingId.trim().toLowerCase()); setTrackingResult(found || { error: "No matching order found." }); }}><p>LIVE ORDER LOOKUP</p><h2>Track an order</h2><label>Pax reference<input value={trackingId} onChange={(event) => setTrackingId(event.target.value.toUpperCase())} placeholder="PAX-260731" /></label><button type="submit">Track order</button></form><div className="admin-card admin-tool-result">{!trackingResult ? <p>Search a Pax reference to inspect its current milestone.</p> : trackingResult.error ? <p className="is-error">{trackingResult.error}</p> : <><span>{trackingResult.id}</span><h2>{trackingResult.customer}</h2><ul><li><b>Destination</b><span>{trackingResult.destination}</span></li><li><b>Payment</b><span>{trackingResult.payment}</span></li><li><b>Latest status</b><StatusBadge status={trackingResult.status} /></li></ul></>}</div></section>;
+  if (page === "tracking") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const found = shipments.find((item) => item.id.toLowerCase() === trackingId.trim().toLowerCase()); setTrackingResult(found || { error: "No matching order found." }); }}><p>LIVE ORDER LOOKUP</p><h2>Track an order</h2><label>Pax reference<input value={trackingId} onChange={(event) => setTrackingId(event.target.value.toUpperCase())} placeholder="PAX shipment reference" /></label><button type="submit">Track order</button></form><div className="admin-card admin-tool-result">{!trackingResult ? <p>Search a Pax reference to inspect its current milestone.</p> : trackingResult.error ? <p className="is-error">{trackingResult.error}</p> : <><span>{trackingResult.id}</span><h2>{trackingResult.customer}</h2><ul><li><b>Destination</b><span>{trackingResult.destination}</span></li><li><b>Payment</b><span>{trackingResult.payment}</span></li><li><b>Latest status</b><StatusBadge status={trackingResult.status} /></li></ul></>}</div></section>;
 
   if (["payment-options", "billing-preferences"].includes(page)) {
     const settings = page === "payment-options" ? [["prepaid", "Prepaid orders", "Accept online-paid bookings"], ["cod", "Cash on delivery", "Allow COD on serviceable PIN codes"], ["wallet", "Pax wallet", "Use wallet balance for shipping"], ["upi", "UPI recharge", "Allow UPI wallet recharges"]] : [["weekly", "Weekly invoicing", "Generate invoices every Monday"], ["gst", "GST invoices", "Include tax breakup and GSTIN"]];
@@ -392,16 +369,16 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, contro
 }
 
 function AdminApp() {
-  const [authenticated, setAuthenticated] = useState(() => hasAdminToken() || sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true");
+  const [authenticated, setAuthenticated] = useState(() => hasAdminToken() || (ENABLE_PREVIEW_MODE && sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true"));
   const [admin, setAdmin] = useState({ name: "Operations Admin", username: "admin" });
-  const [previewMode, setPreviewMode] = useState(() => sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true");
+  const [previewMode, setPreviewMode] = useState(() => ENABLE_PREVIEW_MODE && sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true");
   const [active, setActive] = useState("overview");
   const [openNavGroup, setOpenNavGroup] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [snapshot, setSnapshot] = useState(buildPreviewDashboard);
-  const [controlState, setControlState] = useState(readControlState);
+  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], customers: [], activities: [] });
+  const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [connection, setConnection] = useState("checking");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
@@ -422,11 +399,11 @@ function AdminApp() {
       setSnapshot({ shipments: data.shipments || [], customers: data.customers || [], activities: data.activities || [] });
       if (data.configuration) {
         setControlState(data.configuration);
-        writeControlState(data.configuration);
+        cacheControlState(data.configuration);
       }
       setConnection("live");
     } catch {
-      setSnapshot(buildPreviewDashboard());
+      if (ENABLE_PREVIEW_MODE) setSnapshot(buildPreviewDashboard());
       setConnection("offline");
     } finally {
       setLoading(false);
@@ -443,7 +420,7 @@ function AdminApp() {
     setOpenNavGroup(parent?.id || null);
   }, [active]);
 
-  useEffect(() => subscribeToLocalControl(setControlState), []);
+  useEffect(() => ENABLE_PREVIEW_MODE ? subscribeToLocalControl(setControlState) : undefined, []);
 
   useEffect(() => {
     if (!authenticated || previewMode) return undefined;
@@ -496,7 +473,7 @@ function AdminApp() {
     return result;
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const adminDateLabel = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "long", year: "numeric" }).format(new Date()).toUpperCase();
-  const sourceLabel = connection === "live" ? "Live API" : connection === "checking" ? "Connecting" : connection === "offline" ? "API offline · preview data" : "Connected preview";
+  const sourceLabel = connection === "live" ? "Live API" : connection === "checking" ? "Connecting" : connection === "offline" ? "API offline" : "Local preview";
 
   const flash = (message) => {
     setToast(message);
@@ -504,13 +481,19 @@ function AdminApp() {
   };
 
   const changeControlState = async (nextState) => {
+    if (!previewMode && connection !== "live") {
+      flash("The API is offline. Configuration was not changed.");
+      return;
+    }
+    const previous = controlState;
     const next = writeControlState(nextState);
     setControlState(next);
     if (!previewMode && connection === "live") {
       try {
         await saveAdminConfiguration(next);
       } catch (error) {
-        flash(`Saved locally; live sync failed: ${error.message}`);
+        setControlState(cacheControlState(previous));
+        flash(`Configuration was not changed: ${error.message}`);
       }
     }
   };
@@ -519,10 +502,15 @@ function AdminApp() {
     const previous = snapshot;
     const next = { ...snapshot, shipments: shipments.map((shipment) => shipment.id === id ? { ...shipment, status } : shipment) };
     setSnapshot(next);
-    if (previewMode || connection !== "live") {
+    if (previewMode) {
       localStorage.setItem(CLIENT_SHIPMENTS_KEY, JSON.stringify(next.shipments));
       window.dispatchEvent(new CustomEvent("pax:shipments-updated", { detail: next.shipments }));
       flash(`${id} updated in the client preview data.`);
+      return;
+    }
+    if (connection !== "live") {
+      setSnapshot(previous);
+      flash("The API is offline. Shipment status was not changed.");
       return;
     }
     try {
@@ -535,20 +523,27 @@ function AdminApp() {
   };
 
   const changeCustomerAccess = async (customer) => {
+    if (!previewMode && connection !== "live") {
+      flash("The API is offline. Customer access was not changed.");
+      return;
+    }
     const enabled = customer.status === "Disabled";
     const nextCustomers = customers.map((item) => item.id === customer.id ? { ...item, status: enabled ? "Active" : "Disabled" } : item);
     setSnapshot((current) => ({ ...current, customers: nextCustomers }));
-    try {
-      const savedUsers = safeParse(localStorage.getItem(CLIENT_USERS_KEY), []);
-      localStorage.setItem(CLIENT_USERS_KEY, JSON.stringify(savedUsers.map((user) => user.email === customer.email ? { ...user, disabled: !enabled } : user)));
-    } catch {
-      // The API remains authoritative when browser preview data is unavailable.
+    if (previewMode) {
+      try {
+        const savedUsers = safeParse(localStorage.getItem(CLIENT_USERS_KEY), []);
+        localStorage.setItem(CLIENT_USERS_KEY, JSON.stringify(savedUsers.map((user) => user.email === customer.email ? { ...user, disabled: !enabled } : user)));
+      } catch {
+        // Ignore malformed browser-only preview data.
+      }
     }
     if (!previewMode && connection === "live") {
       try {
         await setCustomerAccess(customer.id, enabled);
       } catch (error) {
-        flash(`Access changed locally; live sync failed: ${error.message}`);
+        setSnapshot((current) => ({ ...current, customers }));
+        flash(`Customer access was not changed: ${error.message}`);
         return;
       }
     }
@@ -591,7 +586,7 @@ function AdminApp() {
         </header>
 
         <div className="admin-content">
-          {connection === "offline" && <div className="admin-connection-banner"><span><strong>Backend unavailable.</strong> Showing safe preview data; changes stay in this browser until the API reconnects.</span><button type="button" onClick={loadDashboard}>Retry connection</button></div>}
+          {connection === "offline" && <div className="admin-connection-banner"><span><strong>Backend unavailable.</strong> Live records could not be loaded; no sample records have been substituted.</span><button type="button" onClick={loadDashboard}>Retry connection</button></div>}
           {previewMode && <div className="admin-connection-banner is-preview"><span><strong>Preview mode.</strong> Same-origin customer records are connected through shared browser storage.</span><button type="button" onClick={loadDashboard}>Refresh preview</button></div>}
           <div className="admin-page-heading"><div><p>{adminDateLabel} · HYDERABAD</p><h1>{pageTitles[active][0]}</h1><span>{pageTitles[active][1]}</span></div><div className="admin-live-chip"><i></i>{sourceLabel}</div></div>
 
@@ -604,13 +599,13 @@ function AdminApp() {
             </section>
             <section className="admin-action-strip">
               <article><i className="is-coral"></i><span><strong>Open tickets</strong><small>Support triage</small></span><b>{openTickets}</b><button type="button" onClick={() => setActive("support")}>Review</button></article>
-              <article><i className="is-yellow"></i><span><strong>Pending KYC</strong><small>Verification queue</small></span><b>2</b><button type="button" onClick={() => setActive("customers")}>Review</button></article>
+              <article><i className="is-yellow"></i><span><strong>Pending KYC</strong><small>Verification queue</small></span><b>{customers.filter((item) => item.status === "Review").length}</b><button type="button" onClick={() => setActive("customers")}>Review</button></article>
               <article><i className="is-purple"></i><span><strong>Weight disputes</strong><small>Reconciliation</small></span><b>{openWeightCases}</b><button type="button" onClick={() => setActive("weight")}>Review</button></article>
               <article><i className="is-green"></i><span><strong>Active sellers</strong><small>Seller analytics</small></span><b>{customers.length}</b><button type="button" onClick={() => setActive("customers")}>View</button></article>
             </section>
             <section className="admin-overview-grid">
-              <article className="admin-card admin-volume-card"><div className="admin-card-head"><div><p>SHIPMENT VOLUME</p><h2>Network movement</h2></div><span>Last 7 days</span></div><div className="admin-chart"><div className="admin-chart-y"><span>24</span><span>18</span><span>12</span><span>6</span><span>0</span></div><div className="admin-bars">{[["Mon", 48], ["Tue", 68], ["Wed", 53], ["Thu", 82], ["Fri", 66], ["Sat", 92], ["Sun", 74]].map(([day, height], index) => <div key={day}><i style={{ height: `${height}%` }} className={index === 5 ? "is-peak" : ""}></i><span>{day}</span></div>)}</div></div></article>
-              <article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>LIVE FEED</p><h2>Recent activity</h2></div></div><div className="admin-activity-list">{(snapshot.activities || sampleActivities).map((item) => <div key={item.title}><i className={`is-${item.tone}`}></i><span><strong>{item.title}</strong><small>{item.detail}</small></span></div>)}</div></article>
+              <article className="admin-card admin-volume-card"><div className="admin-card-head"><div><p>SHIPMENT VOLUME</p><h2>Network movement</h2></div><span>Current API data</span></div><div className="admin-chart"><div className="admin-chart-y"><span>{shipments.length}</span><span></span><span></span><span></span><span>0</span></div><div className="admin-bars">{statusSummary.map((item) => <div key={item.status}><i style={{ height: `${shipments.length ? Math.max(4, (item.count / shipments.length) * 100) : 0}%` }}></i><span>{item.status.split(" ")[0]}</span></div>)}</div></div></article>
+              <article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>LIVE FEED</p><h2>Recent activity</h2></div></div><div className="admin-activity-list">{snapshot.activities?.length ? snapshot.activities.map((item, index) => <div key={`${item.title}-${index}`}><i className={`is-${item.tone}`}></i><span><strong>{item.title}</strong><small>{item.detail}</small></span></div>) : <div className="admin-empty">No live activity yet.</div>}</div></article>
             </section>
             <section className="admin-health-grid">
               <article className="admin-card admin-summary-card"><div className="admin-card-head"><div><p>FINANCIAL HEALTH</p><h2>Revenue, cost and margin</h2></div><button type="button" onClick={() => setActive("invoices")}>Open billing <Icon name="arrow" /></button></div><div className="admin-summary-tiles"><div><span>Shipping collected</span><strong>{formatMoney(grossValue)}</strong><small>Seller-facing charges</small></div><div><span>Courier cost</span><strong>{formatMoney(courierCost)}</strong><small>Estimated partner payable</small></div><div><span>Net revenue</span><strong>{formatMoney(netRevenue)}</strong><small>{grossValue ? `${Math.round((netRevenue / grossValue) * 100)}% contribution` : "No orders yet"}</small></div><div><span>Average order value</span><strong>{formatMoney(averageOrderValue)}</strong><small>Across all orders</small></div></div></article>
@@ -635,7 +630,7 @@ function AdminApp() {
 
           {active === "pickups" && <section className="admin-list-grid">{shipments.filter((item) => item.status === "Pickup scheduled").length ? shipments.filter((item) => item.status === "Pickup scheduled").map((shipment, index) => <article className="admin-card admin-pickup-card" key={shipment.id}><div className="admin-pickup-time"><strong>{index ? "04:30" : "02:30"}</strong><span>PM</span></div><div><StatusBadge status="Pickup scheduled" /><h2>{shipment.customer}</h2><p>Pickup for {shipment.id} · {shipment.destination}</p></div><button type="button" onClick={() => changeStatus(shipment.id, "In transit")}>Mark collected</button></article>) : <div className="admin-empty admin-card">No pickups are currently scheduled.</div>}</section>}
 
-          {active === "finance" && <><section className="admin-metrics"><MetricCard label="COD exposure" value={formatMoney(codValue)} note={`${shipments.filter((item) => item.payment === "COD").length} shipments`} tone="green" icon="wallet" /><MetricCard label="Prepaid value" value={formatMoney(prepaidValue)} note={`${shipments.filter((item) => item.payment === "Prepaid").length} shipments`} tone="blue" icon="wallet" /><MetricCard label="Gross booked value" value={formatMoney(codValue + prepaidValue)} note="Current shipment set" tone="purple" icon="grid" /><MetricCard label="Settlement health" value="98.4%" note="Within payout SLA" tone="amber" icon="support" /></section><section className="admin-card admin-finance-card"><div className="admin-card-head"><div><p>COLLECTION MIX</p><h2>Payment distribution</h2></div></div><div className="admin-finance-bar"><i style={{ width: `${(codValue / Math.max(codValue + prepaidValue, 1)) * 100}%` }}></i></div><div className="admin-finance-legend"><span><i className="is-cod"></i>COD <strong>{formatMoney(codValue)}</strong></span><span><i className="is-prepaid"></i>Prepaid <strong>{formatMoney(prepaidValue)}</strong></span></div></section></>}
+          {active === "finance" && <><section className="admin-metrics"><MetricCard label="COD exposure" value={formatMoney(codValue)} note={`${shipments.filter((item) => item.payment === "COD").length} shipments`} tone="green" icon="wallet" /><MetricCard label="Prepaid value" value={formatMoney(prepaidValue)} note={`${shipments.filter((item) => item.payment === "Prepaid").length} shipments`} tone="blue" icon="wallet" /><MetricCard label="Gross booked value" value={formatMoney(codValue + prepaidValue)} note="Current shipment set" tone="purple" icon="grid" /><MetricCard label="Settlement health" value="—" note="Connect billing API" tone="amber" icon="support" /></section><section className="admin-card admin-finance-card"><div className="admin-card-head"><div><p>COLLECTION MIX</p><h2>Payment distribution</h2></div></div><div className="admin-finance-bar"><i style={{ width: `${(codValue / Math.max(codValue + prepaidValue, 1)) * 100}%` }}></i></div><div className="admin-finance-legend"><span><i className="is-cod"></i>COD <strong>{formatMoney(codValue)}</strong></span><span><i className="is-prepaid"></i>Prepaid <strong>{formatMoney(prepaidValue)}</strong></span></div></section></>}
 
           {Object.hasOwn(managementPages, active) && <ManagementWorkspace page={active} flash={flash} search={search} records={controlState.resources[active] || []} onRecordsChange={(records) => changeControlState({ ...controlState, resources: { ...controlState.resources, [active]: records } })} />}
 

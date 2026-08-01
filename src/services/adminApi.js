@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "../config.js";
+import { normalizeAdminDashboard, normalizeCustomer, normalizeShipment, unwrapApiData } from "./apiData.js";
 
 const ADMIN_TOKEN_KEY = "pax-admin-token";
 const REQUEST_TIMEOUT = 8000;
@@ -60,8 +61,7 @@ export function logoutAdmin() {
 }
 
 export async function getAdminDashboard() {
-  const payload = await request("/api/admin/dashboard");
-  return payload.data || payload;
+  return normalizeAdminDashboard(await request("/api/admin/dashboard"));
 }
 
 export async function setShipmentStatus(shipmentId, status) {
@@ -69,7 +69,7 @@ export async function setShipmentStatus(shipmentId, status) {
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
-  return payload.data || payload;
+  return normalizeShipment(unwrapApiData(payload));
 }
 
 export async function saveAdminConfiguration(configuration) {
@@ -77,7 +77,7 @@ export async function saveAdminConfiguration(configuration) {
     method: "PUT",
     body: JSON.stringify({ configuration }),
   });
-  return payload.data || payload;
+  return unwrapApiData(payload);
 }
 
 export async function setCustomerAccess(customerId, enabled) {
@@ -85,7 +85,7 @@ export async function setCustomerAccess(customerId, enabled) {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
-  return payload.data || payload;
+  return normalizeCustomer(unwrapApiData(payload));
 }
 
 export { API_BASE_URL };

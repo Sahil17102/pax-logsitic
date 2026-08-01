@@ -9,6 +9,8 @@ services:
         value: https://pax-logistic.onrender.com
       - key: VITE_APP_MODE
         value: client
+      - key: VITE_ENABLE_PREVIEW_MODE
+        value: false
     routes:
       - type: rewrite
         source: /*
@@ -23,6 +25,8 @@ services:
         value: https://pax-logistic.onrender.com
       - key: VITE_APP_MODE
         value: admin
+      - key: VITE_ENABLE_PREVIEW_MODE
+        value: false
     routes:
       - type: rewrite
         source: /*

@@ -21,16 +21,15 @@ export default function TrackPage() {
             <p>Enter your Pax reference to view the latest shipment stage and understand the next handoff.</p>
             <form className="tracking-form tool-tracking-form" id="tracking-form" noValidate>
               <label className="sr-only" htmlFor="tracking-id">Tracking reference</label>
-              <input id="tracking-id" placeholder="Example: PAX-260729" autoComplete="off" />
+              <input id="tracking-id" placeholder="Enter Pax shipment reference" autoComplete="off" />
               <button className="button button-dark" type="submit">Track now</button>
             </form>
             <p className="form-error track-error" id="tracking-error" role="alert"></p>
-            <p className="demo-hint">Try demo reference <button type="button" id="demo-code">PAX-260729</button></p>
           </div>
           <div className="tool-hero-visual track-hero-visual" aria-hidden="true">
             <div className="track-hero-card">
               <div><small>PAX / LIVE JOURNEY</small><b>In transit</b></div>
-              <span>PAX-260729</span>
+              <span>LIVE STATUS</span>
               <strong>Moving to delivery hub</strong>
               <div className="track-hero-route"><i className="done">✓</i><span></span><i className="done">✓</i><span></span><i className="active"></i><span></span><i></i></div>
               <div className="track-hero-labels"><small>Booked</small><small>Pickup</small><small>Transit</small><small>Delivery</small></div>
@@ -42,12 +41,12 @@ export default function TrackPage() {
       <section className="tool-workspace-section tracking-section">
         <div className="shell tracking-card tool-tracking-card" id="tracking-panel">
           <div className="tracking-head">
-            <div><small>Shipment reference</small><strong id="shown-tracking-id">PAX-260729</strong></div>
-            <span className="status-badge">In transit</span>
+            <div><small>Shipment reference</small><strong id="shown-tracking-id">Enter a reference above</strong></div>
+            <span className="status-badge" id="tracking-status">Not loaded</span>
           </div>
           <div className="current-update">
             <span className="simple-box">□</span>
-            <div><small>Current update</small><strong>Moving to the next delivery hub</strong></div>
+            <div><small>Current update</small><strong id="tracking-current-update">Waiting for live lookup</strong></div>
           </div>
           <ol className="tracking-steps">
             <li className="done"><i>✓</i><div><strong>Booked</strong><small>Reference created</small></div></li>
@@ -55,7 +54,7 @@ export default function TrackPage() {
             <li className="active"><i></i><div><strong>In transit</strong><small>Moving through network</small></div></li>
             <li><i></i><div><strong>Delivered</strong><small>Final delivery</small></div></li>
           </ol>
-          <p className="panel-note">Demo tracking view. Live shipment data requires an operations connection.</p>
+          <p className="panel-note" id="tracking-note">Shipment details are loaded from the Pax API.</p>
         </div>
       </section>
 
