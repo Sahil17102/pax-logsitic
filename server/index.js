@@ -11,7 +11,8 @@ const port = Number(process.env.PORT || 3000);
 const adminUsername = process.env.ADMIN_USERNAME || "admin";
 const isProduction = process.env.NODE_ENV === "production";
 const adminPassword = process.env.ADMIN_PASSWORD !== undefined ? process.env.ADMIN_PASSWORD : (isProduction ? "" : "Pax@1234");
-const adminPasswordSha256 = String(process.env.ADMIN_PASSWORD_SHA256 || "").trim().toLowerCase();
+const bundledAdminPasswordSha256 = "d3471dde926ef8d5d96a61f5fe9e43627b5fb1b433ddd39f4b03739f3a7485cd";
+const adminPasswordSha256 = String(process.env.ADMIN_PASSWORD_SHA256 || (isProduction ? bundledAdminPasswordSha256 : "")).trim().toLowerCase();
 const tokenSecret = process.env.JWT_SECRET || (isProduction ? "" : "pax-local-development-secret");
 const databaseRequired = isProduction && process.env.REQUIRE_DATABASE === "true";
 const schemaVersion = 2;
@@ -41,6 +42,7 @@ let memoryState = JSON.parse(JSON.stringify(seedState));
 let pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 let databaseReady = false;
 const eventClients = new Set();
+const adminAuthenticationConfigured = Boolean((adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256)) && tokenSecret);
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
@@ -222,7 +224,7 @@ app.get("/health", async (_request, response) => {
   if (databaseRequired && !pool) {
     return response.status(503).json({ ok: false, storage: "unavailable", service: "pax-logistic-api", schemaVersion, message: "PostgreSQL is required in production." });
   }
-  response.json({ ok: true, storage: pool ? "postgres" : "memory", service: "pax-logistic-api", schemaVersion });
+  response.json({ ok: true, storage: pool ? "postgres" : "memory", service: "pax-logistic-api", schemaVersion, adminAuthenticationConfigured });
 });
 
 app.get("/api/events", (request, response) => {
@@ -238,7 +240,7 @@ app.get("/api/events", (request, response) => {
 });
 
 app.post("/api/admin/auth/login", (request, response) => {
-  if ((!adminPassword && !/^[a-f0-9]{64}$/.test(adminPasswordSha256)) || !tokenSecret) return response.status(503).json({ message: "Admin authentication is not configured." });
+  if (!adminAuthenticationConfigured) return response.status(503).json({ message: "Admin authentication is not configured." });
   const username = String(request.body?.username || "").trim();
   const password = String(request.body?.password || "");
   if (!secureEqual(username, adminUsername) || !isAdminPasswordValid(password)) return response.status(401).json({ message: "Incorrect administrator username or password." });
