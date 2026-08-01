@@ -39,14 +39,15 @@ const sampleActivities = [
 ];
 
 const navigation = [
-  { group: "Core", items: [["overview", "Dashboard", "grid"], ["shipments", "Orders", "box"]] },
-  { group: "Operations", items: [["ndr", "NDR", "support"], ["rto", "RTO", "truck"]] },
-  { group: "Accounts", items: [["customers", "Users Management", "users"], ["plans", "Plan Management", "star"]] },
-  { group: "Shipping Management", items: [["couriers", "Couriers", "truck"], ["credentials", "Courier Credentials", "key"], ["providers", "Service Providers", "grid"], ["serviceability", "Serviceability", "map"], ["pricing-b2b", "B2B Pricing", "wallet"], ["pricing-b2c", "B2C Pricing", "wallet"]] },
-  { group: "Billing", items: [["invoices", "Invoices", "file"], ["billing-preferences", "Billing Preferences", "settings"], ["cod", "COD Remittance", "wallet"], ["wallet", "Wallet", "wallet"]] },
-  { group: "Reconciliation", items: [["weight", "Weight Discrepancies", "scale"], ["disputes", "Dispute Management", "support"]] },
-  { group: "Tools", items: [["rate", "Rate Calculator", "tools"], ["rate-terms", "Rate Calculator Terms", "file"], ["tracking", "Order Tracking", "map"], ["api", "API Integration", "code"], ["about", "About Us Page", "page"], ["support", "Support", "support"]] },
-  { group: "Settings", items: [["payment-options", "Payment Options", "wallet"], ["password", "Change Password", "key"], ["developer", "Developer", "code"]] },
+  { id: "overview", label: "Dashboard", icon: "grid" },
+  { id: "shipments", label: "Orders", icon: "box", badge: true },
+  { id: "operations", label: "Operations", icon: "support", children: [["ndr", "NDR"], ["rto", "RTO"]] },
+  { id: "accounts", label: "Accounts", icon: "users", children: [["customers", "Users Management"], ["plans", "Plan Management"]] },
+  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
+  { id: "billing", label: "Billing", icon: "wallet", children: [["invoices", "Invoices"], ["billing-preferences", "Billing Preferences"], ["cod", "COD Remittance"], ["wallet", "Wallet"]] },
+  { id: "reconciliation", label: "Reconciliation", icon: "scale", children: [["weight", "Weight Discrepancies"], ["disputes", "Dispute Management"]] },
+  { id: "tools-menu", label: "Tools", icon: "tools", children: [["rate", "Rate Calculator"], ["rate-terms", "Rate Calculator Terms"], ["tracking", "Order Tracking"], ["api", "API Integration"], ["about", "About Us Page"], ["support", "Support"]] },
+  { id: "settings-menu", label: "Settings", icon: "settings", children: [["payment-options", "Payment Options"], ["password", "Change Password"], ["developer", "Developer"]] },
 ];
 
 const statusOptions = ["Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
@@ -149,6 +150,7 @@ function Icon({ name }) {
     refresh: <><path d="M20 6v5h-5" /><path d="M18 9a7 7 0 1 0 1 7" /></>,
     logout: <><path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10" /></>,
     arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
+    chevron: <path d="m8 10 4 4 4-4" />,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.grid}</svg>;
 }
@@ -337,6 +339,7 @@ function AdminApp() {
   const [admin, setAdmin] = useState({ name: "Operations Admin", username: "admin" });
   const [previewMode, setPreviewMode] = useState(() => sessionStorage.getItem(PREVIEW_SESSION_KEY) === "true");
   const [active, setActive] = useState("overview");
+  const [openNavGroup, setOpenNavGroup] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
@@ -377,6 +380,11 @@ function AdminApp() {
     document.title = "Pax Admin — Operations Control Centre";
     loadDashboard();
   }, [authenticated, previewMode]);
+
+  useEffect(() => {
+    const parent = navigation.find((item) => item.children?.some(([id]) => id === active));
+    setOpenNavGroup(parent?.id || null);
+  }, [active]);
 
   useEffect(() => subscribeToLocalControl(setControlState), []);
 
@@ -505,7 +513,15 @@ function AdminApp() {
     <div className="admin-app">
       <aside className={`admin-sidebar${mobileNav ? " is-open" : ""}`}>
         <div className="admin-brand"><img src="/assets/pax-logo.png" alt="Pax Logistics" /><span>ADMIN</span></div>
-        <nav>{navigation.map((section) => <div className="admin-nav-section" key={section.group}><p>{section.group}</p>{section.items.map(([id, label, icon]) => <button key={id} className={active === id ? "is-active" : ""} type="button" onClick={() => { setActive(id); setMobileNav(false); setSearch(""); }}><Icon name={icon} /><span>{label}</span>{id === "shipments" && <b>{shipments.length}</b>}</button>)}</div>)}</nav>
+        <nav aria-label="Admin navigation">{navigation.map((item) => {
+          const hasActiveChild = item.children?.some(([id]) => id === active);
+          const isOpen = openNavGroup === item.id;
+          if (!item.children) return <button key={item.id} className={`admin-nav-main${active === item.id ? " is-active" : ""}`} type="button" onClick={() => { setActive(item.id); setMobileNav(false); setSearch(""); }}><Icon name={item.icon} /><span>{item.label}</span>{item.badge && <b>{shipments.length}</b>}</button>;
+          return <div className={`admin-nav-group${isOpen ? " is-open" : ""}`} key={item.id}>
+            <button className={`admin-nav-main admin-nav-group-trigger${hasActiveChild ? " has-active-child" : ""}`} type="button" aria-expanded={isOpen} aria-controls={`admin-nav-${item.id}`} onClick={() => setOpenNavGroup(isOpen ? null : item.id)}><Icon name={item.icon} /><span>{item.label}</span><i className="admin-nav-chevron"><Icon name="chevron" /></i></button>
+            <div className="admin-nav-children" id={`admin-nav-${item.id}`}>{item.children.map(([id, label]) => <button key={id} className={active === id ? "is-active" : ""} type="button" onClick={() => { setActive(id); setMobileNav(false); setSearch(""); }}><i></i><span>{label}</span></button>)}</div>
+          </div>;
+        })}</nav>
         <div className="admin-sidebar-foot"><span className={`admin-connection-dot is-${connection}`}></span><div><strong>{sourceLabel}</strong><small>{API_BASE_URL.replace(/^https?:\/\//, "")}</small></div></div>
       </aside>
       {mobileNav && <button className="admin-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
