@@ -82,6 +82,12 @@ export async function getClientHeavyServiceability(pincode) {
   return unwrapApiData(await request(`/api/client/heavy-serviceability/${encodeURIComponent(pincode)}`));
 }
 
+export async function getClientExpectedTat({ originPin, destinationPin, mot, pdt = "B2C", expectedPickupDate = "" }) {
+  const query = new URLSearchParams({ originPin, destinationPin, mot, pdt });
+  if (expectedPickupDate) query.set("expectedPickupDate", expectedPickupDate);
+  return unwrapApiData(await request(`/api/client/expected-tat?${query}`));
+}
+
 export async function getClientBootstrap() {
   return normalizeClientBootstrap(await request("/api/client/bootstrap"));
 }

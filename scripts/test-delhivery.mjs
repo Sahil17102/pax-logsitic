@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createDelhiveryClient, DelhiveryError, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability } from "../server/integrations/delhivery.js";
+import { createDelhiveryClient, DelhiveryError, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability } from "../server/integrations/delhivery.js";
 
 const serviceable = normalizeDelhiveryServiceability({
   delivery_codes: [{ postal_code: { pin: 194103, cod: "Y", pre_paid: "Y", pickup: "N", reverse_pickup: "Y", remarks: "", district: "Leh", state_code: "LA" } }],
@@ -53,6 +53,26 @@ assert.equal(heavyNsz.status, "non_serviceable");
 assert.equal(heavyNsz.cod, false);
 assert.equal(heavyNsz.prepaid, false);
 
+const tatRequest = { originPin: "122003", destinationPin: "136118", mot: "S", pdt: "B2C", expectedPickupDate: "2026-08-03 10:30" };
+const tat = normalizeDelhiveryExpectedTat({ data: { origin_pin: 122003, destination_pin: 136118, tat: "3 Days", expected_delivery_date: "2026-08-06" } }, tatRequest);
+assert.deepEqual(tat, {
+  provider: "delhivery",
+  originPin: "122003",
+  destinationPin: "136118",
+  mot: "S",
+  modeOfTransport: "Surface",
+  productType: "B2C",
+  expectedPickupDate: "2026-08-03 10:30",
+  status: "available",
+  serviceable: true,
+  tatDays: 3,
+  expectedDeliveryDate: "2026-08-06",
+  remark: "",
+});
+const tatNsz = normalizeDelhiveryExpectedTat({ data: { status: "NSZ", message: "NSZ" } }, { ...tatRequest, destinationPin: "999997" });
+assert.equal(tatNsz.status, "non_serviceable");
+assert.equal(tatNsz.tatDays, null);
+
 const originalToken = process.env.DELHIVERY_API_TOKEN;
 const originalBaseUrl = process.env.DELHIVERY_BASE_URL;
 const originalInsecure = process.env.DELHIVERY_ALLOW_INSECURE_HTTP;
@@ -66,6 +86,17 @@ try {
       requestCount += 1;
       const endpoint = new URL(url);
       assert.equal(options.headers.Authorization, "Token test-token");
+      if (endpoint.pathname === "/api/dc/expected_tat") {
+        assert.equal(endpoint.searchParams.get("origin_pin"), "122003");
+        assert.equal(endpoint.searchParams.get("destination_pin"), "136118");
+        assert.equal(endpoint.searchParams.get("mot"), "S");
+        assert.equal(endpoint.searchParams.get("pdt"), "B2C");
+        assert.equal(endpoint.searchParams.get("expected_pickup_date"), "2026-08-03 10:30");
+        return new Response(JSON.stringify({ data: { tat: 3, expected_delivery_date: "2026-08-06" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/api/dc/fetch/serviceability/pincode") {
         assert.equal(endpoint.searchParams.get("product_type"), "Heavy");
         assert.equal(endpoint.searchParams.get("pincode"), "400086");
@@ -85,12 +116,16 @@ try {
   await client.checkServiceability("194103");
   await client.checkHeavyServiceability("400086");
   await client.checkHeavyServiceability("400086");
-  assert.equal(requestCount, 2, "parcel and Heavy responses should use independent caches");
+  await client.getExpectedTat(tatRequest);
+  await client.getExpectedTat(tatRequest);
+  assert.equal(requestCount, 3, "parcel, Heavy and TAT responses should use independent caches");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
+  await assert.rejects(() => client.getExpectedTat({ ...tatRequest, mot: "X" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_TRANSPORT_MODE");
+  await assert.rejects(() => client.getExpectedTat({ ...tatRequest, expectedPickupDate: "2026-02-30" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_PICKUP_DATE");
 } finally {
   if (originalToken === undefined) delete process.env.DELHIVERY_API_TOKEN; else process.env.DELHIVERY_API_TOKEN = originalToken;
   if (originalBaseUrl === undefined) delete process.env.DELHIVERY_BASE_URL; else process.env.DELHIVERY_BASE_URL = originalBaseUrl;
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, cacheVerified: true }));

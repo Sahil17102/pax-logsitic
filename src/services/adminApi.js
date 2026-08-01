@@ -72,6 +72,12 @@ export async function getAdminHeavyServiceability(pincode) {
   return unwrapApiData(await request(`/api/admin/heavy-serviceability/${encodeURIComponent(pincode)}`));
 }
 
+export async function getAdminExpectedTat({ originPin, destinationPin, mot, pdt = "B2C", expectedPickupDate = "" }) {
+  const query = new URLSearchParams({ originPin, destinationPin, mot, pdt });
+  if (expectedPickupDate) query.set("expectedPickupDate", expectedPickupDate);
+  return unwrapApiData(await request(`/api/admin/expected-tat?${query}`));
+}
+
 export async function setShipmentStatus(shipmentId, status) {
   const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/status`, {
     method: "PATCH",

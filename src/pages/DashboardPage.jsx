@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientShipment, getClientBootstrap, getClientHeavyServiceability, getClientServiceability, logoutClient } from "../services/clientApi.js";
+import { createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, logoutClient } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -494,7 +494,7 @@ export default function DashboardPage() {
     setTrackResult(shipment || { error: "Shipment not found in your account." });
   };
 
-  const calculateRate = (event) => {
+  const calculateRate = async (event) => {
     event.preventDefault();
     const pickup = rateForm.pickup.trim();
     const delivery = rateForm.delivery.trim();
@@ -509,20 +509,31 @@ export default function DashboardPage() {
       return;
     }
 
-    const sameZone = pickup.slice(0, 2) === delivery.slice(0, 2);
-    const sameRegion = pickup[0] === delivery[0];
-    const routeBase = sameZone ? 74 : sameRegion ? 112 : 148;
-    const weightCharge = Math.ceil(weight * (sameZone ? 20 : 31));
-    const codCharge = rateForm.payment === "COD" ? 45 : 0;
-    const base = routeBase + weightCharge + codCharge;
-    const services = enabledCouriers.slice(0, 2).map((courier, index) => ({
-      name: courier.cells[0],
-      eta: index === 0 ? (sameZone ? "1–2 days" : "3–5 days") : (sameZone ? "Next day" : "1–2 days"),
-      amount: index === 0 ? Math.max(79, Math.round(base / 10) * 10) : Math.round((base * 1.48) / 10) * 10,
-      tone: index === 0 ? "standard" : "express",
-    }));
-    if (rateForm.speed === "express") services.reverse();
-    setRateQuote({ pickup, delivery, weight, payment: rateForm.payment, services });
+    try {
+      const mot = rateForm.speed === "express" ? "E" : rateForm.speed === "ndd" ? "N" : "S";
+      const tat = await getClientExpectedTat({ originPin: pickup, destinationPin: delivery, mot, pdt: "B2C" });
+      if (!tat.serviceable || tat.tatDays === null) {
+        setRateQuote({ error: tat.remark || "Delhivery could not provide an expected TAT for this lane." });
+        return;
+      }
+      const sameZone = pickup.slice(0, 2) === delivery.slice(0, 2);
+      const sameRegion = pickup[0] === delivery[0];
+      const routeBase = sameZone ? 74 : sameRegion ? 112 : 148;
+      const weightCharge = Math.ceil(weight * (sameZone ? 20 : 31));
+      const codCharge = rateForm.payment === "COD" ? 45 : 0;
+      const base = routeBase + weightCharge + codCharge;
+      const eta = `${tat.tatDays} ${tat.tatDays === 1 ? "day" : "days"}`;
+      const services = enabledCouriers.slice(0, 2).map((courier, index) => ({
+        name: courier.cells[0],
+        eta,
+        amount: index === 0 ? Math.max(79, Math.round(base / 10) * 10) : Math.round((base * 1.48) / 10) * 10,
+        tone: index === 0 ? "standard" : "express",
+      }));
+      if (rateForm.speed === "express") services.reverse();
+      setRateQuote({ pickup, delivery, weight, payment: rateForm.payment, services, modeOfTransport: tat.modeOfTransport, expectedDeliveryDate: tat.expectedDeliveryDate });
+    } catch (error) {
+      setRateQuote({ error: error.message || "Delhivery expected TAT could not be loaded." });
+    }
   };
 
   const calculateWeight = (event) => {
@@ -949,7 +960,7 @@ export default function DashboardPage() {
             <label>Pickup PIN<input value={rateForm.pickup} onChange={(event) => setRateForm({ ...rateForm, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="500029" /></label>
             <label>Delivery PIN<input value={rateForm.delivery} onChange={(event) => setRateForm({ ...rateForm, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="400001" /></label>
             <label>Chargeable weight (kg)<input value={rateForm.weight} onChange={(event) => setRateForm({ ...rateForm, weight: event.target.value })} type="number" min="0.1" step="0.1" /></label>
-            <label>Preferred speed<select value={rateForm.speed} onChange={(event) => setRateForm({ ...rateForm, speed: event.target.value })}><option value="standard">Standard</option><option value="express">Express</option></select></label>
+            <label>Preferred speed<select value={rateForm.speed} onChange={(event) => setRateForm({ ...rateForm, speed: event.target.value })}><option value="standard">Surface</option><option value="express">Express</option><option value="ndd">Next Day Delivery</option></select></label>
             <label className="span-two">Payment mode<select value={rateForm.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setRateForm({ ...rateForm, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
           </div>
           <button className="portal-primary portal-tool-submit" type="submit"><Icon name="wallet" /> Calculate available rates</button>
@@ -960,7 +971,7 @@ export default function DashboardPage() {
           {rateQuote?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Check the shipment details</h2><p>{rateQuote.error}</p></div>}
           {rateQuote && !rateQuote.error && <>
             <div className="tool-result-route"><span><small>PICKUP</small><strong>{rateQuote.pickup}</strong></span><i>→</i><span><small>DELIVERY</small><strong>{rateQuote.delivery}</strong></span></div>
-            <div className="tool-result-meta"><span>{rateQuote.weight} kg</span><span>{rateQuote.payment}</span><span>Indicative</span></div>
+            <div className="tool-result-meta"><span>{rateQuote.weight} kg</span><span>{rateQuote.payment}</span><span>{rateQuote.modeOfTransport}</span>{rateQuote.expectedDeliveryDate && <span>EDD {rateQuote.expectedDeliveryDate}</span>}</div>
             <div className="rate-option-list">
               {rateQuote.services.map((service) => <div className={`rate-option-row is-${service.tone}`} key={service.name}><span><Icon name={service.tone === "express" ? "route" : "box"} /></span><div><strong>{service.name}</strong><small>{service.eta} estimated delivery</small></div><b>₹{service.amount}–₹{Math.round((service.amount * 1.18) / 10) * 10}</b><button type="button" onClick={openShipment}>Book</button></div>)}
             </div>

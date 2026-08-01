@@ -65,6 +65,8 @@ GET   /api/client/serviceability/:pincode
 GET   /api/admin/serviceability/:pincode
 GET   /api/client/heavy-serviceability/:pincode
 GET   /api/admin/heavy-serviceability/:pincode
+GET   /api/client/expected-tat
+GET   /api/admin/expected-tat
 GET   /api/tracking/:id
 GET   /api/events
 ```
@@ -102,6 +104,7 @@ DELHIVERY_BASE_URL=https://track.delhivery.com
 DELHIVERY_REQUEST_TIMEOUT_MS=5000
 DELHIVERY_RATE_LIMIT_REQUESTS=4000
 DELHIVERY_HEAVY_RATE_LIMIT_REQUESTS=2700
+DELHIVERY_TAT_RATE_LIMIT_REQUESTS=675
 ```
 
 `DELHIVERY_ENV=staging` selects `https://staging-express.delhivery.com`. `DELHIVERY_BASE_URL` is optional and exists for an approved custom gateway or contract-test stub. Plain HTTP is rejected unless `DELHIVERY_ALLOW_INSECURE_HTTP=true`, which is only used by the local automated tests.
@@ -109,6 +112,8 @@ DELHIVERY_HEAVY_RATE_LIMIT_REQUESTS=2700
 The authenticated Pax parcel serviceability routes normalize Delhivery's `delivery_codes` response into one stable contract. An empty list becomes `non_serviceable`; `Embargo` becomes `embargoed`; and only a blank remark is treated as serviceable. The Heavy routes call `/api/dc/fetch/serviceability/pincode` with the mandatory `product_type=Heavy` and normalize `payment_type` into prepaid/COD flags; an `NSZ` response is never serviceable.
 
 Results are cached for five minutes and simultaneous checks for the same PIN/product combination are coalesced. Separate backend counters reserve provider headroom: 4,000 parcel requests under the 4,500-request limit and 2,700 Heavy requests under the 3,000-request limit per five-minute process window.
+
+Expected TAT routes accept `originPin`, `destinationPin`, `mot` (`S`, `E` or `N`), optional `pdt` (`B2C` by default or `B2B`) and optional `expectedPickupDate` (`YYYY-MM-DD` or `YYYY-MM-DD HH:mm`). They call Delhivery's `/api/dc/expected_tat` endpoint and normalize the provider response into `tatDays`, `expectedDeliveryDate`, `modeOfTransport` and lane availability. TAT has its own 675-request process window under the provider's 750-request/5-minute/IP limit. The customer and admin rate tools use this live TAT; displayed prices remain indicative until the separate shipping-cost API is integrated.
 
 Shipment creation now performs the same server-side check before writing an order. Set `productType` to `Heavy` to use the Heavy contract; omitted or other values use parcel serviceability. NSZ, embargoed, unsupported COD and unsupported prepaid destinations return HTTP `422`; an absent provider token returns `503`; upstream or malformed responses return `502`; and timeouts return `504`. No local shipment is created in those cases. Successful records start as `Pending manifestation`; the API does not claim that a Delhivery pickup is scheduled until the separate manifestation and pickup contracts are integrated.
 
@@ -119,7 +124,7 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings and both admin serviceability endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings, Surface/Express Expected TAT, TAT NSZ and invalid transport validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
 
 Delhivery's authenticated developer portal lists other B2C contracts such as waybill allocation, warehouse management, package manifestation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 

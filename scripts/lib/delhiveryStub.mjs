@@ -17,6 +17,30 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ detail: "Invalid token" }));
       return;
     }
+    if (request.method === "GET" && url.pathname === "/api/dc/expected_tat") {
+      const originPin = url.searchParams.get("origin_pin");
+      const destinationPin = url.searchParams.get("destination_pin");
+      const mot = url.searchParams.get("mot");
+      if (!originPin || !destinationPin || !["S", "E", "N"].includes(mot)) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ message: "Invalid TAT parameters" }));
+        return;
+      }
+      if (destinationPin === "999997") {
+        response.end(JSON.stringify({ data: { origin_pin: originPin, destination_pin: destinationPin, status: "NSZ", message: "NSZ" } }));
+        return;
+      }
+      const tatByMode = { S: 3, E: 2, N: 1 };
+      response.end(JSON.stringify({
+        data: {
+          origin_pin: originPin,
+          destination_pin: destinationPin,
+          tat: tatByMode[mot],
+          expected_delivery_date: "2026-08-05",
+        },
+      }));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/dc/fetch/serviceability/pincode") {
       const pincode = url.searchParams.get("pincode");
       if (url.searchParams.get("product_type") !== "Heavy") {

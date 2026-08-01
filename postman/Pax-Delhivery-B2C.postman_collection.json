@@ -102,6 +102,21 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is created', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "});"] } }]
     },
     {
+      "name": "Expected TAT - Surface",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=S&pdt=B2C&expectedPickupDate=2026-08-03%2010:30" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Expected TAT is normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.originPin).to.eql('122003');", "  pm.expect(data.destinationPin).to.eql('136118');", "  pm.expect(data.modeOfTransport).to.eql('Surface');", "  pm.expect(data.productType).to.eql('B2C');", "  pm.expect(data.expectedPickupDate).to.eql('2026-08-03 10:30');", "  pm.expect(data.tatDays).to.eql(3);", "  pm.expect(data.expectedDeliveryDate).to.eql('2026-08-05');", "});"] } }]
+    },
+    {
+      "name": "Expected TAT - NSZ lane",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=999997&mot=S&pdt=B2C" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('NSZ TAT lane is unavailable', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "  pm.expect(data.tatDays).to.eql(null);", "});"] } }]
+    },
+    {
+      "name": "Expected TAT - Invalid transport mode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=X&pdt=B2C" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid transport mode is rejected locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_TRANSPORT_MODE');", "});"] } }]
+    },
+    {
       "name": "Admin login",
       "request": {
         "method": "POST",
@@ -120,6 +135,11 @@
       "name": "Admin Heavy serviceability",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/heavy-serviceability/400086" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives Heavy payment modes', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Admin Expected TAT - Express",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/expected-tat?origin_pin=122003&destination_pin=136118&mot=E&pdt=B2C" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives Express TAT', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.modeOfTransport).to.eql('Express');", "  pm.expect(data.tatDays).to.eql(2);", "});"] } }]
     }
   ],
   "variable": [

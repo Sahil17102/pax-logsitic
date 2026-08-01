@@ -71,6 +71,7 @@ try {
   const before = await request("/api/client/bootstrap", { headers: authorization });
   const serviceability = await request("/api/client/serviceability/194103", { headers: authorization });
   const heavyServiceability = await request("/api/client/heavy-serviceability/400086", { headers: authorization });
+  const expectedTat = await request("/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=S&pdt=B2C", { headers: authorization });
   const created = await request("/api/client/shipments", {
     method: "POST",
     headers: { ...authorization, "Content-Type": "application/json" },
@@ -114,6 +115,9 @@ try {
   const dashboard = await request("/api/admin/dashboard", {
     headers: { Authorization: `Bearer ${adminLogin.token}` },
   });
+  const adminExpectedTat = await request("/api/admin/expected-tat?origin_pin=122003&destination_pin=136118&mot=E&pdt=B2C", {
+    headers: { Authorization: `Bearer ${adminLogin.token}` },
+  });
   const updated = await request(`/api/admin/shipments/${created.data.id}/status`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${adminLogin.token}`, "Content-Type": "application/json" },
@@ -125,6 +129,9 @@ try {
   assert.equal(serviceability.data.cod, true);
   assert.equal(heavyServiceability.data.productType, "Heavy");
   assert.equal(heavyServiceability.data.serviceable, true);
+  assert.equal(expectedTat.data.tatDays, 3);
+  assert.equal(expectedTat.data.modeOfTransport, "Surface");
+  assert.equal(adminExpectedTat.data.tatDays, 2);
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
@@ -152,6 +159,8 @@ try {
     publicTrackingIsPrivate: !Object.hasOwn(tracked.data, "ownerEmail"),
     delhiveryServiceable: serviceability.data.serviceable,
     delhiveryHeavyServiceable: heavyServiceability.data.serviceable,
+    expectedTatDays: expectedTat.data.tatDays,
+    adminExpectedTatDays: adminExpectedTat.data.tatDays,
   }));
 } finally {
   server.kill();

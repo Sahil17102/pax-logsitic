@@ -271,10 +271,17 @@ async function handleHeavyServiceability(request, response) {
   response.json({ data });
 }
 
+async function handleExpectedTat(request, response) {
+  const data = await delhivery.getExpectedTat(request.query);
+  response.json({ data });
+}
+
 app.get("/api/admin/serviceability/:pincode", requireRole("admin"), handleServiceability);
 app.get("/api/client/serviceability/:pincode", requireRole("customer"), handleServiceability);
 app.get("/api/admin/heavy-serviceability/:pincode", requireRole("admin"), handleHeavyServiceability);
 app.get("/api/client/heavy-serviceability/:pincode", requireRole("customer"), handleHeavyServiceability);
+app.get("/api/admin/expected-tat", requireRole("admin"), handleExpectedTat);
+app.get("/api/client/expected-tat", requireRole("customer"), handleExpectedTat);
 
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();

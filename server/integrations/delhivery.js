@@ -9,6 +9,8 @@ const MAX_CACHE_ENTRIES = 2000;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_RATE_LIMIT_REQUESTS = 4000;
 const DEFAULT_HEAVY_RATE_LIMIT_REQUESTS = 2700;
+const DEFAULT_TAT_RATE_LIMIT_REQUESTS = 675;
+const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 
 export class DelhiveryError extends Error {
   constructor(message, { code = "DELHIVERY_ERROR", status = 502, cause } = {}) {
@@ -164,6 +166,90 @@ export function normalizeDelhiveryHeavyServiceability(payload, requestedPincode)
   };
 }
 
+function tatRecordFrom(payload) {
+  if (Array.isArray(payload)) return payload[0] || {};
+  if (Array.isArray(payload?.data)) return payload.data[0] || {};
+  if (payload?.data && typeof payload.data === "object") return payload.data;
+  if (payload?.result && typeof payload.result === "object") return payload.result;
+  return payload && typeof payload === "object" ? payload : {};
+}
+
+function parseTatDays(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const matched = String(value).match(/\d+(?:\.\d+)?/);
+  if (!matched) return null;
+  const days = Number(matched[0]);
+  return Number.isFinite(days) && days >= 0 ? days : null;
+}
+
+export function normalizeDelhiveryExpectedTat(payload, request) {
+  const record = tatRecordFrom(payload);
+  const tatDays = parseTatDays(firstDefined(record, ["tat", "tat_days", "tatDays", "expected_tat", "expectedTat", "expected_tat_days", "days"]));
+  const expectedDeliveryDate = String(firstDefined(record, [
+    "expected_delivery_date",
+    "expectedDeliveryDate",
+    "estimated_delivery_date",
+    "estimatedDeliveryDate",
+    "edd",
+  ]) ?? "").trim();
+  const remark = String(firstDefined(record, ["message", "remark", "remarks", "error"])
+    ?? firstDefined(payload, ["message", "remark", "remarks", "error"])
+    ?? "").trim();
+  const nsz = /\bNSZ\b|(?:non|not)[-_ ]?serviceable/i.test([
+    remark,
+    firstDefined(record, ["status", "serviceability"]),
+  ].join(" "));
+  const available = !nsz && tatDays !== null;
+
+  return {
+    provider: "delhivery",
+    originPin: String(firstDefined(record, ["origin_pin", "originPin", "origin_pincode"]) ?? request.originPin),
+    destinationPin: String(firstDefined(record, ["destination_pin", "destinationPin", "destination_pincode"]) ?? request.destinationPin),
+    mot: request.mot,
+    modeOfTransport: TRANSPORT_MODES[request.mot],
+    productType: request.pdt,
+    expectedPickupDate: request.expectedPickupDate || "",
+    status: available ? "available" : nsz ? "non_serviceable" : "unavailable",
+    serviceable: available,
+    tatDays,
+    expectedDeliveryDate,
+    remark: remark || (nsz ? "NSZ" : ""),
+  };
+}
+
+function validExpectedPickupDate(value) {
+  if (!value) return true;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?: ([01]\d|2[0-3]):([0-5]\d))?$/);
+  if (!match) return false;
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return date.getUTCFullYear() === Number(year)
+    && date.getUTCMonth() === Number(month) - 1
+    && date.getUTCDate() === Number(day);
+}
+
+function normalizeTatRequest(input = {}) {
+  const originPin = String(input.originPin || input.origin_pin || "").trim();
+  const destinationPin = String(input.destinationPin || input.destination_pin || "").trim();
+  const mot = String(input.mot || "").trim().toUpperCase();
+  const pdt = String(input.pdt || "B2C").trim().toUpperCase() || "B2C";
+  const expectedPickupDate = String(input.expectedPickupDate || input.expected_pickup_date || "").trim();
+
+  if (!/^[1-9]\d{5}$/.test(originPin) || !/^[1-9]\d{5}$/.test(destinationPin)) {
+    throw new DelhiveryError("Enter valid 6-digit origin and destination PIN codes.", { code: "INVALID_TAT_PINCODE", status: 400 });
+  }
+  if (!Object.hasOwn(TRANSPORT_MODES, mot)) {
+    throw new DelhiveryError("Mode of transport must be S, E or N.", { code: "INVALID_TRANSPORT_MODE", status: 400 });
+  }
+  if (!["B2C", "B2B"].includes(pdt)) {
+    throw new DelhiveryError("Product type must be B2C or B2B.", { code: "INVALID_TAT_PRODUCT_TYPE", status: 400 });
+  }
+  if (!validExpectedPickupDate(expectedPickupDate)) {
+    throw new DelhiveryError("Expected pickup date must use YYYY-MM-DD or YYYY-MM-DD HH:mm.", { code: "INVALID_PICKUP_DATE", status: 400 });
+  }
+  return { originPin, destinationPin, mot, pdt, expectedPickupDate };
+}
+
 function validateBaseUrl(value) {
   let url;
   try {
@@ -198,6 +284,10 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   const heavyRateLimitRequests = Number.isInteger(configuredHeavyRateLimit) && configuredHeavyRateLimit > 0
     ? Math.min(configuredHeavyRateLimit, 3000)
     : DEFAULT_HEAVY_RATE_LIMIT_REQUESTS;
+  const configuredTatRateLimit = Number(process.env.DELHIVERY_TAT_RATE_LIMIT_REQUESTS);
+  const tatRateLimitRequests = Number.isInteger(configuredTatRateLimit) && configuredTatRateLimit > 0
+    ? Math.min(configuredTatRateLimit, 750)
+    : DEFAULT_TAT_RATE_LIMIT_REQUESTS;
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -225,7 +315,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
       rateWindow.requests = 0;
     }
     if (rateWindow.requests >= limit) {
-      throw new DelhiveryError("Delhivery serviceability rate limit has been reached. Try again shortly.", {
+      throw new DelhiveryError("Delhivery API rate limit has been reached. Try again shortly.", {
         code: "DELHIVERY_RATE_LIMITED",
         status: 429,
       });
@@ -251,8 +341,8 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
 
       if (!response.ok) {
         throw new DelhiveryError(response.status === 429
-          ? "Delhivery serviceability is temporarily rate limited."
-          : "Delhivery rejected the serviceability request.", {
+          ? "Delhivery API is temporarily rate limited."
+          : "Delhivery rejected the request.", {
           code: response.status === 429 ? "DELHIVERY_RATE_LIMITED" : "DELHIVERY_UPSTREAM_ERROR",
           status: response.status === 429 ? 429 : 502,
         });
@@ -278,7 +368,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
           cause: error,
         });
       }
-      throw new DelhiveryError("Delhivery serviceability is temporarily unavailable.", {
+      throw new DelhiveryError("Delhivery API is temporarily unavailable.", {
         code: "DELHIVERY_UNAVAILABLE",
         status: 502,
         cause: error,
@@ -301,6 +391,17 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     endpoint.searchParams.set("pincode", pincode);
     const payload = await requestJson(endpoint, "heavy", heavyRateLimitRequests);
     return normalizeDelhiveryHeavyServiceability(payload, pincode);
+  }
+
+  async function fetchExpectedTat(request) {
+    const endpoint = new URL("/api/dc/expected_tat", `${baseUrl}/`);
+    endpoint.searchParams.set("origin_pin", request.originPin);
+    endpoint.searchParams.set("destination_pin", request.destinationPin);
+    endpoint.searchParams.set("mot", request.mot);
+    endpoint.searchParams.set("pdt", request.pdt);
+    if (request.expectedPickupDate) endpoint.searchParams.set("expected_pickup_date", request.expectedPickupDate);
+    const payload = await requestJson(endpoint, "expected-tat", tatRateLimitRequests);
+    return normalizeDelhiveryExpectedTat(payload, request);
   }
 
   async function checkServiceability(pincode) {
@@ -354,10 +455,30 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return structuredClone(await request);
   }
 
+  async function getExpectedTat(input) {
+    ensureConfigured();
+    const normalized = normalizeTatRequest(input);
+    const cacheKey = `tat:${normalized.originPin}:${normalized.destinationPin}:${normalized.mot}:${normalized.pdt}:${normalized.expectedPickupDate}`;
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return structuredClone(cached.data);
+    if (pending.has(cacheKey)) return structuredClone(await pending.get(cacheKey));
+
+    const request = fetchExpectedTat(normalized)
+      .then((data) => {
+        if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+        cache.set(cacheKey, { data, expiresAt: Date.now() + DEFAULT_CACHE_TTL_MS });
+        return data;
+      })
+      .finally(() => pending.delete(cacheKey));
+    pending.set(cacheKey, request);
+    return structuredClone(await request);
+  }
+
   return {
     environment,
     configured: Boolean(token),
     checkServiceability,
     checkHeavyServiceability,
+    getExpectedTat,
   };
 }
