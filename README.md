@@ -67,6 +67,8 @@ GET   /api/client/heavy-serviceability/:pincode
 GET   /api/admin/heavy-serviceability/:pincode
 GET   /api/client/expected-tat
 GET   /api/admin/expected-tat
+POST  /api/admin/delhivery/waybills/fetch
+GET   /api/admin/delhivery/waybills
 GET   /api/tracking/:id
 GET   /api/events
 ```
@@ -93,7 +95,7 @@ The current Render service sets `REQUIRE_DATABASE=false` so the sample-free API 
 
 Run the API contract smoke test with `npm run test:api`. It verifies registration, customer-scoped bootstrap, shipment creation, public tracking and the admin dashboard.
 
-## Delhivery B2C serviceability
+## Delhivery B2C integration
 
 The Delhivery token is read only by the Node backend. Configure it on the backend service; never use a `VITE_*` variable for this secret:
 
@@ -105,6 +107,9 @@ DELHIVERY_REQUEST_TIMEOUT_MS=5000
 DELHIVERY_RATE_LIMIT_REQUESTS=4000
 DELHIVERY_HEAVY_RATE_LIMIT_REQUESTS=2700
 DELHIVERY_TAT_RATE_LIMIT_REQUESTS=675
+DELHIVERY_WAYBILL_PATH=/waybill/api/bulk/json/
+DELHIVERY_WAYBILL_RATE_LIMIT_REQUESTS=5
+DELHIVERY_WAYBILL_WINDOW_COUNT=50000
 ```
 
 `DELHIVERY_ENV=staging` selects `https://staging-express.delhivery.com`. `DELHIVERY_BASE_URL` is optional and exists for an approved custom gateway or contract-test stub. Plain HTTP is rejected unless `DELHIVERY_ALLOW_INSECURE_HTTP=true`, which is only used by the local automated tests.
@@ -115,6 +120,10 @@ Results are cached for five minutes and simultaneous checks for the same PIN/pro
 
 Expected TAT routes accept `originPin`, `destinationPin`, `mot` (`S`, `E` or `N`), optional `pdt` (`B2C` by default or `B2B`) and optional `expectedPickupDate` (`YYYY-MM-DD` or `YYYY-MM-DD HH:mm`). They call Delhivery's `/api/dc/expected_tat` endpoint and normalize the provider response into `tatDays`, `expectedDeliveryDate`, `modeOfTransport` and lane availability. TAT has its own 675-request process window under the provider's 750-request/5-minute/IP limit. The customer and admin rate tools use this live TAT; displayed prices remain indicative until the separate shipping-cost API is integrated.
 
+The admin-only bulk waybill endpoint accepts `{ "count": 1..10000 }`, calls the configured Delhivery waybill path and stores every unique numeric AWB in PostgreSQL. `delhivery_waybills` is created by the existing database initialization flow and tracks `stored`, `reserved` and `used` states without duplicating existing application data. Re-fetching the same AWB is safe because `waybill` is the primary key and duplicates are reported rather than inserted. The integration enforces five provider requests and at most 50,000 generated waybills per five-minute process window. `GET /api/admin/delhivery/waybills` supports `status`, `limit` (1-200) and `offset` filters; the admin panel exposes the same real inventory.
+
+The default bulk path is `/waybill/api/bulk/json/`. It is configurable because Delhivery's full authenticated portal contract was not included with the supplied rate-limit documentation. Confirm `DELHIVERY_WAYBILL_PATH` against the account's official staging/production documentation before the live acceptance run. Fetched waybills are intentionally not attached to an order immediately; they remain `stored` until the separate manifestation contract can reserve and consume them safely.
+
 Shipment creation now performs the same server-side check before writing an order. Set `productType` to `Heavy` to use the Heavy contract; omitted or other values use parcel serviceability. NSZ, embargoed, unsupported COD and unsupported prepaid destinations return HTTP `422`; an absent provider token returns `503`; upstream or malformed responses return `502`; and timeouts return `504`. No local shipment is created in those cases. Successful records start as `Pending manifestation`; the API does not claim that a Delhivery pickup is scheduled until the separate manifestation and pickup contracts are integrated.
 
 The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
@@ -124,9 +133,9 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings, Surface/Express Expected TAT, TAT NSZ and invalid transport validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, successful serviceable bookings, Surface/Express Expected TAT, TAT NSZ, invalid transport validation, bulk waybill storage, inventory reads, duplicate protection and count validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real `DELHIVERY_API_TOKEN` in the backend environment.
 
-Delhivery's authenticated developer portal lists other B2C contracts such as waybill allocation, warehouse management, package manifestation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, package manifestation, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 
 ## Database seeds
 

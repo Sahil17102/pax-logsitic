@@ -120,6 +120,18 @@ export function createAppStatePool(connectionString = process.env.DATABASE_URL) 
 
 export async function ensureAppStateSchema(database) {
   await database.query("CREATE TABLE IF NOT EXISTS pax_app_state (id INTEGER PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+  await database.query(`
+    CREATE TABLE IF NOT EXISTS delhivery_waybills (
+      waybill VARCHAR(20) PRIMARY KEY,
+      status VARCHAR(16) NOT NULL DEFAULT 'stored' CHECK (status IN ('stored', 'reserved', 'used')),
+      batch_id VARCHAR(64) NOT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reserved_at TIMESTAMPTZ,
+      used_at TIMESTAMPTZ,
+      shipment_id TEXT
+    )
+  `);
+  await database.query("CREATE INDEX IF NOT EXISTS delhivery_waybills_status_fetched_idx ON delhivery_waybills (status, fetched_at)");
   await database.query(
     "INSERT INTO pax_app_state (id, payload) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO NOTHING",
     [APP_STATE_ROW_ID, JSON.stringify(createInitialAppState())],

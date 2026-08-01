@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   API_BASE_URL,
+  fetchDelhiveryWaybills,
   getAdminExpectedTat,
   getAdminHeavyServiceability,
   getAdminServiceability,
   getAdminDashboard,
+  getDelhiveryWaybills,
   hasAdminToken,
   loginAdmin,
   logoutAdmin,
@@ -24,7 +26,7 @@ const navigation = [
   { id: "shipments", label: "Orders", icon: "box", badge: true },
   { id: "operations", label: "Operations", icon: "support", children: [["ndr", "NDR"], ["rto", "RTO"]] },
   { id: "accounts", label: "Accounts", icon: "users", children: [["customers", "Users Management"], ["plans", "Plan Management"]] },
-  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
+  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["waybills", "Waybill Inventory"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
   { id: "billing", label: "Billing", icon: "wallet", children: [["invoices", "Invoices"], ["billing-preferences", "Billing Preferences"], ["cod", "COD Remittance"], ["wallet", "Wallet"]] },
   { id: "reconciliation", label: "Reconciliation", icon: "scale", children: [["weight", "Weight Discrepancies"], ["disputes", "Dispute Management"]] },
   { id: "tools-menu", label: "Tools", icon: "tools", children: [["rate", "Rate Calculator"], ["rate-terms", "Rate Calculator Terms"], ["tracking", "Order Tracking"], ["api", "API Integration"], ["about", "About Us Page"], ["support", "Support"]] },
@@ -44,6 +46,7 @@ const pageTitles = {
   credentials: ["Courier credentials", "Review configured courier connections without exposing secrets."],
   providers: ["Service providers", "Control logistics providers available to the booking engine."],
   serviceability: ["Serviceability", "Check delivery and COD coverage for an Indian PIN code."],
+  waybills: ["Waybill inventory", "Fetch Delhivery B2C waybills in advance and monitor the stored inventory."],
   "pricing-b2b": ["B2B pricing", "Manage business shipment slabs and freight rates."],
   "pricing-b2c": ["B2C pricing", "Manage parcel pricing by zone and weight slab."],
   invoices: ["Invoices", "Review platform invoices, due dates and payment state."],
@@ -321,6 +324,75 @@ function ManagementWorkspace({ page, flash, search, records, onRecordsChange }) 
     </form>}
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}<th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleRows.map((record) => <tr className={record.enabled ? "" : "is-disabled"} key={record.id}>{config.columns.map((column, index) => { const cell = record.cells?.[index] || "—"; return <td key={`${column}-${index}`}>{index === config.columns.length - 1 ? <StatusBadge status={record.enabled ? cell : "Disabled"} /> : index === 0 ? <strong>{cell}</strong> : cell}</td>; })}<td><button className={`admin-switch${record.enabled ? " is-on" : ""}`} type="button" aria-label={`${record.enabled ? "Disable" : "Enable"} ${record.cells?.[0] || "record"}`} onClick={() => toggleRecord(record)}><i></i><span>{record.enabled ? "On" : "Off"}</span></button></td><td><div className="admin-row-actions"><button type="button" onClick={() => openEditEditor(record)}>Edit</button><button className="is-danger" type="button" onClick={() => deleteRecord(record)}>Delete</button></div></td></tr>)}</tbody></table></div>
   </section>;
+}
+
+function WaybillWorkspace({ flash }) {
+  const [count, setCount] = useState("25");
+  const [status, setStatus] = useState("");
+  const [inventory, setInventory] = useState({ items: [], summary: { total: 0, stored: 0, reserved: 0, used: 0 } });
+  const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadInventory = async (nextStatus = status) => {
+    setLoading(true);
+    setError("");
+    try {
+      setInventory(await getDelhiveryWaybills({ status: nextStatus, limit: 100 }));
+    } catch (requestError) {
+      setError(requestError.message || "Waybill inventory could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInventory(status);
+  }, [status]);
+
+  const fetchBatch = async (event) => {
+    event.preventDefault();
+    const requestedCount = Number(count);
+    if (!Number.isInteger(requestedCount) || requestedCount < 1 || requestedCount > 10000) {
+      setError("Enter a whole number between 1 and 10,000.");
+      return;
+    }
+    setFetching(true);
+    setError("");
+    try {
+      const result = await fetchDelhiveryWaybills(requestedCount);
+      flash(`${result.storedCount} Delhivery waybills stored${result.duplicateCount ? `; ${result.duplicateCount} duplicates skipped` : ""}.`);
+      await loadInventory(status);
+    } catch (requestError) {
+      setError(requestError.message || "Delhivery waybills could not be fetched.");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const summary = inventory.summary || { total: 0, stored: 0, reserved: 0, used: 0 };
+  return <>
+    <section className="admin-metrics">
+      <MetricCard label="Total waybills" value={summary.total} note="Unique Delhivery AWBs" tone="blue" icon="box" />
+      <MetricCard label="Ready to assign" value={summary.stored} note="Stored inventory" tone="green" icon="grid" />
+      <MetricCard label="Reserved" value={summary.reserved} note="Held for manifestation" tone="purple" icon="truck" />
+      <MetricCard label="Used" value={summary.used} note="Assigned to shipments" tone="amber" icon="support" />
+    </section>
+    <section className="admin-tool-layout">
+      <form className="admin-card admin-tool-form" onSubmit={fetchBatch}>
+        <p>DELHIVERY BULK WAYBILL</p><h2>Fetch a new batch</h2>
+        <label>Waybill count<input type="number" min="1" max="10000" step="1" value={count} onChange={(event) => setCount(event.target.value)} /></label>
+        <button type="submit" disabled={fetching}>{fetching ? "Fetching..." : "Fetch and store"}</button>
+        <span>Maximum 10,000 per request and 50,000 per five minutes. Newly fetched waybills remain stored for later manifestation.</span>
+        {error && <p className="is-error">{error}</p>}
+      </form>
+      <div className="admin-card admin-tool-result"><span>INVENTORY SAFETY</span><h2>Stored before use</h2><p>Duplicate waybills are ignored. A waybill is not assigned to an order until the Delhivery manifestation contract is integrated.</p></div>
+    </section>
+    <section className="admin-card admin-table-card admin-full-card">
+      <div className="admin-table-toolbar"><div><strong>{inventory.items.length} waybills shown</strong><span>Oldest inventory appears first.</span></div><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="stored">Stored</option><option value="reserved">Reserved</option><option value="used">Used</option></select></label></div>
+      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Waybill</th><th>Status</th><th>Batch</th><th>Fetched</th><th>Shipment</th></tr></thead><tbody>{loading ? <tr><td colSpan="5">Loading inventory...</td></tr> : inventory.items.length ? inventory.items.map((item) => <tr key={item.waybill}><td><strong>{item.waybill}</strong></td><td><StatusBadge status={item.status === "stored" ? "Active" : item.status} /></td><td>{item.batchId}</td><td>{item.fetchedAt ? new Date(item.fetchedAt).toLocaleString() : "—"}</td><td>{item.shipmentId || "—"}</td></tr>) : <tr><td colSpan="5">No waybills have been fetched yet.</td></tr>}</tbody></table></div>
+    </section>
+  </>;
 }
 
 function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, controlState, onControlChange }) {
@@ -661,6 +733,8 @@ function AdminApp() {
           </>}
 
           {active === "shipments" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredShipments.length} shipments</strong><span>Updates are reflected in the customer panel.</span></div><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label></div><ShipmentTable shipments={filteredShipments} onStatusChange={changeStatus} /></section>}
+
+          {active === "waybills" && <WaybillWorkspace flash={flash} />}
 
           {active === "ndr" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>NDR action queue</strong><span>Contact the customer or reattempt delivery before RTO.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("NDR report exported.")}>Export report</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "Exception")} onStatusChange={changeStatus} /></section>}
 

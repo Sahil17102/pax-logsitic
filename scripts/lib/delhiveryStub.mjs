@@ -17,6 +17,18 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ detail: "Invalid token" }));
       return;
     }
+    if (request.method === "GET" && url.pathname === "/waybill/api/bulk/json/") {
+      const count = Number(url.searchParams.get("count"));
+      if (!Number.isInteger(count) || count < 1 || count > 10000) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ message: "count must be between 1 and 10000" }));
+        return;
+      }
+      response.end(JSON.stringify({
+        waybills: Array.from({ length: count }, (_, index) => String(900000000001 + index)),
+      }));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/dc/expected_tat") {
       const originPin = url.searchParams.get("origin_pin");
       const destinationPin = url.searchParams.get("destination_pin");

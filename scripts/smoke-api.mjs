@@ -118,6 +118,18 @@ try {
   const adminExpectedTat = await request("/api/admin/expected-tat?origin_pin=122003&destination_pin=136118&mot=E&pdt=B2C", {
     headers: { Authorization: `Bearer ${adminLogin.token}` },
   });
+  const adminAuthorization = { Authorization: `Bearer ${adminLogin.token}` };
+  const fetchedWaybills = await request("/api/admin/delhivery/waybills/fetch", {
+    method: "POST",
+    headers: { ...adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ count: 3 }),
+  });
+  const waybillInventory = await request("/api/admin/delhivery/waybills?status=stored&limit=10", { headers: adminAuthorization });
+  const duplicateWaybills = await request("/api/admin/delhivery/waybills/fetch", {
+    method: "POST",
+    headers: { ...adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ count: 3 }),
+  });
   const updated = await request(`/api/admin/shipments/${created.data.id}/status`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${adminLogin.token}`, "Content-Type": "application/json" },
@@ -132,6 +144,12 @@ try {
   assert.equal(expectedTat.data.tatDays, 3);
   assert.equal(expectedTat.data.modeOfTransport, "Surface");
   assert.equal(adminExpectedTat.data.tatDays, 2);
+  assert.equal(fetchedWaybills.data.storedCount, 3);
+  assert.equal(fetchedWaybills.data.duplicateCount, 0);
+  assert.equal(waybillInventory.data.summary.stored, 3);
+  assert.equal(waybillInventory.data.items.length, 3);
+  assert.equal(duplicateWaybills.data.storedCount, 0);
+  assert.equal(duplicateWaybills.data.duplicateCount, 3);
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
@@ -161,6 +179,8 @@ try {
     delhiveryHeavyServiceable: heavyServiceability.data.serviceable,
     expectedTatDays: expectedTat.data.tatDays,
     adminExpectedTatDays: adminExpectedTat.data.tatDays,
+    storedWaybills: waybillInventory.data.summary.stored,
+    duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
   }));
 } finally {
   server.kill();

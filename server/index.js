@@ -37,6 +37,7 @@ const allowedOrigins = new Set([...defaultOrigins, ...configuredOrigins]);
 
 let memoryState = createInitialAppState();
 let pool = process.env.DATABASE_URL ? createAppStatePool() : null;
+const memoryWaybills = new Map();
 let databaseReady = false;
 const eventClients = new Set();
 const otpChallenges = new Map();
@@ -142,6 +143,68 @@ function requireRole(role) {
 function normalizeLoginIdentifier(value) {
   const identifier = String(value || "").trim();
   return identifier.includes("@") ? identifier.toLowerCase() : identifier.replace(/\D/g, "");
+}
+
+function waybillInventorySummary(records) {
+  const summary = { total: 0, stored: 0, reserved: 0, used: 0 };
+  records.forEach((record) => {
+    summary.total += 1;
+    if (Object.hasOwn(summary, record.status)) summary[record.status] += 1;
+  });
+  return summary;
+}
+
+async function storeWaybillBatch(waybills) {
+  await initializeDatabase();
+  const batchId = `WB-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  if (pool) {
+    const result = await pool.query(`
+      INSERT INTO delhivery_waybills (waybill, batch_id)
+      SELECT DISTINCT source.waybill, $2
+      FROM unnest($1::text[]) AS source(waybill)
+      ON CONFLICT (waybill) DO NOTHING
+      RETURNING waybill, status, batch_id, fetched_at
+    `, [waybills, batchId]);
+    return { batchId, inserted: result.rows, duplicateCount: waybills.length - result.rowCount };
+  }
+
+  const inserted = [];
+  const fetchedAt = new Date().toISOString();
+  waybills.forEach((waybill) => {
+    if (memoryWaybills.has(waybill)) return;
+    const record = { waybill, status: "stored", batchId, fetchedAt, reservedAt: null, usedAt: null, shipmentId: null };
+    memoryWaybills.set(waybill, record);
+    inserted.push(record);
+  });
+  return { batchId, inserted, duplicateCount: waybills.length - inserted.length };
+}
+
+async function readWaybillInventory({ status, limit, offset }) {
+  await initializeDatabase();
+  if (pool) {
+    const [records, totals] = await Promise.all([
+      pool.query(`
+        SELECT waybill, status, batch_id AS "batchId", fetched_at AS "fetchedAt",
+          reserved_at AS "reservedAt", used_at AS "usedAt", shipment_id AS "shipmentId"
+        FROM delhivery_waybills
+        WHERE ($1::text IS NULL OR status = $1)
+        ORDER BY fetched_at ASC, waybill ASC
+        LIMIT $2 OFFSET $3
+      `, [status || null, limit, offset]),
+      pool.query(`
+        SELECT COUNT(*)::integer AS total,
+          COUNT(*) FILTER (WHERE status = 'stored')::integer AS stored,
+          COUNT(*) FILTER (WHERE status = 'reserved')::integer AS reserved,
+          COUNT(*) FILTER (WHERE status = 'used')::integer AS used
+        FROM delhivery_waybills
+      `),
+    ]);
+    return { items: records.rows, summary: totals.rows[0] || { total: 0, stored: 0, reserved: 0, used: 0 } };
+  }
+
+  const all = [...memoryWaybills.values()].sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt) || left.waybill.localeCompare(right.waybill));
+  const filtered = status ? all.filter((record) => record.status === status) : all;
+  return { items: filtered.slice(offset, offset + limit), summary: waybillInventorySummary(all) };
 }
 
 function findUserByIdentifier(state, value) {
@@ -282,6 +345,37 @@ app.get("/api/admin/heavy-serviceability/:pincode", requireRole("admin"), handle
 app.get("/api/client/heavy-serviceability/:pincode", requireRole("customer"), handleHeavyServiceability);
 app.get("/api/admin/expected-tat", requireRole("admin"), handleExpectedTat);
 app.get("/api/client/expected-tat", requireRole("customer"), handleExpectedTat);
+
+app.post("/api/admin/delhivery/waybills/fetch", requireRole("admin"), async (request, response) => {
+  const fetched = await delhivery.fetchWaybills(request.body?.count);
+  const stored = await storeWaybillBatch(fetched.waybills);
+  const inventory = await readWaybillInventory({ status: "", limit: 1, offset: 0 });
+  response.status(stored.inserted.length ? 201 : 200).json({
+    data: {
+      batchId: stored.batchId,
+      requestedCount: fetched.requestedCount,
+      receivedCount: fetched.receivedCount,
+      storedCount: stored.inserted.length,
+      duplicateCount: stored.duplicateCount,
+      preview: stored.inserted.slice(0, 10).map((record) => record.waybill),
+      summary: inventory.summary,
+    },
+  });
+});
+
+app.get("/api/admin/delhivery/waybills", requireRole("admin"), async (request, response) => {
+  const status = String(request.query.status || "").trim().toLowerCase();
+  const limit = Number(request.query.limit || 100);
+  const offset = Number(request.query.offset || 0);
+  if (status && !["stored", "reserved", "used"].includes(status)) {
+    return response.status(400).json({ message: "Waybill status must be stored, reserved or used." });
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200 || !Number.isInteger(offset) || offset < 0) {
+    return response.status(400).json({ message: "Waybill pagination requires limit 1-200 and a non-negative offset." });
+  }
+  const inventory = await readWaybillInventory({ status, limit, offset });
+  response.json({ data: { ...inventory, pagination: { limit, offset, returned: inventory.items.length } } });
+});
 
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();

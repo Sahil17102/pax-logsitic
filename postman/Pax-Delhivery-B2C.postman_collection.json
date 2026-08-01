@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for the Pax server-side Delhivery B2C pincode serviceability integration. Delhivery credentials remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for the Pax server-side Delhivery B2C serviceability, expected TAT and bulk waybill inventory integrations. Delhivery credentials remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -125,6 +125,41 @@
         "url": "{{baseUrl}}/api/admin/auth/login"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Fetch and store 3 waybills",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"count\": 3\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Waybills are fetched and stored', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.requestedCount).to.eql(3);", "  pm.expect(data.receivedCount).to.eql(3);", "  pm.expect(data.storedCount).to.eql(3);", "  pm.expect(data.duplicateCount).to.eql(0);", "  pm.expect(data.preview).to.have.lengthOf(3);", "});"] } }]
+    },
+    {
+      "name": "List stored waybills",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=stored&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stored inventory is queryable', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(3);", "  pm.expect(data.summary.stored).to.eql(3);", "  pm.expect(data.items).to.have.lengthOf(3);", "  pm.expect(data.items[0].status).to.eql('stored');", "});"] } }]
+    },
+    {
+      "name": "Fetch duplicate waybill batch",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"count\": 3\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Duplicate waybills are not inserted again', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.storedCount).to.eql(0);", "  pm.expect(data.duplicateCount).to.eql(3);", "  pm.expect(data.summary.total).to.eql(3);", "});"] } }]
+    },
+    {
+      "name": "Reject invalid waybill count",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"count\": 10001\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Count over 10,000 is rejected before provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_WAYBILL_COUNT');", "});"] } }]
     },
     {
       "name": "Admin serviceability",

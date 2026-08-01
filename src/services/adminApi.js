@@ -78,6 +78,19 @@ export async function getAdminExpectedTat({ originPin, destinationPin, mot, pdt 
   return unwrapApiData(await request(`/api/admin/expected-tat?${query}`));
 }
 
+export async function fetchDelhiveryWaybills(count) {
+  return unwrapApiData(await request("/api/admin/delhivery/waybills/fetch", {
+    method: "POST",
+    body: JSON.stringify({ count }),
+  }));
+}
+
+export async function getDelhiveryWaybills({ status = "", limit = 100, offset = 0 } = {}) {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) query.set("status", status);
+  return unwrapApiData(await request(`/api/admin/delhivery/waybills?${query}`));
+}
+
 export async function setShipmentStatus(shipmentId, status) {
   const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/status`, {
     method: "PATCH",

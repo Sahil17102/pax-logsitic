@@ -10,6 +10,8 @@ const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_RATE_LIMIT_REQUESTS = 4000;
 const DEFAULT_HEAVY_RATE_LIMIT_REQUESTS = 2700;
 const DEFAULT_TAT_RATE_LIMIT_REQUESTS = 675;
+const DEFAULT_WAYBILL_RATE_LIMIT_REQUESTS = 5;
+const DEFAULT_WAYBILL_WINDOW_COUNT = 50000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 
 export class DelhiveryError extends Error {
@@ -35,6 +37,24 @@ function firstDefined(record, keys) {
     if (record?.[key] !== undefined && record?.[key] !== null) return record[key];
   }
   return undefined;
+}
+
+function waybillValuesFrom(value) {
+  if (Array.isArray(value)) return value.flatMap(waybillValuesFrom);
+  if (value && typeof value === "object") {
+    return waybillValuesFrom(firstDefined(value, ["waybills", "waybill", "waybill_number", "waybillNumber", "awbs", "awb", "awb_numbers", "awb_number", "number"]));
+  }
+  return String(value ?? "")
+    .split(/[\s,|]+/)
+    .map((item) => item.trim())
+    .filter((item) => /^\d{8,20}$/.test(item));
+}
+
+export function normalizeDelhiveryWaybills(payload) {
+  const source = Array.isArray(payload)
+    ? payload
+    : firstDefined(payload, ["waybills", "waybill", "data", "results", "awb_numbers", "awbs"]);
+  return [...new Set(waybillValuesFrom(source))];
 }
 
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
@@ -288,9 +308,25 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   const tatRateLimitRequests = Number.isInteger(configuredTatRateLimit) && configuredTatRateLimit > 0
     ? Math.min(configuredTatRateLimit, 750)
     : DEFAULT_TAT_RATE_LIMIT_REQUESTS;
+  const configuredWaybillRateLimit = Number(process.env.DELHIVERY_WAYBILL_RATE_LIMIT_REQUESTS);
+  const waybillRateLimitRequests = Number.isInteger(configuredWaybillRateLimit) && configuredWaybillRateLimit > 0
+    ? Math.min(configuredWaybillRateLimit, 5)
+    : DEFAULT_WAYBILL_RATE_LIMIT_REQUESTS;
+  const configuredWaybillWindowCount = Number(process.env.DELHIVERY_WAYBILL_WINDOW_COUNT);
+  const waybillWindowCount = Number.isInteger(configuredWaybillWindowCount) && configuredWaybillWindowCount > 0
+    ? Math.min(configuredWaybillWindowCount, 50000)
+    : DEFAULT_WAYBILL_WINDOW_COUNT;
+  const waybillPath = String(process.env.DELHIVERY_WAYBILL_PATH || "/waybill/api/bulk/json/").trim();
+  if (!waybillPath.startsWith("/") || waybillPath.startsWith("//")) {
+    throw new DelhiveryError("DELHIVERY_WAYBILL_PATH must be an absolute path on the configured Delhivery host.", {
+      code: "DELHIVERY_INVALID_CONFIGURATION",
+      status: 503,
+    });
+  }
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
+  const waybillCountWindow = { startedAt: Date.now(), count: 0 };
 
   function ensureConfigured() {
     if (!token) {
@@ -322,6 +358,21 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     }
     rateWindow.requests += 1;
     rateWindows.set(key, rateWindow);
+  }
+
+  function consumeWaybillCount(count) {
+    const now = Date.now();
+    if (now - waybillCountWindow.startedAt >= RATE_LIMIT_WINDOW_MS) {
+      waybillCountWindow.startedAt = now;
+      waybillCountWindow.count = 0;
+    }
+    if (waybillCountWindow.count + count > waybillWindowCount) {
+      throw new DelhiveryError("The 50,000-waybill generation window has been reached. Try again shortly.", {
+        code: "DELHIVERY_WAYBILL_WINDOW_LIMIT",
+        status: 429,
+      });
+    }
+    waybillCountWindow.count += count;
   }
 
   async function requestJson(endpoint, rateLimitKey, limit) {
@@ -404,6 +455,29 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryExpectedTat(payload, request);
   }
 
+  async function fetchWaybills(inputCount) {
+    ensureConfigured();
+    const count = Number(inputCount);
+    if (!Number.isInteger(count) || count < 1 || count > 10000) {
+      throw new DelhiveryError("Waybill count must be an integer between 1 and 10,000.", {
+        code: "INVALID_WAYBILL_COUNT",
+        status: 400,
+      });
+    }
+    consumeWaybillCount(count);
+    const endpoint = new URL(waybillPath, `${baseUrl}/`);
+    endpoint.searchParams.set("count", String(count));
+    const payload = await requestJson(endpoint, "waybill", waybillRateLimitRequests);
+    const waybills = normalizeDelhiveryWaybills(payload);
+    if (!waybills.length) {
+      throw new DelhiveryError("Delhivery returned no valid waybills.", {
+        code: "DELHIVERY_INVALID_RESPONSE",
+        status: 502,
+      });
+    }
+    return { provider: "delhivery", requestedCount: count, receivedCount: waybills.length, waybills };
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -480,5 +554,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     checkServiceability,
     checkHeavyServiceability,
     getExpectedTat,
+    fetchWaybills,
   };
 }
