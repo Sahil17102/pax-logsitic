@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { loginClient, registerClient } from "../services/clientApi.js";
+import { loginClient, registerClient, requestClientOtp, verifyClientOtp } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -9,10 +9,6 @@ const PINCODE_LOOKUP_URL = "https://api.postalpincode.in/pincode";
 function goTo(path) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function createOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function getSavedUsers() {
@@ -50,11 +46,13 @@ const defaultSignup = {
 
 export default function SignInPage() {
   const [mode, setMode] = useState("login");
-  const [loginMethod, setLoginMethod] = useState("password");
+  const [loginMethod, setLoginMethod] = useState("otp");
   const [loginId, setLoginId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginOtp, setLoginOtp] = useState("");
   const [loginCode, setLoginCode] = useState("");
+  const [loginChallengeId, setLoginChallengeId] = useState("");
+  const [loginDestination, setLoginDestination] = useState("");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [remember, setRemember] = useState(true);
@@ -67,7 +65,7 @@ export default function SignInPage() {
 
   const loginIdIsValid = useMemo(() => {
     const value = loginId.trim();
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || /^[6-9]\d{9}$/.test(value);
   }, [loginId]);
 
   useEffect(() => {
@@ -116,58 +114,57 @@ export default function SignInPage() {
 
   const findLoginUser = () => {
     const normalizedId = loginId.trim().toLowerCase();
-    return getSavedUsers().find((user) => user.email?.toLowerCase() === normalizedId);
+    return getSavedUsers().find((user) => user.email?.toLowerCase() === normalizedId || user.phone === normalizedId);
   };
 
-  const requestLoginOtp = (event) => {
+  const requestLoginOtp = async (event) => {
     event.preventDefault();
     setLoginError("");
     if (!loginIdIsValid) {
-      setLoginError("Enter a valid email address.");
+      setLoginError("Enter a valid email address or 10-digit mobile number.");
       return;
     }
-    const loginUser = findLoginUser();
-    if (!loginUser) {
-      setLoginError("No Pax account found with this email. Create an account first.");
-      return;
+    const savedUser = findLoginUser();
+    try {
+      let challenge;
+      try {
+        challenge = await requestClientOtp(loginId);
+      } catch (apiError) {
+        const canMigrateLegacyAccount = apiError.status === 404 && savedUser?.password && !savedUser.disabled;
+        if (!canMigrateLegacyAccount) throw apiError;
+        await registerClient({ ...savedUser, password: savedUser.password }, remember);
+        challenge = await requestClientOtp(loginId);
+      }
+      setLoginChallengeId(challenge.challengeId || "");
+      setLoginDestination(challenge.destination || "your registered contact");
+      setLoginCode(challenge.previewCode || "");
+      setLoginOtp("");
+    } catch (error) {
+      setLoginError(error.message || "OTP could not be generated right now.");
     }
-    if (loginUser.disabled) {
-      setLoginError("This account has been disabled by the Pax administrator. Contact support for access.");
-      return;
-    }
-
-    setLoginCode(createOtp());
-    setLoginOtp("");
   };
 
-  const finishOtpLogin = (event) => {
+  const finishOtpLogin = async (event) => {
     event.preventDefault();
     setLoginError("");
-    if (!loginCode || loginOtp !== loginCode) {
-      setLoginError("That OTP does not match the on-screen code.");
+    if (!loginChallengeId || !/^\d{6}$/.test(loginOtp)) {
+      setLoginError("Enter the 6-digit OTP.");
       return;
     }
-
-    const savedUser = findLoginUser();
-    if (!savedUser) {
-      setLoginError("This account is no longer available. Please create it again.");
-      setLoginCode("");
-      return;
+    try {
+      const apiUser = await verifyClientOtp(loginChallengeId, loginOtp, remember);
+      saveSession({ ...apiUser, authVersion: 2 }, remember);
+      goTo("/dashboard");
+    } catch (error) {
+      setLoginError(error.message || "OTP verification failed.");
     }
-    if (savedUser.disabled) {
-      setLoginError("This account has been disabled by the Pax administrator. Contact support for access.");
-      return;
-    }
-
-    saveSession(savedUser, remember);
-    goTo("/dashboard");
   };
 
   const finishPasswordLogin = async (event) => {
     event.preventDefault();
     setLoginError("");
     if (!loginIdIsValid) {
-      setLoginError("Enter a valid email address.");
+      setLoginError("Enter a valid email address or 10-digit mobile number.");
       return;
     }
     if (loginPassword.length < 8) {
@@ -177,7 +174,7 @@ export default function SignInPage() {
 
     const savedUser = findLoginUser();
     try {
-      const apiUser = await loginClient(loginId.trim().toLowerCase(), loginPassword, remember);
+      const apiUser = await loginClient(loginId.trim(), loginPassword, remember);
       saveSession({ ...apiUser, authVersion: 2 }, remember);
       goTo("/dashboard");
     } catch (apiError) {
@@ -320,6 +317,8 @@ export default function SignInPage() {
     setLoginError("");
     setSignupError("");
     setLoginCode("");
+    setLoginChallengeId("");
+    setLoginDestination("");
     setLoginOtp("");
     if (nextMode === "signup") setSignupStep(1);
   };
@@ -328,6 +327,8 @@ export default function SignInPage() {
     setLoginMethod(nextMethod);
     setLoginError("");
     setLoginCode("");
+    setLoginChallengeId("");
+    setLoginDestination("");
     setLoginOtp("");
   };
 
@@ -566,14 +567,14 @@ export default function SignInPage() {
               <form
                 className="auth-form login-method-form"
                 onSubmit={loginMethod === "otp"
-                  ? (loginCode ? finishOtpLogin : requestLoginOtp)
+                  ? (loginChallengeId ? finishOtpLogin : requestLoginOtp)
                   : finishPasswordLogin}
                 noValidate
               >
                 <p className="mini-label">Welcome to Pax</p>
                 <h2>Log in to your account.</h2>
-                <p className="auth-form-intro">Choose a secure login method and use your registered email address.</p>
-                {ENABLE_PREVIEW_MODE && <div className="login-method-tabs" role="tablist" aria-label="Login method">
+                <p className="auth-form-intro">Choose OTP or password and use your registered email or mobile number.</p>
+                <div className="login-method-tabs" role="tablist" aria-label="Login method">
                   <button
                     className={loginMethod === "otp" ? "is-active" : ""}
                     type="button"
@@ -581,7 +582,7 @@ export default function SignInPage() {
                     aria-selected={loginMethod === "otp"}
                     onClick={() => switchLoginMethod("otp")}
                   >
-                    Email OTP
+                    Login with OTP
                   </button>
                   <button
                     className={loginMethod === "password" ? "is-active" : ""}
@@ -590,17 +591,17 @@ export default function SignInPage() {
                     aria-selected={loginMethod === "password"}
                     onClick={() => switchLoginMethod("password")}
                   >
-                    Email + Password
+                    Login with Password
                   </button>
-                </div>}
+                </div>
 
-                {loginMethod === "otp" && loginCode ? (
+                {loginMethod === "otp" && loginChallengeId ? (
                   <>
-                    <div className="otp-demo-box">
-                      <span>YOUR ON-SCREEN EMAIL CODE</span>
+                    {loginCode && <div className="otp-demo-box">
+                      <span>YOUR ONE-TIME LOGIN CODE</span>
                       <strong>{loginCode}</strong>
-                      <small>Demo mode: enter this code below. It expires when you leave this screen.</small>
-                    </div>
+                      <small>Sent for {loginDestination}. It expires in 5 minutes.</small>
+                    </div>}
                     <label>
                       6-digit OTP *
                       <input
@@ -613,20 +614,20 @@ export default function SignInPage() {
                         autoFocus
                       />
                     </label>
-                    <button className="auth-back" type="button" onClick={() => setLoginCode("")}>← Change email address</button>
+                    <button className="auth-back" type="button" onClick={() => { setLoginCode(""); setLoginChallengeId(""); setLoginDestination(""); setLoginOtp(""); }}>← Change email or mobile</button>
                   </>
                 ) : (
                   <>
                     <label>
-                      Email address *
+                      Email address or mobile number *
                       <span className="auth-input-with-icon">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h17v11h-17zM4 7l8 6 8-6" /></svg>
                         <input
                           value={loginId}
                           onChange={(event) => setLoginId(event.target.value)}
-                          type="email"
+                          type="text"
                           autoComplete="username"
-                          placeholder="e.g., yourname@company.com"
+                          placeholder="you@company.com or 9876543210"
                           autoFocus
                         />
                       </span>
@@ -660,7 +661,7 @@ export default function SignInPage() {
                 </div>
                 <p className="form-error auth-error" role="alert">{loginError}</p>
                 <button className="button auth-submit-button full-button" type="submit">
-                  {loginMethod === "otp" && !loginCode ? "Send email OTP" : "Log in"} <span>→</span>
+                  {loginMethod === "otp" && !loginChallengeId ? "Send OTP" : "Log in"} <span>→</span>
                 </button>
                 <p className="signin-note">
                   New user? <button type="button" onClick={() => switchMode("signup")}>Create account here</button>

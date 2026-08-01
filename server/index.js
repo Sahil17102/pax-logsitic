@@ -15,6 +15,7 @@ const bundledAdminPasswordSha256 = "d3471dde926ef8d5d96a61f5fe9e43627b5fb1b433dd
 const adminPasswordSha256 = String(process.env.ADMIN_PASSWORD_SHA256 || (isProduction ? bundledAdminPasswordSha256 : "")).trim().toLowerCase();
 const configuredTokenSecret = String(process.env.JWT_SECRET || "").trim();
 const tokenSecret = configuredTokenSecret || (isProduction ? crypto.randomBytes(32).toString("hex") : "pax-local-development-secret");
+const otpDeliveryMode = String(process.env.OTP_DELIVERY_MODE || "onscreen").trim().toLowerCase();
 const databaseRequired = isProduction && process.env.REQUIRE_DATABASE === "true";
 const schemaVersion = 2;
 const configuredOrigins = String(process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "")
@@ -43,6 +44,7 @@ let memoryState = JSON.parse(JSON.stringify(seedState));
 let pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
 let databaseReady = false;
 const eventClients = new Set();
+const otpChallenges = new Map();
 const adminAuthenticationConfigured = Boolean(adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256));
 
 app.disable("x-powered-by");
@@ -215,6 +217,29 @@ async function passwordMatches(password, record) {
   return crypto.timingSafeEqual(Buffer.from(candidate.hash, "hex"), Buffer.from(record.passwordHash, "hex"));
 }
 
+function normalizeLoginIdentifier(value) {
+  const identifier = String(value || "").trim();
+  return identifier.includes("@") ? identifier.toLowerCase() : identifier.replace(/\D/g, "");
+}
+
+function findUserByIdentifier(state, value) {
+  const identifier = normalizeLoginIdentifier(value);
+  return state.users.find((item) => item.email === identifier || item.phone === identifier);
+}
+
+function maskLoginIdentifier(value) {
+  const identifier = normalizeLoginIdentifier(value);
+  if (identifier.includes("@")) {
+    const [name, domain] = identifier.split("@");
+    return `${name.slice(0, 2)}${"*".repeat(Math.max(name.length - 2, 2))}@${domain}`;
+  }
+  return `${identifier.slice(0, 2)}******${identifier.slice(-2)}`;
+}
+
+function hashOtp(challengeId, otp) {
+  return crypto.createHmac("sha256", tokenSecret).update(`${challengeId}:${otp}`).digest("hex");
+}
+
 function broadcast(event, state) {
   const packet = `event: ${event}\ndata: ${JSON.stringify({ revision: state.configuration?.revision, updatedAt: state.updatedAt })}\n\n`;
   eventClients.forEach((client) => client.write(packet));
@@ -317,14 +342,71 @@ app.post("/api/client/users", async (request, response) => {
   response.status(201).json({ data: safeUser, token: issueToken(email, "customer") });
 });
 
-app.post("/api/client/auth/login", async (request, response) => {
-  const email = String(request.body?.email || "").trim().toLowerCase();
+app.post("/api/client/auth/otp/request", async (request, response) => {
+  const identifier = normalizeLoginIdentifier(request.body?.identifier);
+  if (!(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier) || /^[6-9]\d{9}$/.test(identifier))) {
+    return response.status(400).json({ message: "Enter a valid email address or 10-digit mobile number." });
+  }
+
   const state = await readState();
-  const user = state.users.find((item) => item.email === email);
-  if (!user || !(await passwordMatches(String(request.body?.password || ""), user))) return response.status(401).json({ message: "Incorrect email or password." });
+  const user = findUserByIdentifier(state, identifier);
+  if (!user) return response.status(404).json({ message: "No Pax account was found with these details." });
+  if (user.disabled) return response.status(403).json({ message: "This account is disabled by the Pax administrator." });
+
+  const now = Date.now();
+  for (const [id, challenge] of otpChallenges.entries()) {
+    if (challenge.expiresAt <= now || challenge.userEmail === user.email) otpChallenges.delete(id);
+  }
+
+  const challengeId = crypto.randomBytes(24).toString("base64url");
+  const otp = String(crypto.randomInt(100000, 1000000));
+  const expiresAt = now + (5 * 60 * 1000);
+  otpChallenges.set(challengeId, { userEmail: user.email, otpHash: hashOtp(challengeId, otp), expiresAt, attempts: 0 });
+
+  response.json({
+    data: {
+      challengeId,
+      expiresAt: new Date(expiresAt).toISOString(),
+      destination: maskLoginIdentifier(identifier),
+      deliveryMethod: otpDeliveryMode,
+      ...(otpDeliveryMode === "onscreen" ? { previewCode: otp } : {}),
+    },
+  });
+});
+
+app.post("/api/client/auth/otp/verify", async (request, response) => {
+  const challengeId = String(request.body?.challengeId || "").trim();
+  const otp = String(request.body?.otp || "").trim();
+  const challenge = otpChallenges.get(challengeId);
+  if (!challenge || challenge.expiresAt <= Date.now()) {
+    if (challenge) otpChallenges.delete(challengeId);
+    return response.status(400).json({ message: "This OTP has expired. Request a new one." });
+  }
+  challenge.attempts += 1;
+  if (challenge.attempts > 5) {
+    otpChallenges.delete(challengeId);
+    return response.status(429).json({ message: "Too many incorrect attempts. Request a new OTP." });
+  }
+  if (!/^\d{6}$/.test(otp) || !secureEqual(hashOtp(challengeId, otp), challenge.otpHash)) {
+    return response.status(401).json({ message: "Incorrect OTP. Check the code and try again." });
+  }
+
+  otpChallenges.delete(challengeId);
+  const state = await readState();
+  const user = state.users.find((item) => item.email === challenge.userEmail);
+  if (!user || user.disabled) return response.status(403).json({ message: "This customer account is not available." });
+  const { passwordHash, salt, ...safeUser } = user;
+  response.json({ data: safeUser, token: issueToken(user.email, "customer") });
+});
+
+app.post("/api/client/auth/login", async (request, response) => {
+  const identifier = normalizeLoginIdentifier(request.body?.identifier || request.body?.email);
+  const state = await readState();
+  const user = findUserByIdentifier(state, identifier);
+  if (!user || !(await passwordMatches(String(request.body?.password || ""), user))) return response.status(401).json({ message: "Incorrect email, mobile number or password." });
   if (user.disabled) return response.status(403).json({ message: "This account is disabled by the Pax administrator." });
   const { passwordHash, salt, ...safeUser } = user;
-  response.json({ data: safeUser, token: issueToken(email, "customer") });
+  response.json({ data: safeUser, token: issueToken(user.email, "customer") });
 });
 
 app.post("/api/client/shipments", requireRole("customer"), async (request, response) => {

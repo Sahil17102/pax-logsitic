@@ -44,6 +44,8 @@ services:
         value: production
       - key: REQUIRE_DATABASE
         value: false
+      - key: OTP_DELIVERY_MODE
+        value: onscreen
       - key: FRONTEND_URLS
         value: https://paxlogistic.onrender.com,https://pax-logsiticadmin-utus.onrender.com
       - key: ADMIN_USERNAME

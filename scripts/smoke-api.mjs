@@ -48,6 +48,21 @@ try {
     }),
   });
   const authorization = { Authorization: `Bearer ${register.token}` };
+  const passwordByPhone = await request("/api/client/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier: "9876543210", password: "Secure123" }),
+  });
+  const otpRequest = await request("/api/client/auth/otp/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier: "9876543210" }),
+  });
+  const otpLogin = await request("/api/client/auth/otp/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId: otpRequest.data.challengeId, otp: otpRequest.data.previewCode }),
+  });
   const before = await request("/api/client/bootstrap", { headers: authorization });
   const created = await request("/api/client/shipments", {
     method: "POST",
@@ -98,6 +113,9 @@ try {
   });
 
   assert.equal(before.data.shipments.length, 0);
+  assert.ok(passwordByPhone.token);
+  assert.match(otpRequest.data.previewCode, /^\d{6}$/);
+  assert.ok(otpLogin.token);
   assert.equal(after.data.shipments.length, 1);
   assert.equal(secondBootstrap.data.shipments.length, 0);
   assert.equal(dashboard.data.shipments.length, 1);
@@ -112,6 +130,8 @@ try {
 
   console.log(JSON.stringify({
     initialShipments: before.data.shipments.length,
+    phonePasswordLogin: Boolean(passwordByPhone.token),
+    otpLogin: Boolean(otpLogin.token),
     createdId: created.data.id,
     trackedStatus: tracked.data.status,
     adminShipments: dashboard.data.shipments.length,
