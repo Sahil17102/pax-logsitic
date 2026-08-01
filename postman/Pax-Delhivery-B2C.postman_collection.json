@@ -182,6 +182,46 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('E-waybill is mandatory at INR 50,000', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('EWAYBILL_REQUIRED');", "});"] } }]
     },
     {
+      "name": "Create high-value shipment with e-waybill",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Ewaybill Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"High value delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 2,\n  \"payment\": \"Prepaid\",\n  \"amount\": 60000,\n  \"sellerInvoice\": \"INV-2026/001\",\n  \"ewbn\": \"181000000001\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('High-value shipment is manifested with its initial e-waybill', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.amount).to.eql(60000);", "  pm.expect(data.ewbn).to.eql('181000000001');", "  pm.collectionVariables.set('ewaybillShipmentId', data.id);", "  pm.collectionVariables.set('ewaybillWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Update shipment e-waybill",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ewaybillWaybill}}\",\n  \"dcn\": \"INV-2026/001-REV1\",\n  \"ewbn\": \"181000000002\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{ewaybillShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Exact EWB update is accepted and persisted after provider success', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.provider.waybill).to.eql(pm.collectionVariables.get('ewaybillWaybill'));", "  pm.expect(body.data.ewbn).to.eql('181000000002');", "  pm.expect(body.data.invoiceNumber).to.eql('INV-2026/001-REV1');", "  pm.expect(body.data.ewaybillUpdates).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Reject e-waybill update without invoice",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ewaybillWaybill}}\",\n  \"ewbn\": \"181000000003\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{ewaybillShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invoice number is mandatory before provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_EWAYBILL_UPDATE');", "});"] } }]
+    },
+    {
+      "name": "Reject e-waybill update for low-value shipment",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{editableWaybill}}\",\n  \"dcn\": \"INV-LOW-VALUE\",\n  \"ewbn\": \"181000000005\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('EWB update is restricted to shipments above INR 50,000', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('EWAYBILL_UPDATE_NOT_REQUIRED');", "});"] } }]
+    },
+    {
       "name": "Reject provider-declined manifestation",
       "request": {
         "method": "POST",
@@ -194,7 +234,7 @@
     {
       "name": "Verify only manifested shipments were saved",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/bootstrap" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(4);", "  pm.expect(shipments.every((item) => item.status === 'Manifested')).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(5);", "  pm.expect(shipments.every((item) => item.status === 'Manifested')).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
     },
     {
       "name": "Reject MPS with unprefetched waybills",
@@ -230,6 +270,16 @@
         "url": "{{baseUrl}}/api/admin/auth/login"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Admin updates shipment e-waybill",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ewaybillWaybill}}\",\n  \"dcn\": \"INV-2026/001-REV2\",\n  \"ewbn\": \"181000000004\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{ewaybillShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can update a persisted high-value shipment EWB', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.data.ewbn).to.eql('181000000004');", "  pm.expect(body.data.ewaybillUpdates).to.have.lengthOf(2);", "});"] } }]
     },
     {
       "name": "Move forward shipment to In Transit",

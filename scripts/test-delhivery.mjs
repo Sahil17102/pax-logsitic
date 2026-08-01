@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
+import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
@@ -69,6 +69,11 @@ assert.throws(() => normalizeDelhiveryShipmentEdit({ status: false, message: "Pa
 assert.deepEqual(buildDelhiveryShipmentCancellationPayload({ waybill: "920000000001" }), { waybill: "920000000001", cancellation: "true" });
 assert.throws(() => buildDelhiveryShipmentCancellationPayload({ waybill: "invalid" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL");
 assert.throws(() => normalizeDelhiveryShipmentCancellation({ status: false, message: "Package in incorrect status" }, "920000000001"), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_CANCELLATION_REJECTED");
+const ewaybillUpdatePayload = buildDelhiveryEwaybillUpdatePayload({ dcn: "INV-2026/001", ewbn: "181000000001" });
+assert.deepEqual(ewaybillUpdatePayload, { data: [{ dcn: "INV-2026/001", ewbn: "181000000001" }] });
+assert.throws(() => buildDelhiveryEwaybillUpdatePayload({ dcn: "", ewbn: "181000000001" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_EWAYBILL_UPDATE");
+assert.throws(() => buildDelhiveryEwaybillUpdatePayload({ dcn: "INV-1", ewbn: 181000000001 }), (error) => error instanceof DelhiveryError && error.code === "INVALID_EWAYBILL_UPDATE");
+assert.throws(() => normalizeDelhiveryEwaybillUpdate({ status: false, message: "No such waybill found" }, "920000000001"), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_EWAYBILL_REJECTED");
 
 const serviceable = normalizeDelhiveryServiceability({
   delivery_codes: [{ postal_code: { pin: 194103, cod: "Y", pre_paid: "Y", pickup: "N", reverse_pickup: "Y", remarks: "", district: "Leh", state_code: "LA" } }],
@@ -163,6 +168,15 @@ try {
         });
       }
       assert.equal(options.headers.Authorization, "Token test-token");
+      if (endpoint.pathname === "/api/rest/ewaybill/920000000001/") {
+        assert.equal(options.method, "PUT");
+        assert.equal(options.headers["Content-Type"], "application/json");
+        assert.deepEqual(JSON.parse(options.body), ewaybillUpdatePayload);
+        return new Response(JSON.stringify({ status: true, message: "E-waybill updated successfully" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/api/p/edit") {
         assert.equal(options.method, "POST");
         assert.equal(options.headers["Content-Type"], "application/json");
@@ -251,7 +265,10 @@ try {
   const cancelled = await client.cancelShipment({ waybill: "920000000001" });
   assert.equal(cancelled.cancelled, true);
   assert.equal(cancelled.waybill, "920000000001");
-  assert.equal(requestCount, 9, "each Delhivery contract uses its independent provider request path");
+  const ewaybillUpdated = await client.updateEwaybill({ waybill: "920000000001", dcn: "INV-2026/001", ewbn: "181000000001" });
+  assert.equal(ewaybillUpdated.updated, true);
+  assert.equal(ewaybillUpdated.waybill, "920000000001");
+  assert.equal(requestCount, 10, "each Delhivery contract uses its independent provider request path");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -263,4 +280,4 @@ try {
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));

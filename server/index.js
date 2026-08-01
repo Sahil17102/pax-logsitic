@@ -412,8 +412,13 @@ function shipmentActionWaybill(shipment, requestedWaybill, action = "edited") {
     throw new DelhiveryError("The requested waybill does not belong to this shipment.", { code: "SHIPMENT_WAYBILL_MISMATCH", status: 400 });
   }
   if (!requested && available.length > 1) {
+    const missingCode = action === "cancelled"
+      ? "MPS_CANCELLATION_WAYBILL_REQUIRED"
+      : action === "updated with an e-waybill"
+        ? "MPS_EWAYBILL_WAYBILL_REQUIRED"
+        : "MPS_EDIT_WAYBILL_REQUIRED";
     throw new DelhiveryError(`Select the MPS box waybill that needs to be ${action}.`, {
-      code: action === "cancelled" ? "MPS_CANCELLATION_WAYBILL_REQUIRED" : "MPS_EDIT_WAYBILL_REQUIRED",
+      code: missingCode,
       status: 400,
     });
   }
@@ -710,6 +715,54 @@ async function handleShipmentCancellation(request, response) {
 app.post("/api/admin/shipments/:id/cancel", requireRole("admin"), handleShipmentCancellation);
 app.post("/api/client/shipments/:id/cancel", requireRole("customer"), handleShipmentCancellation);
 
+async function handleEwaybillUpdate(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  if (!Number.isFinite(Number(shipment.amount)) || Number(shipment.amount) <= 50000) {
+    throw new DelhiveryError("E-waybill update is available only for shipments valued above INR 50,000.", {
+      code: "EWAYBILL_UPDATE_NOT_REQUIRED",
+      status: 400,
+    });
+  }
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const unsupported = Object.keys(body).filter((key) => !["waybill", "dcn", "ewbn"].includes(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported e-waybill update field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_EWAYBILL_FIELD", status: 400 });
+  }
+  const waybill = shipmentActionWaybill(shipment, body.waybill, "updated with an e-waybill");
+  const providerResult = await delhivery.updateEwaybill({ waybill, dcn: body.dcn, ewbn: body.ewbn });
+  const updatedAt = new Date().toISOString();
+  const update = { waybill, dcn: String(body.dcn).trim(), ewbn: String(body.ewbn).trim(), updatedAt };
+  shipment.ewaybillUpdates = [...(Array.isArray(shipment.ewaybillUpdates) ? shipment.ewaybillUpdates : []), update];
+  shipment.ewaybills = { ...(shipment.ewaybills && typeof shipment.ewaybills === "object" ? shipment.ewaybills : {}), [waybill]: update };
+  shipment.lastEwaybillUpdatedAt = updatedAt;
+  shipment.lastEwaybillWaybill = waybill;
+  if (shipment.shipmentType !== "MPS") {
+    shipment.ewbn = update.ewbn;
+    shipment.invoiceNumber = update.dcn;
+  }
+  state.activities.unshift({
+    title: `${shipment.id} e-waybill updated`,
+    detail: `Delhivery waybill ${waybill}`,
+    tone: "blue",
+    createdAt: updatedAt,
+  });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "shipment.ewaybill.updated");
+  response.json({ data: shipment, provider: providerResult });
+}
+
+app.put("/api/admin/shipments/:id/ewaybill", requireRole("admin"), handleEwaybillUpdate);
+app.put("/api/client/shipments/:id/ewaybill", requireRole("customer"), handleEwaybillUpdate);
+
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();
   const user = state.users.find((item) => item.email === request.session.subject);
@@ -891,6 +944,8 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
     destination: `${city}, ${pincode}`,
     weight,
     amount: Number(body.amount) || 0,
+    ...(body.ewbn ? { ewbn: String(body.ewbn).trim() } : {}),
+    ...(body.sellerInvoice ? { invoiceNumber: String(body.sellerInvoice).trim() } : {}),
     payment,
     productType,
     courier: "Delhivery",

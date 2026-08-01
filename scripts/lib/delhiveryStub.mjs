@@ -30,6 +30,32 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ detail: "Invalid token" }));
       return;
     }
+    const ewaybillMatch = url.pathname.match(/^\/api\/rest\/ewaybill\/(\d{8,20})\/$/);
+    if (request.method === "PUT" && ewaybillMatch) {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      let update;
+      try {
+        if (!String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")) throw new Error("JSON required");
+        update = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ status: false, message: "Invalid e-waybill JSON" }));
+        return;
+      }
+      const waybill = ewaybillMatch[1];
+      const record = Array.isArray(update?.data) && update.data.length === 1 ? update.data[0] : null;
+      if (!manifestedWaybills.has(waybill)) {
+        response.end(JSON.stringify({ status: false, message: "No such waybill found" }));
+        return;
+      }
+      if (!record || Object.keys(record).some((key) => !["dcn", "ewbn"].includes(key)) || !String(record.dcn || "").trim() || !String(record.ewbn || "").trim()) {
+        response.end(JSON.stringify({ status: false, message: "Invalid e-waybill update payload" }));
+        return;
+      }
+      response.end(JSON.stringify({ status: true, message: "E-waybill updated successfully", waybill }));
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/api/p/edit") {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);

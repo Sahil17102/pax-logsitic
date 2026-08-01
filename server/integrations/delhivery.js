@@ -15,6 +15,7 @@ const DEFAULT_WAYBILL_WINDOW_COUNT = 50000;
 const DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS = 675;
 const DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS = 18000;
 const DEFAULT_EDIT_RATE_LIMIT_REQUESTS = 11000;
+const DEFAULT_EWAYBILL_RATE_LIMIT_REQUESTS = 225;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
   ["prepaid", "Prepaid"],
@@ -359,6 +360,36 @@ export function normalizeDelhiveryShipmentCancellation(payload, waybill) {
   }
 }
 
+function ewaybillText(value, field, maxLength) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized || normalized.length > maxLength || /[\u0000-\u001F\u007F]/.test(normalized)) {
+    throw new DelhiveryError(`${field} is required and must be at most ${maxLength} characters.`, {
+      code: "INVALID_EWAYBILL_UPDATE",
+      status: 400,
+    });
+  }
+  return normalized;
+}
+
+export function buildDelhiveryEwaybillUpdatePayload(input = {}) {
+  return {
+    data: [{
+      dcn: ewaybillText(input.dcn, "Invoice number", 100),
+      ewbn: ewaybillText(input.ewbn, "E-waybill number", 50),
+    }],
+  };
+}
+
+export function normalizeDelhiveryEwaybillUpdate(payload, waybill) {
+  try {
+    const normalized = normalizeDelhiveryShipmentEdit(payload, waybill);
+    return { provider: normalized.provider, updated: true, waybill, remark: normalized.remark };
+  } catch (error) {
+    if (!(error instanceof DelhiveryError) || error.code !== "DELHIVERY_EDIT_REJECTED") throw error;
+    throw new DelhiveryError(error.message, { code: "DELHIVERY_EWAYBILL_REJECTED", status: error.status, cause: error });
+  }
+}
+
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
   const deliveryCodes = Array.isArray(payload?.delivery_codes) ? payload.delivery_codes : [];
   const wrapper = deliveryCodes[0];
@@ -645,6 +676,20 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredEditRateLimit, 12200)
     : DEFAULT_EDIT_RATE_LIMIT_REQUESTS;
   const editPath = validateProviderPath(process.env.DELHIVERY_EDIT_PATH || "/api/p/edit", "DELHIVERY_EDIT_PATH");
+  const configuredEwaybillRateLimit = Number(process.env.DELHIVERY_EWAYBILL_RATE_LIMIT_REQUESTS);
+  const ewaybillRateLimitRequests = Number.isInteger(configuredEwaybillRateLimit) && configuredEwaybillRateLimit > 0
+    ? Math.min(configuredEwaybillRateLimit, 250)
+    : DEFAULT_EWAYBILL_RATE_LIMIT_REQUESTS;
+  const ewaybillPathTemplate = validateProviderPath(
+    process.env.DELHIVERY_EWAYBILL_PATH_TEMPLATE || "/api/rest/ewaybill/{waybill}/",
+    "DELHIVERY_EWAYBILL_PATH_TEMPLATE",
+  );
+  if ((ewaybillPathTemplate.match(/\{waybill\}/g) || []).length !== 1) {
+    throw new DelhiveryError("DELHIVERY_EWAYBILL_PATH_TEMPLATE must contain one {waybill} placeholder.", {
+      code: "DELHIVERY_INVALID_CONFIGURATION",
+      status: 503,
+    });
+  }
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -855,6 +900,23 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryShipmentCancellation(payload, cancellation.waybill);
   }
 
+  async function updateEwaybill(input) {
+    ensureConfigured();
+    const waybill = String(input?.waybill || "").trim();
+    if (!/^\d{8,20}$/.test(waybill)) {
+      throw new DelhiveryError("A valid waybill is required to update an e-waybill.", { code: "INVALID_WAYBILL", status: 400 });
+    }
+    const update = buildDelhiveryEwaybillUpdatePayload(input);
+    const path = ewaybillPathTemplate.replace("{waybill}", encodeURIComponent(waybill));
+    const endpoint = new URL(path, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "ewaybill-update", ewaybillRateLimitRequests, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
+    return normalizeDelhiveryEwaybillUpdate(payload, waybill);
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -936,5 +998,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     createShipment,
     editShipment,
     cancelShipment,
+    updateEwaybill,
   };
 }
