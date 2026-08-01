@@ -47,8 +47,24 @@ export async function registerClient(account, remember = true) {
   return unwrapApiData(payload);
 }
 
-export async function loginClient(email, password, remember) {
-  const payload = await request("/api/client/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+export async function loginClient(identifier, password, remember) {
+  const payload = await request("/api/client/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) });
+  saveToken(payload.token, remember);
+  return unwrapApiData(payload);
+}
+
+export async function requestClientOtp(identifier) {
+  return unwrapApiData(await request("/api/client/auth/otp/request", {
+    method: "POST",
+    body: JSON.stringify({ identifier }),
+  }));
+}
+
+export async function verifyClientOtp(challengeId, otp, remember) {
+  const payload = await request("/api/client/auth/otp/verify", {
+    method: "POST",
+    body: JSON.stringify({ challengeId, otp }),
+  });
   saveToken(payload.token, remember);
   return unwrapApiData(payload);
 }
