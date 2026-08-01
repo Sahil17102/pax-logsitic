@@ -72,4 +72,20 @@ export async function setShipmentStatus(shipmentId, status) {
   return payload.data || payload;
 }
 
+export async function saveAdminConfiguration(configuration) {
+  const payload = await request("/api/admin/configuration", {
+    method: "PUT",
+    body: JSON.stringify({ configuration }),
+  });
+  return payload.data || payload;
+}
+
+export async function setCustomerAccess(customerId, enabled) {
+  const payload = await request(`/api/admin/customers/${encodeURIComponent(customerId)}/access`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+  return payload.data || payload;
+}
+
 export { API_BASE_URL };

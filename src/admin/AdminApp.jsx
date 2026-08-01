@@ -5,8 +5,11 @@ import {
   hasAdminToken,
   loginAdmin,
   logoutAdmin,
+  saveAdminConfiguration,
+  setCustomerAccess,
   setShipmentStatus,
 } from "../services/adminApi.js";
+import { readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
 
 const PREVIEW_SESSION_KEY = "pax-admin-preview-session";
 const CLIENT_USERS_KEY = "pax-demo-users";
@@ -171,15 +174,15 @@ function AdminLogin({ onLogin, onPreview }) {
       setError("Enter your admin username and password (minimum 8 characters).");
       return;
     }
-    if (form.username.trim().toLowerCase() === "admin" && form.password === "Pax@1234") {
-      onPreview();
-      return;
-    }
     setLoading(true);
     try {
       const admin = await loginAdmin(form);
       onLogin(admin);
     } catch (loginError) {
+      if (form.username.trim().toLowerCase() === "admin" && form.password === "Pax@1234") {
+        onPreview();
+        return;
+      }
       setError(`${loginError.message} You can open preview mode while the API is being connected.`);
     } finally {
       setLoading(false);
@@ -243,51 +246,73 @@ function ShipmentTable({ shipments, onStatusChange, compact = false }) {
   );
 }
 
-function ManagementWorkspace({ page, flash, search }) {
+function ManagementWorkspace({ page, flash, search, records, onRecordsChange }) {
   const config = managementPages[page];
-  const [rows, setRows] = useState(config?.rows || []);
   const [editorOpen, setEditorOpen] = useState(false);
 
   useEffect(() => {
-    setRows(config?.rows || []);
     setEditorOpen(false);
   }, [page]);
 
   if (!config) return null;
   const query = search.trim().toLowerCase();
-  const visibleRows = rows.filter((row) => !query || row.some((cell) => String(cell).toLowerCase().includes(query)));
+  const visibleRows = records.filter((record) => !query || record.cells.some((cell) => String(cell).toLowerCase().includes(query)));
   const saveRecord = (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const label = String(data.get("name") || "New record").trim();
-    setRows((current) => [[label, "Configured", "Just now", "Active"], ...current]);
+    const detail = String(data.get("notes") || "Configured").trim() || "Configured";
+    onRecordsChange([{ id: `${page}-${Date.now()}`, cells: [label, detail, "Just now", "Active"], enabled: true, updatedAt: new Date().toISOString() }, ...records]);
     setEditorOpen(false);
     flash(`${label} saved in ${pageTitles[page][0]}.`);
+  };
+
+  const toggleRecord = (record) => {
+    onRecordsChange(records.map((item) => item.id === record.id ? { ...item, enabled: !item.enabled, updatedAt: new Date().toISOString() } : item));
+    flash(`${record.cells[0]} ${record.enabled ? "disabled" : "enabled"}. Client-facing availability will refresh automatically.`);
+  };
+
+  const deleteRecord = (record) => {
+    onRecordsChange(records.filter((item) => item.id !== record.id));
+    flash(`${record.cells[0]} removed.`);
   };
 
   return <section className="admin-card admin-table-card admin-full-card">
     <div className="admin-table-toolbar"><div><strong>{visibleRows.length} records</strong><span>Search, review and manage the current configuration.</span></div><button className="admin-compact-primary" type="button" onClick={() => setEditorOpen((open) => !open)}>{editorOpen ? "Close" : config.action}</button></div>
     {editorOpen && <form className="admin-inline-editor" onSubmit={saveRecord}><label>Name or reference<input name="name" required placeholder="Enter a value" autoFocus /></label><label>Notes<input name="notes" placeholder="Optional notes" /></label><button type="submit">Save record</button></form>}
-    <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}<th>Action</th></tr></thead><tbody>{visibleRows.map((row, rowIndex) => <tr key={`${row[0]}-${rowIndex}`}>{row.map((cell, index) => <td key={`${cell}-${index}`}>{index === row.length - 1 ? <StatusBadge status={cell} /> : index === 0 ? <strong>{cell}</strong> : cell}</td>)}<td><button className="admin-row-action" type="button" onClick={() => flash(`${row[0]} opened for review.`)}>Manage</button></td></tr>)}</tbody></table></div>
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}<th>Availability</th><th>Actions</th></tr></thead><tbody>{visibleRows.map((record) => <tr className={record.enabled ? "" : "is-disabled"} key={record.id}>{record.cells.map((cell, index) => <td key={`${cell}-${index}`}>{index === record.cells.length - 1 ? <StatusBadge status={record.enabled ? cell : "Disabled"} /> : index === 0 ? <strong>{cell}</strong> : cell}</td>)}<td><button className={`admin-switch${record.enabled ? " is-on" : ""}`} type="button" aria-label={`${record.enabled ? "Disable" : "Enable"} ${record.cells[0]}`} onClick={() => toggleRecord(record)}><i></i><span>{record.enabled ? "On" : "Off"}</span></button></td><td><div className="admin-row-actions"><button type="button" onClick={() => flash(`${record.cells[0]} opened for editing.`)}>Edit</button><button className="is-danger" type="button" onClick={() => deleteRecord(record)}>Delete</button></div></td></tr>)}</tbody></table></div>
   </section>;
 }
 
-function ToolWorkspace({ page, shipments, connection, sourceLabel, flash }) {
+function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, controlState, onControlChange }) {
   const [pin, setPin] = useState("500029");
   const [pinResult, setPinResult] = useState(null);
   const [rate, setRate] = useState({ pickup: "500029", delivery: "560001", weight: "1", payment: "Prepaid" });
   const [rateResult, setRateResult] = useState(null);
   const [trackingId, setTrackingId] = useState(shipments[0]?.id || "PAX-260731");
   const [trackingResult, setTrackingResult] = useState(null);
-  const [content, setContent] = useState("Pax Logistics provides clear, practical shipping support from Hyderabad to customers across India.");
-  const [options, setOptions] = useState({ prepaid: true, cod: true, wallet: true, upi: true, weekly: true, gst: true });
+  const [content, setContent] = useState(controlState.content[page === "rate-terms" ? "rateTerms" : "about"] || "");
+  const [options, setOptions] = useState({ ...controlState.settings.paymentOptions, ...controlState.settings.billing });
+
+  useEffect(() => {
+    setOptions({ ...controlState.settings.paymentOptions, ...controlState.settings.billing });
+    if (["about", "rate-terms"].includes(page)) setContent(controlState.content[page === "rate-terms" ? "rateTerms" : "about"] || "");
+  }, [controlState, page]);
 
   const toggle = (key) => {
-    setOptions((current) => ({ ...current, [key]: !current[key] }));
+    const nextOptions = { ...options, [key]: !options[key] };
+    setOptions(nextOptions);
+    const settingGroup = ["weekly", "gst"].includes(key) ? "billing" : "paymentOptions";
+    onControlChange({ ...controlState, settings: { ...controlState.settings, [settingGroup]: { ...controlState.settings[settingGroup], [key]: nextOptions[key] } } });
     flash("Preference updated in preview mode.");
   };
 
-  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); if (!/^[1-9]\d{5}$/.test(pin)) { setPinResult({ error: "Enter a valid 6-digit PIN code." }); return; } const digit = Number(pin.at(-1)); setPinResult({ region: pin[0] === "5" ? "South" : "Domestic", express: digit !== 9, cod: digit % 2 === 0 }); }}><p>PIN CODE CHECK</p><h2>Check serviceability</h2><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check coverage</button></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view Standard, Express and COD availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>PIN {pin} · {pinResult.region} zone</span><h2>Service available</h2><ul><li><b>Standard delivery</b><StatusBadge status="Active" /></li><li><b>Express delivery</b><StatusBadge status={pinResult.express ? "Active" : "Review"} /></li><li><b>Cash on delivery</b><StatusBadge status={pinResult.cod ? "Active" : "Review"} /></li></ul></>}</div></section>;
+  const toggleService = (key) => {
+    onControlChange({ ...controlState, settings: { ...controlState.settings, serviceability: { ...controlState.settings.serviceability, [key]: !controlState.settings.serviceability[key] } } });
+    flash(`${key} service ${controlState.settings.serviceability[key] ? "disabled" : "enabled"}.`);
+  };
+
+  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); if (!/^[1-9]\d{5}$/.test(pin)) { setPinResult({ error: "Enter a valid 6-digit PIN code." }); return; } const digit = Number(pin.at(-1)); setPinResult({ region: pin[0] === "5" ? "South" : "Domestic", express: digit !== 9, cod: digit % 2 === 0 }); }}><p>PIN CODE CHECK</p><h2>Check and control serviceability</h2><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check coverage</button><div className="admin-service-toggles">{[["standard", "Standard"], ["express", "Express"], ["cod", "COD"]].map(([key, label]) => <button className={controlState.settings.serviceability[key] ? "is-on" : ""} type="button" key={key} onClick={() => toggleService(key)}><i></i><span>{label}</span></button>)}</div></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view Standard, Express and COD availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>PIN {pin} · {pinResult.region} zone</span><h2>Service control</h2><ul><li><b>Standard delivery</b><StatusBadge status={controlState.settings.serviceability.standard ? "Active" : "Disabled"} /></li><li><b>Express delivery</b><StatusBadge status={controlState.settings.serviceability.express && pinResult.express ? "Active" : "Disabled"} /></li><li><b>Cash on delivery</b><StatusBadge status={controlState.settings.serviceability.cod && pinResult.cod ? "Active" : "Disabled"} /></li></ul></>}</div></section>;
 
   if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(rate.weight); if (!/^[1-9]\d{5}$/.test(rate.pickup) || !/^[1-9]\d{5}$/.test(rate.delivery) || weight <= 0) { setRateResult({ error: "Enter two valid PIN codes and parcel weight." }); return; } const sameRegion = rate.pickup[0] === rate.delivery[0]; const base = (sameRegion ? 78 : 128) + Math.ceil(weight * 31) + (rate.payment === "COD" ? 45 : 0); setRateResult({ standard: base, express: Math.round(base * 1.48) }); }}><p>SHIPPING RATE TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer and courier charges.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>ESTIMATED CUSTOMER RATE</span><h2>{formatMoney(rateResult.standard)}</h2><ul><li><b>Pax Standard</b><strong>{formatMoney(rateResult.standard)}</strong></li><li><b>Pax Express</b><strong>{formatMoney(rateResult.express)}</strong></li><li><b>GST</b><span>Calculated at checkout</span></li></ul></>}</div></section>;
 
@@ -298,7 +323,7 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash }) {
     return <section className="admin-card admin-preference-card"><div><p>PLATFORM PREFERENCES</p><h2>{pageTitles[page][0]}</h2></div>{settings.map(([key, title, detail]) => <button key={key} type="button" className={options[key] ? "is-on" : ""} onClick={() => toggle(key)}><span><strong>{title}</strong><small>{detail}</small></span><i></i></button>)}</section>;
   }
 
-  if (["about", "rate-terms"].includes(page)) return <form className="admin-card admin-content-editor" onSubmit={(event) => { event.preventDefault(); localStorage.setItem(`pax-admin-content-${page}`, content); flash(`${pageTitles[page][0]} content saved.`); }}><div><p>WEBSITE CONTENT</p><h2>{pageTitles[page][0]}</h2><span>This content is ready to publish through the connected content API.</span></div><label>Page content<textarea rows="10" value={content} onChange={(event) => setContent(event.target.value)} /></label><button type="submit">Save changes</button></form>;
+  if (["about", "rate-terms"].includes(page)) return <form className="admin-card admin-content-editor" onSubmit={(event) => { event.preventDefault(); const key = page === "rate-terms" ? "rateTerms" : "about"; onControlChange({ ...controlState, content: { ...controlState.content, [key]: content } }); flash(`${pageTitles[page][0]} content saved and queued for client refresh.`); }}><div><p>WEBSITE CONTENT</p><h2>{pageTitles[page][0]}</h2><span>This content is published to connected client panels through the shared configuration API.</span></div><label>Page content<textarea rows="10" value={content} onChange={(event) => setContent(event.target.value)} /></label><button type="submit">Save and publish</button></form>;
 
   if (page === "password") return <form className="admin-card admin-password-form" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); if (data.get("next") !== data.get("confirm") || String(data.get("next")).length < 8) { flash("Passwords must match and contain at least 8 characters."); return; } event.currentTarget.reset(); flash("Password update request saved."); }}><p>ACCOUNT SECURITY</p><h2>Change administrator password</h2><label>Current password<input name="current" type="password" required /></label><label>New password<input name="next" type="password" minLength="8" required /></label><label>Confirm new password<input name="confirm" type="password" minLength="8" required /></label><button type="submit">Update password</button></form>;
 
@@ -316,6 +341,7 @@ function AdminApp() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [snapshot, setSnapshot] = useState(buildPreviewDashboard);
+  const [controlState, setControlState] = useState(readControlState);
   const [connection, setConnection] = useState("checking");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
@@ -325,6 +351,7 @@ function AdminApp() {
     setLoading(true);
     if (previewMode) {
       setSnapshot(buildPreviewDashboard());
+      setControlState(readControlState());
       setConnection("preview");
       setLoading(false);
       return;
@@ -333,6 +360,10 @@ function AdminApp() {
     try {
       const data = await getAdminDashboard();
       setSnapshot({ shipments: data.shipments || [], customers: data.customers || [], activities: data.activities || [] });
+      if (data.configuration) {
+        setControlState(data.configuration);
+        writeControlState(data.configuration);
+      }
       setConnection("live");
     } catch {
       setSnapshot(buildPreviewDashboard());
@@ -345,6 +376,13 @@ function AdminApp() {
   useEffect(() => {
     document.title = "Pax Admin — Operations Control Centre";
     loadDashboard();
+  }, [authenticated, previewMode]);
+
+  useEffect(() => subscribeToLocalControl(setControlState), []);
+
+  useEffect(() => {
+    if (!authenticated || previewMode) return undefined;
+    return subscribeToRemoteUpdates(loadDashboard);
   }, [authenticated, previewMode]);
 
   useEffect(() => {
@@ -377,11 +415,39 @@ function AdminApp() {
   const exceptions = shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length;
   const codValue = shipments.filter((item) => item.payment === "COD").reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const prepaidValue = shipments.filter((item) => item.payment === "Prepaid").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const grossValue = codValue + prepaidValue;
+  const averageOrderValue = shipments.length ? Math.round(grossValue / shipments.length) : 0;
+  const rtoCount = shipments.filter((item) => item.status === "RTO").length;
+  const pickupCount = shipments.filter((item) => item.status === "Pickup scheduled").length;
+  const activeCouriers = (controlState.resources.couriers || []).filter((item) => item.enabled).length;
+  const openTickets = (controlState.resources.support || []).filter((item) => item.enabled && item.cells.at(-1) !== "Resolved").length;
+  const openWeightCases = (controlState.resources.weight || []).filter((item) => item.enabled && item.cells.at(-1) === "Review").length;
+  const courierCost = Math.round(grossValue * 0.62);
+  const netRevenue = grossValue - courierCost;
+  const statusSummary = statusOptions.map((status) => ({ status, count: shipments.filter((item) => item.status === status).length }));
+  const destinationSummary = Object.entries(shipments.reduce((result, shipment) => {
+    const city = String(shipment.destination || "Unknown").split(",")[0];
+    result[city] = (result[city] || 0) + 1;
+    return result;
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const adminDateLabel = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "long", year: "numeric" }).format(new Date()).toUpperCase();
   const sourceLabel = connection === "live" ? "Live API" : connection === "checking" ? "Connecting" : connection === "offline" ? "API offline · preview data" : "Connected preview";
 
   const flash = (message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
+  };
+
+  const changeControlState = async (nextState) => {
+    const next = writeControlState(nextState);
+    setControlState(next);
+    if (!previewMode && connection === "live") {
+      try {
+        await saveAdminConfiguration(next);
+      } catch (error) {
+        flash(`Saved locally; live sync failed: ${error.message}`);
+      }
+    }
   };
 
   const changeStatus = async (id, status) => {
@@ -401,6 +467,27 @@ function AdminApp() {
       setSnapshot(previous);
       flash(error.message);
     }
+  };
+
+  const changeCustomerAccess = async (customer) => {
+    const enabled = customer.status === "Disabled";
+    const nextCustomers = customers.map((item) => item.id === customer.id ? { ...item, status: enabled ? "Active" : "Disabled" } : item);
+    setSnapshot((current) => ({ ...current, customers: nextCustomers }));
+    try {
+      const savedUsers = safeParse(localStorage.getItem(CLIENT_USERS_KEY), []);
+      localStorage.setItem(CLIENT_USERS_KEY, JSON.stringify(savedUsers.map((user) => user.email === customer.email ? { ...user, disabled: !enabled } : user)));
+    } catch {
+      // The API remains authoritative when browser preview data is unavailable.
+    }
+    if (!previewMode && connection === "live") {
+      try {
+        await setCustomerAccess(customer.id, enabled);
+      } catch (error) {
+        flash(`Access changed locally; live sync failed: ${error.message}`);
+        return;
+      }
+    }
+    flash(`${customer.business} access ${enabled ? "enabled" : "disabled"}.`);
   };
 
   const signOut = () => {
@@ -433,7 +520,7 @@ function AdminApp() {
         <div className="admin-content">
           {connection === "offline" && <div className="admin-connection-banner"><span><strong>Backend unavailable.</strong> Showing safe preview data; changes stay in this browser until the API reconnects.</span><button type="button" onClick={loadDashboard}>Retry connection</button></div>}
           {previewMode && <div className="admin-connection-banner is-preview"><span><strong>Preview mode.</strong> Same-origin customer records are connected through shared browser storage.</span><button type="button" onClick={loadDashboard}>Refresh preview</button></div>}
-          <div className="admin-page-heading"><div><p>01 AUGUST 2026 · HYDERABAD</p><h1>{pageTitles[active][0]}</h1><span>{pageTitles[active][1]}</span></div><div className="admin-live-chip"><i></i>{sourceLabel}</div></div>
+          <div className="admin-page-heading"><div><p>{adminDateLabel} · HYDERABAD</p><h1>{pageTitles[active][0]}</h1><span>{pageTitles[active][1]}</span></div><div className="admin-live-chip"><i></i>{sourceLabel}</div></div>
 
           {active === "overview" && <>
             <section className="admin-metrics">
@@ -443,15 +530,25 @@ function AdminApp() {
               <MetricCard label="Needs attention" value={exceptions} note="Exceptions and RTO" tone="amber" icon="support" />
             </section>
             <section className="admin-action-strip">
-              <article><i className="is-coral"></i><span><strong>Open tickets</strong><small>Support triage</small></span><b>3</b><button type="button" onClick={() => setActive("support")}>Review</button></article>
+              <article><i className="is-coral"></i><span><strong>Open tickets</strong><small>Support triage</small></span><b>{openTickets}</b><button type="button" onClick={() => setActive("support")}>Review</button></article>
               <article><i className="is-yellow"></i><span><strong>Pending KYC</strong><small>Verification queue</small></span><b>2</b><button type="button" onClick={() => setActive("customers")}>Review</button></article>
-              <article><i className="is-purple"></i><span><strong>Weight disputes</strong><small>Reconciliation</small></span><b>2</b><button type="button" onClick={() => setActive("weight")}>Review</button></article>
+              <article><i className="is-purple"></i><span><strong>Weight disputes</strong><small>Reconciliation</small></span><b>{openWeightCases}</b><button type="button" onClick={() => setActive("weight")}>Review</button></article>
               <article><i className="is-green"></i><span><strong>Active sellers</strong><small>Seller analytics</small></span><b>{customers.length}</b><button type="button" onClick={() => setActive("customers")}>View</button></article>
             </section>
             <section className="admin-overview-grid">
               <article className="admin-card admin-volume-card"><div className="admin-card-head"><div><p>SHIPMENT VOLUME</p><h2>Network movement</h2></div><span>Last 7 days</span></div><div className="admin-chart"><div className="admin-chart-y"><span>24</span><span>18</span><span>12</span><span>6</span><span>0</span></div><div className="admin-bars">{[["Mon", 48], ["Tue", 68], ["Wed", 53], ["Thu", 82], ["Fri", 66], ["Sat", 92], ["Sun", 74]].map(([day, height], index) => <div key={day}><i style={{ height: `${height}%` }} className={index === 5 ? "is-peak" : ""}></i><span>{day}</span></div>)}</div></div></article>
               <article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>LIVE FEED</p><h2>Recent activity</h2></div></div><div className="admin-activity-list">{(snapshot.activities || sampleActivities).map((item) => <div key={item.title}><i className={`is-${item.tone}`}></i><span><strong>{item.title}</strong><small>{item.detail}</small></span></div>)}</div></article>
             </section>
+            <section className="admin-health-grid">
+              <article className="admin-card admin-summary-card"><div className="admin-card-head"><div><p>FINANCIAL HEALTH</p><h2>Revenue, cost and margin</h2></div><button type="button" onClick={() => setActive("invoices")}>Open billing <Icon name="arrow" /></button></div><div className="admin-summary-tiles"><div><span>Shipping collected</span><strong>{formatMoney(grossValue)}</strong><small>Seller-facing charges</small></div><div><span>Courier cost</span><strong>{formatMoney(courierCost)}</strong><small>Estimated partner payable</small></div><div><span>Net revenue</span><strong>{formatMoney(netRevenue)}</strong><small>{grossValue ? `${Math.round((netRevenue / grossValue) * 100)}% contribution` : "No orders yet"}</small></div><div><span>Average order value</span><strong>{formatMoney(averageOrderValue)}</strong><small>Across all orders</small></div></div></article>
+              <article className="admin-card admin-summary-card"><div className="admin-card-head"><div><p>TODAY'S OPERATIONS</p><h2>Movement snapshot</h2></div><button type="button" onClick={() => setActive("shipments")}>Manage orders <Icon name="arrow" /></button></div><div className="admin-summary-tiles"><div><span>Orders created</span><strong>{shipments.length}</strong><small>Current connected set</small></div><div><span>Pending pickup</span><strong>{pickupCount}</strong><small>Waiting for collection</small></div><div><span>In movement</span><strong>{moving}</strong><small>Transit and OFD</small></div><div><span>Delivered</span><strong>{delivered}</strong><small>{shipments.length ? `${Math.round((delivered / shipments.length) * 100)}% success` : "No orders yet"}</small></div></div></article>
+            </section>
+            <section className="admin-insight-grid">
+              <article className="admin-card"><div className="admin-card-head"><div><p>ORDER STATUS</p><h2>Network distribution</h2></div></div><div className="admin-status-distribution">{statusSummary.map((item) => <button type="button" key={item.status} onClick={() => { setStatusFilter(item.status); setActive("shipments"); }}><span><StatusBadge status={item.status} /></span><strong>{item.count}</strong><i style={{ width: `${shipments.length ? Math.max(5, (item.count / shipments.length) * 100) : 5}%` }}></i></button>)}</div></article>
+              <article className="admin-card"><div className="admin-card-head"><div><p>COURIER SNAPSHOT</p><h2>Partner performance</h2></div><span>{activeCouriers} active</span></div><div className="admin-ranking-list">{(controlState.resources.couriers || []).slice(0, 5).map((courier, index) => <div className={courier.enabled ? "" : "is-disabled"} key={courier.id}><b>{index + 1}</b><span><strong>{courier.cells[0]}</strong><small>{courier.cells[1]}</small></span><em>{courier.enabled ? courier.cells[2] : "Disabled"}</em></div>)}</div></article>
+              <article className="admin-card"><div className="admin-card-head"><div><p>DESTINATION HOTSPOTS</p><h2>Top delivery cities</h2></div></div><div className="admin-ranking-list">{destinationSummary.map(([city, count], index) => <div key={city}><b>{index + 1}</b><span><strong>{city}</strong><small>{count} connected orders</small></span><em>{Math.round((count / Math.max(shipments.length, 1)) * 100)}%</em></div>)}</div></article>
+            </section>
+            <section className="admin-card admin-seller-card"><div className="admin-card-head"><div><p>SELLER ANALYTICS</p><h2>Customer account performance</h2></div><button type="button" onClick={() => setActive("customers")}>Manage users <Icon name="arrow" /></button></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Seller</th><th>Orders</th><th>Booked value</th><th>Delivery health</th><th>Account</th></tr></thead><tbody>{customers.slice(0, 6).map((customer) => { const customerShipments = shipments.filter((item) => item.customer === customer.business); const customerValue = customerShipments.reduce((sum, item) => sum + Number(item.amount || 0), 0); const customerDelivered = customerShipments.filter((item) => item.status === "Delivered").length; return <tr key={customer.id}><td><strong>{customer.business}</strong><small>{customer.name}</small></td><td>{customerShipments.length || customer.shipments || 0}</td><td>{formatMoney(customerValue)}</td><td>{customerShipments.length ? `${Math.round((customerDelivered / customerShipments.length) * 100)}%` : "New account"}</td><td><StatusBadge status={customer.status || "Active"} /></td></tr>; })}</tbody></table></div></section>
             <section className="admin-card admin-table-card"><div className="admin-card-head"><div><p>ACTIVE OPERATIONS</p><h2>Recent shipments</h2></div><button type="button" onClick={() => setActive("shipments")}>View all <Icon name="arrow" /></button></div><ShipmentTable shipments={filteredShipments.slice(0, 5)} onStatusChange={changeStatus} compact /></section>
           </>}
 
@@ -461,15 +558,15 @@ function AdminApp() {
 
           {active === "rto" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>Return-to-origin orders</strong><span>Monitor reverse transit and seller communication.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("RTO manifest generated.")}>Generate manifest</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "RTO")} onStatusChange={changeStatus} /></section>}
 
-          {active === "customers" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredCustomers.length} customer accounts</strong><span>Passwords and authentication secrets are never exposed here.</span></div></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Customer</th><th>Business</th><th>Contact</th><th>City</th><th>Shipments</th><th>Status</th></tr></thead><tbody>{filteredCustomers.map((customer) => <tr key={customer.id}><td><strong>{customer.name}</strong><small>{customer.id}</small></td><td>{customer.business}</td><td><span>{customer.email}</span><small>{customer.phone}</small></td><td>{customer.city}</td><td>{customer.shipments || 0}</td><td><StatusBadge status={customer.status || "Active"} /></td></tr>)}</tbody></table></div></section>}
+          {active === "customers" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredCustomers.length} customer accounts</strong><span>Enable or disable client-panel access without exposing authentication secrets.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("New users register from the client panel and appear here automatically.")}>Invite user</button></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Customer</th><th>Business</th><th>Contact</th><th>City</th><th>Shipments</th><th>Status</th><th>Access</th></tr></thead><tbody>{filteredCustomers.map((customer) => <tr className={customer.status === "Disabled" ? "is-disabled" : ""} key={customer.id}><td><strong>{customer.name}</strong><small>{customer.id}</small></td><td>{customer.business}</td><td><span>{customer.email}</span><small>{customer.phone}</small></td><td>{customer.city}</td><td>{customer.shipments || 0}</td><td><StatusBadge status={customer.status || "Active"} /></td><td><button className={`admin-switch${customer.status === "Disabled" ? "" : " is-on"}`} type="button" onClick={() => changeCustomerAccess(customer)}><i></i><span>{customer.status === "Disabled" ? "Off" : "On"}</span></button></td></tr>)}</tbody></table></div></section>}
 
           {active === "pickups" && <section className="admin-list-grid">{shipments.filter((item) => item.status === "Pickup scheduled").length ? shipments.filter((item) => item.status === "Pickup scheduled").map((shipment, index) => <article className="admin-card admin-pickup-card" key={shipment.id}><div className="admin-pickup-time"><strong>{index ? "04:30" : "02:30"}</strong><span>PM</span></div><div><StatusBadge status="Pickup scheduled" /><h2>{shipment.customer}</h2><p>Pickup for {shipment.id} · {shipment.destination}</p></div><button type="button" onClick={() => changeStatus(shipment.id, "In transit")}>Mark collected</button></article>) : <div className="admin-empty admin-card">No pickups are currently scheduled.</div>}</section>}
 
           {active === "finance" && <><section className="admin-metrics"><MetricCard label="COD exposure" value={formatMoney(codValue)} note={`${shipments.filter((item) => item.payment === "COD").length} shipments`} tone="green" icon="wallet" /><MetricCard label="Prepaid value" value={formatMoney(prepaidValue)} note={`${shipments.filter((item) => item.payment === "Prepaid").length} shipments`} tone="blue" icon="wallet" /><MetricCard label="Gross booked value" value={formatMoney(codValue + prepaidValue)} note="Current shipment set" tone="purple" icon="grid" /><MetricCard label="Settlement health" value="98.4%" note="Within payout SLA" tone="amber" icon="support" /></section><section className="admin-card admin-finance-card"><div className="admin-card-head"><div><p>COLLECTION MIX</p><h2>Payment distribution</h2></div></div><div className="admin-finance-bar"><i style={{ width: `${(codValue / Math.max(codValue + prepaidValue, 1)) * 100}%` }}></i></div><div className="admin-finance-legend"><span><i className="is-cod"></i>COD <strong>{formatMoney(codValue)}</strong></span><span><i className="is-prepaid"></i>Prepaid <strong>{formatMoney(prepaidValue)}</strong></span></div></section></>}
 
-          {Object.hasOwn(managementPages, active) && <ManagementWorkspace page={active} flash={flash} search={search} />}
+          {Object.hasOwn(managementPages, active) && <ManagementWorkspace page={active} flash={flash} search={search} records={controlState.resources[active] || []} onRecordsChange={(records) => changeControlState({ ...controlState, resources: { ...controlState.resources, [active]: records } })} />}
 
-          {["serviceability", "rate", "tracking", "payment-options", "billing-preferences", "about", "rate-terms", "password", "api", "developer"].includes(active) && <ToolWorkspace page={active} shipments={shipments} connection={connection} sourceLabel={sourceLabel} flash={flash} />}
+          {["serviceability", "rate", "tracking", "payment-options", "billing-preferences", "about", "rate-terms", "password", "api", "developer"].includes(active) && <ToolWorkspace page={active} shipments={shipments} connection={connection} sourceLabel={sourceLabel} flash={flash} controlState={controlState} onControlChange={changeControlState} />}
 
           {active === "settings" && <section className="admin-card admin-settings-card"><div><p>DATA CONNECTION</p><h2>Admin API</h2><span>The admin panel reads customer and shipment records from this shared backend.</span></div><dl><div><dt>Base URL</dt><dd>{API_BASE_URL}</dd></div><div><dt>Dashboard endpoint</dt><dd>GET /api/admin/dashboard</dd></div><div><dt>Status update</dt><dd>PATCH /api/admin/shipments/:id/status</dd></div><div><dt>Authentication</dt><dd>Bearer token via POST /api/admin/auth/login</dd></div><div><dt>Current state</dt><dd><span className={`admin-connection-dot is-${connection}`}></span>{sourceLabel}</dd></div></dl></section>}
         </div>

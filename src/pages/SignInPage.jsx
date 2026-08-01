@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { loginClient, registerClient } from "../services/clientApi.js";
 
 const SESSION_KEY = "pax-user-session";
 const USERS_KEY = "pax-demo-users";
@@ -124,8 +125,13 @@ export default function SignInPage() {
       setLoginError("Enter a valid email address.");
       return;
     }
-    if (!findLoginUser()) {
+    const loginUser = findLoginUser();
+    if (!loginUser) {
       setLoginError("No Pax account found with this email. Create an account first.");
+      return;
+    }
+    if (loginUser.disabled) {
+      setLoginError("This account has been disabled by the Pax administrator. Contact support for access.");
       return;
     }
 
@@ -147,12 +153,16 @@ export default function SignInPage() {
       setLoginCode("");
       return;
     }
+    if (savedUser.disabled) {
+      setLoginError("This account has been disabled by the Pax administrator. Contact support for access.");
+      return;
+    }
 
     saveSession(savedUser, remember);
     goTo("/dashboard");
   };
 
-  const finishPasswordLogin = (event) => {
+  const finishPasswordLogin = async (event) => {
     event.preventDefault();
     setLoginError("");
     if (!loginIdIsValid) {
@@ -166,8 +176,24 @@ export default function SignInPage() {
 
     const savedUser = findLoginUser();
 
+    try {
+      const apiUser = await loginClient(loginId.trim().toLowerCase(), loginPassword, remember);
+      saveSession({ ...apiUser, authVersion: 2 }, remember);
+      goTo("/dashboard");
+      return;
+    } catch (apiError) {
+      if (!savedUser) {
+        setLoginError(apiError.message);
+        return;
+      }
+    }
+
     if (!savedUser) {
       setLoginError("No Pax account found with these details. Create an account first.");
+      return;
+    }
+    if (savedUser.disabled) {
+      setLoginError("This account has been disabled by the Pax administrator. Contact support for access.");
       return;
     }
     if (!savedUser.password) {
@@ -247,7 +273,7 @@ export default function SignInPage() {
     if (!error) setSignupStep((current) => Math.min(current + 1, 3));
   };
 
-  const finishSignup = (event) => {
+  const finishSignup = async (event) => {
     event.preventDefault();
     setSignupError("");
     for (let step = 1; step <= 3; step += 1) {
@@ -276,6 +302,12 @@ export default function SignInPage() {
       businessName: signup.businessName.trim(),
       email: signup.email.trim().toLowerCase(),
     };
+    try {
+      const apiUser = await registerClient(user);
+      Object.assign(user, apiUser, { authVersion: 2 });
+    } catch {
+      // Preserve local preview signup when the shared API is unavailable.
+    }
     const upgradedUsers = users.filter(
       (item) => item.email?.toLowerCase() !== user.email && item.phone !== user.phone,
     );

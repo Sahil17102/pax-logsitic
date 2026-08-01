@@ -218,8 +218,10 @@ function ClientApp() {
 }
 
 export default function App() {
-  const isAdminApp = APP_MODE === "admin"
-    || window.location.hostname.toLowerCase().includes("admin")
+  const hostname = window.location.hostname.toLowerCase();
+  const isKnownClientHost = hostname === "paxlogistic.onrender.com";
+  const isAdminApp = hostname.includes("admin")
+    || (APP_MODE === "admin" && !isKnownClientHost)
     || window.location.pathname === "/admin"
     || window.location.pathname.startsWith("/admin/");
 
