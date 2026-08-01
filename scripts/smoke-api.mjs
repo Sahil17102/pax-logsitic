@@ -8,7 +8,8 @@ const server = spawn(process.execPath, ["server/index.js"], {
   env: {
     ...process.env,
     PORT: String(port),
-    ADMIN_PASSWORD: "StrongPass123",
+    ADMIN_PASSWORD: "",
+    ADMIN_PASSWORD_SHA256: "a615a46a9f52e117dffce7d7235b464a910f74508dfb51a27ce8c63d0413d9a0",
     JWT_SECRET: "test-secret-for-contract-smoke",
   },
   stdio: "ignore",

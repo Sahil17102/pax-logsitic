@@ -10,7 +10,8 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const adminUsername = process.env.ADMIN_USERNAME || "admin";
 const isProduction = process.env.NODE_ENV === "production";
-const adminPassword = process.env.ADMIN_PASSWORD || (isProduction ? "" : "Pax@1234");
+const adminPassword = process.env.ADMIN_PASSWORD !== undefined ? process.env.ADMIN_PASSWORD : (isProduction ? "" : "Pax@1234");
+const adminPasswordSha256 = String(process.env.ADMIN_PASSWORD_SHA256 || "").trim().toLowerCase();
 const tokenSecret = process.env.JWT_SECRET || (isProduction ? "" : "pax-local-development-secret");
 const databaseRequired = isProduction && process.env.REQUIRE_DATABASE === "true";
 const schemaVersion = 2;
@@ -57,6 +58,19 @@ app.use((request, response, next) => {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function secureEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left));
+  const rightBuffer = Buffer.from(String(right));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function isAdminPasswordValid(password) {
+  if (adminPassword) return secureEqual(password, adminPassword);
+  if (!/^[a-f0-9]{64}$/.test(adminPasswordSha256)) return false;
+  const suppliedHash = crypto.createHash("sha256").update(String(password)).digest("hex");
+  return secureEqual(suppliedHash, adminPasswordSha256);
 }
 
 function migrateState(value) {
@@ -224,10 +238,10 @@ app.get("/api/events", (request, response) => {
 });
 
 app.post("/api/admin/auth/login", (request, response) => {
-  if (!adminPassword || !tokenSecret) return response.status(503).json({ message: "Admin authentication is not configured." });
+  if ((!adminPassword && !/^[a-f0-9]{64}$/.test(adminPasswordSha256)) || !tokenSecret) return response.status(503).json({ message: "Admin authentication is not configured." });
   const username = String(request.body?.username || "").trim();
   const password = String(request.body?.password || "");
-  if (username !== adminUsername || password !== adminPassword) return response.status(401).json({ message: "Incorrect administrator username or password." });
+  if (!secureEqual(username, adminUsername) || !isAdminPasswordValid(password)) return response.status(401).json({ message: "Incorrect administrator username or password." });
   response.json({ token: issueToken(username, "admin"), admin: { name: "Pax Administrator", username } });
 });
 
