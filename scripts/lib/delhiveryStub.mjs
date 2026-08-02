@@ -25,6 +25,7 @@ function isValidRvpQcShipment(shipment) {
 
 export async function startDelhiveryStub(port, token = "postman-delhivery-token") {
   let manifestSequence = 0;
+  let ndrSequence = 0;
   const manifestedOrders = new Set();
   const manifestedWaybills = new Set();
   const cancelledWaybills = new Set();
@@ -209,6 +210,9 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
             StatusDateTime: "2026-08-02T10:00:00.000",
             StatusLocation: "HYD Hub",
             Instructions: current.instructions,
+            NSLCode: current.nslCode || "",
+            AttemptCount: current.attemptCount ?? null,
+            OTPCancelled: current.otpCancelled ?? null,
           },
           Scans: [{ ScanDetail: {
             Scan: "Manifested",
@@ -246,6 +250,35 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         return;
       }
       response.end(JSON.stringify({ status: true, message: "E-waybill updated successfully", waybill }));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/p/update") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      let payload;
+      try {
+        if (!String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")) throw new Error("JSON required");
+        payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ success: false, error: "Invalid NDR JSON" }));
+        return;
+      }
+      const record = Array.isArray(payload?.data) && payload.data.length === 1 ? payload.data[0] : null;
+      const tracked = record ? trackingByWaybill.get(String(record.waybill || "")) : null;
+      const allowedKeys = record ? Object.keys(record).every((key) => ["waybill", "act"].includes(key)) : false;
+      const reattemptEligible = record?.act === "RE-ATTEMPT"
+        && ["EOD-74", "EOD-15", "EOD-104", "EOD-43", "EOD-86", "EOD-11", "EOD-69", "EOD-6"].includes(tracked?.currentStatus?.nslCode);
+      const pickupEligible = record?.act === "PICKUP_RESCHEDULE"
+        && ["EOD-777", "EOD-21"].includes(tracked?.currentStatus?.nslCode)
+        && tracked?.currentStatus?.status === "Cancelled"
+        && tracked?.currentStatus?.otpCancelled === false;
+      if (!record || !allowedKeys || !tracked || ![1, 2].includes(tracked.currentStatus.attemptCount) || (!reattemptEligible && !pickupEligible)) {
+        response.end(JSON.stringify({ success: false, error: "NDR action is not eligible" }));
+        return;
+      }
+      ndrSequence += 1;
+      response.end(JSON.stringify({ success: true, upl_id: `UPL-NDR-${ndrSequence}`, message: "NDR action accepted" }));
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/p/edit") {
@@ -332,9 +365,18 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         manifestSequence += 1;
         const waybill = shipment.waybill || String(920000000000 + manifestSequence);
         manifestedWaybills.add(String(waybill));
+        const ndrReattempt = shipment.name === "NDR Reattempt Receiver";
+        const ndrPickup = shipment.name === "NDR Pickup Receiver";
+        const ndrInvalid = shipment.name === "NDR Invalid Receiver";
         trackingByWaybill.set(String(waybill), {
           order: String(shipment.order),
-          currentStatus: { status: "Manifested", statusType: "UD", instructions: "Manifest uploaded" },
+          currentStatus: ndrReattempt
+            ? { status: "NDR", statusType: "UD", instructions: "Consignee unavailable", nslCode: "EOD-74", attemptCount: 1, otpCancelled: null }
+            : ndrPickup
+              ? { status: "Cancelled", statusType: "CN", instructions: "Non-OTP pickup cancellation", nslCode: "EOD-777", attemptCount: 2, otpCancelled: false }
+              : ndrInvalid
+                ? { status: "NDR", statusType: "UD", instructions: "Ineligible NDR", nslCode: "EOD-999", attemptCount: 1, otpCancelled: null }
+                : { status: "Manifested", statusType: "UD", instructions: "Manifest uploaded" },
         });
         return { status: "Success", waybill, refnum: shipment.order, remarks: "" };
       });

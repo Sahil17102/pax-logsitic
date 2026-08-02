@@ -23,6 +23,8 @@ const DEFAULT_LABEL_RATE_LIMIT_REQUESTS = 2700;
 const DEFAULT_LABEL_TIMEOUT_MS = 65000;
 const DEFAULT_DOCUMENT_RATE_LIMIT_REQUESTS = 300;
 const DEFAULT_DOCUMENT_TIMEOUT_MS = 30000;
+const DEFAULT_NDR_RATE_LIMIT_REQUESTS = 300;
+const DEFAULT_NDR_TIMEOUT_MS = 130000;
 const DEFAULT_PICKUP_RATE_LIMIT_REQUESTS = 3600;
 const DEFAULT_PICKUP_TIMEOUT_MS = 5000;
 const DEFAULT_WAREHOUSE_RATE_LIMIT_REQUESTS = 9;
@@ -39,6 +41,9 @@ const PAYMENT_MODES = new Map([
   ["repl", "REPL"],
 ]);
 const DOCUMENT_TYPES = new Set(["SIGNATURE_URL", "RVP_QC_IMAGE", "EPOD", "SELLER_RETURN_IMAGE"]);
+const NDR_ACTIONS = new Set(["RE-ATTEMPT", "PICKUP_RESCHEDULE"]);
+const REATTEMPT_NSL_CODES = new Set(["EOD-74", "EOD-15", "EOD-104", "EOD-43", "EOD-86", "EOD-11", "EOD-69", "EOD-6"]);
+const PICKUP_RESCHEDULE_NSL_CODES = new Set(["EOD-777", "EOD-21"]);
 
 export class DelhiveryError extends Error {
   constructor(message, { code = "DELHIVERY_ERROR", status = 502, cause } = {}) {
@@ -508,12 +513,16 @@ export function normalizeDelhiveryEwaybillUpdate(payload, waybill) {
 }
 
 function trackingStatus(record = {}) {
+  const attemptCountValue = firstDefined(record, ["AttemptCount", "attempt_count", "attemptCount", "DeliveryAttempts", "delivery_attempts"]);
   return {
     status: String(firstDefined(record, ["Status", "status", "Scan", "scan"]) || "").trim(),
     statusType: String(firstDefined(record, ["StatusType", "status_type", "ScanType", "scan_type"]) || "").trim(),
     dateTime: String(firstDefined(record, ["StatusDateTime", "status_date_time", "ScanDateTime", "scan_date_time", "date_time"]) || "").trim(),
     location: String(firstDefined(record, ["StatusLocation", "status_location", "ScannedLocation", "scanned_location", "location"]) || "").trim(),
     instructions: String(firstDefined(record, ["Instructions", "instructions", "remark", "remarks"]) || "").trim(),
+    nslCode: String(firstDefined(record, ["NSLCode", "nsl_code", "nslCode", "NSL", "nsl"]) || "").trim().toUpperCase(),
+    attemptCount: Number.isInteger(Number(attemptCountValue)) ? Number(attemptCountValue) : null,
+    otpCancelled: parseBooleanFlag(firstDefined(record, ["OTPCancelled", "otp_cancelled", "otpCancelled", "IsOTP", "is_otp", "otp"])),
   };
 }
 
@@ -527,13 +536,18 @@ export function normalizeDelhiveryTracking(payload, requestedWaybills = []) {
         : [];
   const shipments = source.map((wrapper) => wrapper?.Shipment || wrapper?.shipment || wrapper).filter(Boolean).map((shipment) => {
     const scanSource = Array.isArray(shipment.Scans) ? shipment.Scans : Array.isArray(shipment.scans) ? shipment.scans : [];
+    const currentStatus = trackingStatus(shipment.Status || shipment.status || {});
+    const shipmentAttemptCount = firstDefined(shipment, ["AttemptCount", "attempt_count", "attemptCount", "DeliveryAttempts", "delivery_attempts"]);
+    const shipmentOtpCancelled = parseBooleanFlag(firstDefined(shipment, ["OTPCancelled", "otp_cancelled", "otpCancelled", "IsOTP", "is_otp", "otp"]));
     return {
       waybill: String(firstDefined(shipment, ["AWB", "awb", "waybill", "Waybill"]) || "").trim(),
       referenceId: String(firstDefined(shipment, ["ReferenceNo", "reference_no", "ref_id", "order_id"]) || "").trim(),
       pickupDate: String(firstDefined(shipment, ["PickUpDate", "pickup_date", "pickupDate"]) || "").trim(),
       origin: String(firstDefined(shipment, ["Origin", "origin"]) || "").trim(),
       destination: String(firstDefined(shipment, ["Destination", "destination"]) || "").trim(),
-      currentStatus: trackingStatus(shipment.Status || shipment.status || {}),
+      currentStatus,
+      attemptCount: Number.isInteger(Number(shipmentAttemptCount)) ? Number(shipmentAttemptCount) : currentStatus.attemptCount,
+      otpCancelled: shipmentOtpCancelled === null ? currentStatus.otpCancelled : shipmentOtpCancelled,
       scans: scanSource.map((scan) => trackingStatus(scan?.ScanDetail || scan?.scan_detail || scan)).filter((scan) => scan.status || scan.dateTime),
     };
   }).filter((shipment) => /^\d{8,20}$/.test(shipment.waybill));
@@ -548,6 +562,88 @@ export function normalizeDelhiveryTracking(payload, requestedWaybills = []) {
     fetchedAt: new Date().toISOString(),
     shipments,
     remark,
+  };
+}
+
+export function normalizeNdrActionRequest(input = {}) {
+  const waybill = String(firstDefined(input, ["waybill", "awb", "AWB"]) || "").trim();
+  if (!/^\d{8,20}$/.test(waybill)) {
+    throw new DelhiveryError("A valid Delhivery waybill is required for an NDR action.", { code: "INVALID_WAYBILL", status: 400 });
+  }
+  const action = String(firstDefined(input, ["act", "action"]) || "").trim().toUpperCase();
+  if (!NDR_ACTIONS.has(action)) {
+    throw new DelhiveryError("NDR action must be RE-ATTEMPT or PICKUP_RESCHEDULE.", { code: "INVALID_NDR_ACTION", status: 400 });
+  }
+  return { waybill, action };
+}
+
+export function validateNdrEligibility(request, trackedShipment) {
+  if (!trackedShipment || trackedShipment.waybill !== request.waybill) {
+    throw new DelhiveryError("Delhivery tracking could not verify the current shipment state.", { code: "NDR_CONTEXT_UNAVAILABLE", status: 409 });
+  }
+  const currentStatus = trackedShipment.currentStatus || {};
+  const nslCode = String(currentStatus.nslCode || "").trim().toUpperCase();
+  const attemptCount = Number(trackedShipment.attemptCount ?? currentStatus.attemptCount);
+  if (![1, 2].includes(attemptCount)) {
+    throw new DelhiveryError("NDR action requires a current Delhivery attempt count of 1 or 2.", { code: "NDR_ATTEMPT_NOT_ELIGIBLE", status: 409 });
+  }
+  if (request.action === "RE-ATTEMPT" && !REATTEMPT_NSL_CODES.has(nslCode)) {
+    throw new DelhiveryError(`RE-ATTEMPT is not allowed for current NSL code ${nslCode || "unknown"}.`, { code: "NDR_NSL_NOT_ELIGIBLE", status: 409 });
+  }
+  if (request.action === "PICKUP_RESCHEDULE") {
+    const status = String(currentStatus.status || "").trim().toLowerCase();
+    const otpCancelled = trackedShipment.otpCancelled ?? currentStatus.otpCancelled;
+    if (!PICKUP_RESCHEDULE_NSL_CODES.has(nslCode) || status !== "cancelled" || otpCancelled !== false) {
+      throw new DelhiveryError("PICKUP_RESCHEDULE requires NSL EOD-777/EOD-21 and a non-OTP Cancelled shipment.", { code: "NDR_PICKUP_NOT_ELIGIBLE", status: 409 });
+    }
+  }
+  return { ...request, nslCode, attemptCount, currentStatus: currentStatus.status, otpCancelled: trackedShipment.otpCancelled ?? currentStatus.otpCancelled };
+}
+
+export function buildDelhiveryNdrPayload(request) {
+  return { data: [{ waybill: request.waybill, act: request.action }] };
+}
+
+function nestedProviderValue(payload, keys) {
+  const direct = firstDefined(payload, keys);
+  if (direct !== undefined && direct !== null) return direct;
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const value = nestedProviderValue(item, keys);
+      if (value !== undefined && value !== null) return value;
+    }
+  } else if (payload && typeof payload === "object") {
+    for (const value of Object.values(payload)) {
+      if (value && typeof value === "object") {
+        const found = nestedProviderValue(value, keys);
+        if (found !== undefined && found !== null) return found;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function normalizeDelhiveryNdrAction(payload, request) {
+  const rawError = nestedProviderValue(payload, ["error", "Error"]);
+  const providerError = rawError === false || rawError === 0 ? "" : String(rawError || "").trim();
+  if (providerError || payload?.success === false || payload?.status === false) {
+    throw new DelhiveryError(providerError || "Delhivery rejected the NDR action.", { code: "DELHIVERY_NDR_REJECTED", status: 422 });
+  }
+  const uplId = String(nestedProviderValue(payload, ["upl_id", "uplId", "UPL_ID", "upload_id", "uploadId", "upload_wbn"]) || "").trim();
+  if (!uplId || uplId.length > 200 || /[\u0000-\u001F\u007F]/.test(uplId)) {
+    throw new DelhiveryError("Delhivery did not return a valid NDR UPL ID.", { code: "DELHIVERY_INVALID_RESPONSE", status: 502 });
+  }
+  return {
+    provider: "delhivery",
+    accepted: true,
+    waybill: request.waybill,
+    action: request.action,
+    uplId,
+    status: "Pending",
+    nslCode: request.nslCode,
+    attemptCount: request.attemptCount,
+    currentStatus: request.currentStatus,
+    requestedAt: new Date().toISOString(),
   };
 }
 
@@ -1340,6 +1436,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredDocumentTimeout, 120000)
     : DEFAULT_DOCUMENT_TIMEOUT_MS;
   const documentPath = validateProviderPath(process.env.DELHIVERY_DOCUMENT_PATH || "/api/rest/fetch/pkg/document/", "DELHIVERY_DOCUMENT_PATH");
+  const configuredNdrRateLimit = Number(process.env.DELHIVERY_NDR_RATE_LIMIT_REQUESTS);
+  const ndrRateLimitRequests = Number.isInteger(configuredNdrRateLimit) && configuredNdrRateLimit > 0
+    ? Math.min(configuredNdrRateLimit, DEFAULT_NDR_RATE_LIMIT_REQUESTS)
+    : DEFAULT_NDR_RATE_LIMIT_REQUESTS;
+  const configuredNdrTimeout = Number(process.env.DELHIVERY_NDR_TIMEOUT_MS);
+  const ndrTimeoutMs = Number.isInteger(configuredNdrTimeout) && configuredNdrTimeout > 0
+    ? Math.min(configuredNdrTimeout, 180000)
+    : DEFAULT_NDR_TIMEOUT_MS;
+  const ndrPath = validateProviderPath(process.env.DELHIVERY_NDR_PATH || "/api/p/update", "DELHIVERY_NDR_PATH");
   const configuredPickupRateLimit = Number(process.env.DELHIVERY_PICKUP_RATE_LIMIT_REQUESTS);
   const pickupRateLimitRequests = Number.isInteger(configuredPickupRateLimit) && configuredPickupRateLimit > 0
     ? Math.min(configuredPickupRateLimit, 4000)
@@ -1644,6 +1749,17 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryDocument(payload, request);
   }
 
+  async function submitNdrAction(request) {
+    const endpoint = new URL(ndrPath, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "ndr-action", ndrRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildDelhiveryNdrPayload(request)),
+      requestTimeoutMs: ndrTimeoutMs,
+    });
+    return normalizeDelhiveryNdrAction(payload, request);
+  }
+
   async function submitPickupRequest(request) {
     const endpoint = new URL(pickupPath, `${baseUrl}/`);
     const payload = await requestJson(endpoint, "pickup-request", pickupRateLimitRequests, {
@@ -1723,6 +1839,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   async function downloadDocument(input) {
     ensureConfigured();
     return fetchDocument(normalizeDocumentRequest(input));
+  }
+
+  async function applyNdrAction(input) {
+    ensureConfigured();
+    const request = normalizeNdrActionRequest(input);
+    const trackingRequest = normalizeTrackingRequest({ waybills: [request.waybill], refIds: input?.refIds ?? input?.ref_ids ?? "" });
+    const tracking = await fetchTracking(trackingRequest);
+    const eligible = validateNdrEligibility(request, tracking.shipments.find((shipment) => shipment.waybill === request.waybill));
+    return submitNdrAction(eligible);
   }
 
   async function createPickupRequest(input) {
@@ -1828,6 +1953,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     calculateShippingCost,
     generateShippingLabel,
     downloadDocument,
+    applyNdrAction,
     createPickupRequest,
     createWarehouse,
     updateWarehouse,

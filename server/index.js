@@ -823,6 +823,24 @@ function applyTrackingSnapshot(shipment, tracking) {
   return true;
 }
 
+function publicTrackingView(tracking) {
+  const stripStatus = (status = {}) => {
+    const { nslCode: _nslCode, attemptCount: _attemptCount, otpCancelled: _otpCancelled, ...safeStatus } = status;
+    return safeStatus;
+  };
+  return {
+    ...tracking,
+    shipments: (Array.isArray(tracking?.shipments) ? tracking.shipments : []).map((trackedShipment) => {
+      const { attemptCount: _attemptCount, otpCancelled: _otpCancelled, ...safeShipment } = trackedShipment;
+      return {
+        ...safeShipment,
+        currentStatus: stripStatus(trackedShipment.currentStatus),
+        scans: (Array.isArray(trackedShipment.scans) ? trackedShipment.scans : []).map(stripStatus),
+      };
+    }),
+  };
+}
+
 async function handleShipmentTracking(request, response) {
   const state = await readState();
   const shipment = state.shipments.find((item) => item.id === request.params.id);
@@ -886,6 +904,48 @@ async function handleShipmentDocument(request, response) {
 
 app.get("/api/admin/shipments/:id/document", requireRole("admin"), handleShipmentDocument);
 app.get("/api/client/shipments/:id/document", requireRole("customer"), handleShipmentDocument);
+
+async function handleNdrAction(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const unsupported = Object.keys(body).filter((key) => !["waybill", "act"].includes(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported NDR action field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_NDR_FIELD", status: 400 });
+  }
+  const waybill = shipmentActionWaybill(shipment, body.waybill, "updated through NDR");
+  const action = String(body.act || "").trim().toUpperCase();
+  const pendingDuplicate = (Array.isArray(shipment.ndrActions) ? shipment.ndrActions : [])
+    .some((item) => item.waybill === waybill && item.action === action && item.status === "Pending");
+  if (pendingDuplicate) {
+    throw new DelhiveryError("This NDR action is already pending for the selected waybill.", { code: "NDR_ACTION_ALREADY_PENDING", status: 409 });
+  }
+  const providerResult = await delhivery.applyNdrAction({ waybill, act: action, refIds: shipment.id });
+  shipment.ndrActions = [...(Array.isArray(shipment.ndrActions) ? shipment.ndrActions : []), providerResult];
+  if (providerResult.currentStatus) shipment.status = providerResult.currentStatus;
+  shipment.lastNdrActionAt = providerResult.requestedAt;
+  shipment.lastNdrUplId = providerResult.uplId;
+  state.activities.unshift({
+    title: `${shipment.id} NDR action submitted`,
+    detail: `${providerResult.action} · ${providerResult.uplId}`,
+    tone: "blue",
+    createdAt: providerResult.requestedAt,
+  });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "shipment.ndr.submitted");
+  response.status(202).json({ data: shipment, provider: providerResult });
+}
+
+app.post("/api/admin/shipments/:id/ndr", requireRole("admin"), handleNdrAction);
+app.post("/api/client/shipments/:id/ndr", requireRole("customer"), handleNdrAction);
 
 function registeredWarehouseNames(state) {
   const configured = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
@@ -1351,9 +1411,12 @@ app.get("/api/tracking/:id", async (request, response) => {
     ewaybillUpdates,
     codAmount,
     qualityCheck: _qualityCheck,
+    ndrActions: _ndrActions,
+    lastNdrUplId: _lastNdrUplId,
+    lastNdrActionAt: _lastNdrActionAt,
     ...publicShipment
   } = shipment;
-  response.json({ data: { ...publicShipment, tracking } });
+  response.json({ data: { ...publicShipment, tracking: publicTrackingView(tracking) } });
 });
 
 app.use((error, _request, response, _next) => {

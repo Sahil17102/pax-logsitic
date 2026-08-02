@@ -4,6 +4,7 @@ import { normalizeAdminDashboard, normalizeCustomer, normalizePickupRequest, nor
 const ADMIN_TOKEN_KEY = "pax-admin-token";
 const REQUEST_TIMEOUT = 8000;
 const LONG_PROVIDER_REQUEST_TIMEOUT = 70000;
+const ASYNC_PROVIDER_REQUEST_TIMEOUT = 135000;
 
 function getToken() {
   return sessionStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(ADMIN_TOKEN_KEY) || "";
@@ -98,6 +99,14 @@ export async function getAdminShipmentDocument(shipmentId, { waybill = "", docum
   const query = new URLSearchParams({ doc_type: documentType });
   if (waybill) query.set("waybill", waybill);
   return unwrapApiData(await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/document?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function submitAdminNdrAction(shipmentId, { waybill = "", action }) {
+  const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/ndr`, {
+    method: "POST",
+    body: JSON.stringify({ ...(waybill ? { waybill } : {}), act: action }),
+  }, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
 }
 
 export async function createAdminPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, authenticated order-document downloads, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, authenticated order-document downloads, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, NDR actions with UPL persistence, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only privacy-safe provider data.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -245,6 +245,56 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only question IDs mapped by Delhivery can be manifested', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('UNMAPPED_RVP_QC_QUESTION');", "});"] } }]
     },
     {
+      "name": "Create eligible NDR re-attempt shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Reattempt Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"NDR delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 250\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('NDR re-attempt candidate is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('ndrShipmentId', data.id);", "  pm.collectionVariables.set('ndrWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Submit NDR re-attempt",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Eligible NDR action returns and persists a pending UPL ID', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.accepted).to.eql(true);", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.provider.nslCode).to.eql('EOD-74');", "  pm.expect(body.provider.attemptCount).to.eql(1);", "  pm.expect(body.provider.uplId).to.match(/^UPL-NDR-/);", "  pm.expect(body.data.ndrActions).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate pending NDR action",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('A pending asynchronous action is not submitted twice', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('NDR_ACTION_ALREADY_PENDING');", "});"] } }]
+    },
+    {
+      "name": "Public NDR tracking privacy",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/tracking/{{ndrShipmentId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking excludes UPL and NDR eligibility metadata', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).not.to.have.property('ndrActions');", "  pm.expect(data).not.to.have.property('lastNdrUplId');", "  pm.expect(data.tracking.shipments[0]).not.to.have.property('attemptCount');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('nslCode');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('otpCancelled');", "});"] } }]
+    },
+    {
+      "name": "Create eligible pickup reschedule shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Pickup Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Reverse pickup address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"amount\": 250\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Pickup reschedule candidate is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('ndrPickupShipmentId', data.id);", "  pm.collectionVariables.set('ndrPickupWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Submit pickup reschedule NDR",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrPickupWaybill}}\",\n  \"act\": \"PICKUP_RESCHEDULE\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrPickupShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Non-OTP Cancelled pickup with EOD-777 can be rescheduled', () => {", "  pm.response.to.have.status(202);", "  const provider = pm.response.json().provider;", "  pm.expect(provider.action).to.eql('PICKUP_RESCHEDULE');", "  pm.expect(provider.nslCode).to.eql('EOD-777');", "  pm.expect(provider.attemptCount).to.eql(2);", "});"] } }]
+    },
+    {
+      "name": "Create ineligible NDR shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Invalid Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"NDR invalid address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 250\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Ineligible NDR fixture is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('ndrInvalidShipmentId', data.id);", "  pm.collectionVariables.set('ndrInvalidWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Reject unsupported NDR action",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrInvalidWaybill}}\",\n  \"act\": \"CANCEL\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrInvalidShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only the two documented actions are accepted', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_NDR_ACTION');", "});"] } }]
+    },
+    {
+      "name": "Reject ineligible NDR NSL code",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrInvalidWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrInvalidShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Fresh tracking NSL eligibility is enforced before provider submission', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('NDR_NSL_NOT_ELIGIBLE');", "});"] } }]
+    },
+    {
+      "name": "Create admin NDR candidate",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Reattempt Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Admin NDR address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 300\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin NDR candidate is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('adminNdrShipmentId', data.id);", "  pm.collectionVariables.set('adminNdrWaybill', data.waybill);", "});"] } }]
+    },
+    {
       "name": "Create replacement shipment",
       "request": {
         "method": "POST",
@@ -355,7 +405,7 @@
     {
       "name": "Verify only manifested shipments were saved",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/bootstrap" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(6);", "  pm.expect(shipments.every((item) => ['Manifested', 'Pickup scheduled'].includes(item.status))).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(10);", "  pm.expect(shipments.every((item) => ['Manifested', 'Pickup scheduled', 'NDR', 'Cancelled'].includes(item.status))).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
     },
     {
       "name": "Reject MPS with unprefetched waybills",
@@ -406,6 +456,11 @@
         "url": "{{baseUrl}}/api/admin/auth/login"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Submit admin NDR re-attempt",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{adminNdrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/admin/shipments/{{adminNdrShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can submit an eligible customer shipment NDR action', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.data.lastNdrUplId).to.eql(body.provider.uplId);", "});"] } }]
     },
     {
       "name": "Create Delhivery client warehouse",

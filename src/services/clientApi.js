@@ -4,6 +4,7 @@ import { normalizeClientBootstrap, normalizePickupRequest, normalizeShipment, un
 const CLIENT_TOKEN_KEY = "pax-client-token";
 const REQUEST_TIMEOUT = 6000;
 const LONG_PROVIDER_REQUEST_TIMEOUT = 70000;
+const ASYNC_PROVIDER_REQUEST_TIMEOUT = 135000;
 
 async function request(path, options = {}, timeoutMs = REQUEST_TIMEOUT) {
   const controller = new AbortController();
@@ -108,6 +109,14 @@ export async function getClientShipmentDocument(shipmentId, { waybill = "", docu
   const query = new URLSearchParams({ doc_type: documentType });
   if (waybill) query.set("waybill", waybill);
   return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/document?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function submitClientNdrAction(shipmentId, { waybill = "", action }) {
+  const payload = await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/ndr`, {
+    method: "POST",
+    body: JSON.stringify({ ...(waybill ? { waybill } : {}), act: action }),
+  }, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
 }
 
 export async function createClientPickupRequest({ pickupDate, pickupTime, pickupLocation = "", expectedPackageCount }) {

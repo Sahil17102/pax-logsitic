@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShipmentDocument, getClientShippingCost, getClientShippingLabel, logoutClient } from "../services/clientApi.js";
+import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShipmentDocument, getClientShippingCost, getClientShippingLabel, logoutClient, submitClientNdrAction } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -342,6 +342,7 @@ export default function DashboardPage() {
   const [generatedLabel, setGeneratedLabel] = useState(null);
   const [documentType, setDocumentType] = useState("EPOD");
   const [downloadedDocument, setDownloadedDocument] = useState(null);
+  const [ndrSubmitting, setNdrSubmitting] = useState("");
   const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", pickupLocation: "", expectedPackageCount: "1" });
   const [pickupSubmitting, setPickupSubmitting] = useState(false);
   const [newShipment, setNewShipment] = useState(createEmptyShipmentForm);
@@ -647,6 +648,23 @@ export default function DashboardPage() {
     }
   };
 
+  const submitNdrAction = async (shipment, action) => {
+    const waybill = String(shipment.waybills?.[0] || shipment.waybill || "");
+    const requestKey = `${shipment.id}:${action}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await submitClientNdrAction(shipment.id, { waybill, action });
+      const next = shipments.map((item) => item.id === shipment.id ? result.shipment : item);
+      setShipments(next);
+      localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
+      notify(`${action} submitted · UPL ${result.provider.uplId}.`);
+    } catch (error) {
+      notify(error.message || "The NDR action could not be submitted.");
+    } finally {
+      setNdrSubmitting("");
+    }
+  };
+
   const downloadShippingLabel = () => {
     if (!generatedLabel || generatedLabel.error || generatedLabel.loading) return;
     const link = document.createElement("a");
@@ -942,16 +960,18 @@ export default function DashboardPage() {
 
   const renderExceptions = () => (
     <>
-      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>Exceptions</h1><span>Resolve failed attempts, address issues and delayed movement.</span></div><span className="section-count-pill">{shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length} open cases</span></section>
+      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>NDR management</h1><span>Submit an eligible re-attempt or pickup reschedule after reviewing the latest Delhivery scan.</span></div><span className="section-count-pill">{shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length} open cases</span></section>
+      <p className="ndr-guidance">Delhivery recommends applying NDR actions after 9 PM. Pax refreshes the AWB first and verifies the current NSL code and attempt count before submission.</p>
       <section className="exception-grid">
-        {shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length ? shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).map((shipment) => (
+        {shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length ? shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).map((shipment) => (
           <article className="portal-card exception-card" key={shipment.id}>
             <div><span className="priority-dot priority-high"></span><small>attention required</small><b>{shipment.id}</b></div>
             <h2>{shipment.status}</h2><p>{shipment.customer} · {shipment.destination}</p>
             <div className="exception-meta"><span>Last update</span><strong>{shipment.date ? new Date(shipment.date).toLocaleString("en-IN") : "Not provided"}</strong></div>
-            <button type="button" onClick={() => notify(`${shipment.id} opened for review.`)}>Review shipment <span>→</span></button>
+            {shipment.ndrActions?.length ? <div className="ndr-history"><small>Latest UPL</small><strong>{shipment.ndrActions.at(-1).uplId}</strong><span>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</span></div> : null}
+            <div className="ndr-actions"><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "RE-ATTEMPT")}>{ndrSubmitting === `${shipment.id}:RE-ATTEMPT` ? "Submitting..." : "Re-attempt"}</button><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "PICKUP_RESCHEDULE")}>{ndrSubmitting === `${shipment.id}:PICKUP_RESCHEDULE` ? "Submitting..." : "Reschedule pickup"}</button></div>
           </article>
-        )) : <article className="portal-card portal-tool-empty"><h2>No shipment exceptions</h2><p>Live API records needing attention will appear here.</p></article>}
+        )) : <article className="portal-card portal-tool-empty"><h2>No NDR shipments</h2><p>Eligible live Delhivery exceptions will appear here.</p></article>}
       </section>
     </>
   );

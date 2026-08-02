@@ -8363,6 +8363,59 @@
   text-align: center;
 }
 
+.ndr-guidance {
+  margin: -8px 0 17px;
+  border: 1px solid #e3e8f2;
+  border-radius: 12px;
+  background: #f8faff;
+  padding: 11px 14px;
+  color: #617089;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ndr-history {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: #edf5ff;
+  padding: 10px 12px;
+}
+
+.ndr-history small,
+.ndr-history span {
+  color: #66768c;
+  font-size: 9px;
+}
+
+.ndr-history strong {
+  color: #244f9f;
+  font-size: 12px;
+}
+
+.ndr-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ndr-actions button {
+  min-height: 36px;
+  border: 1px solid #cfdaed;
+  border-radius: 9px;
+  background: #fff;
+  color: #294eb5;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.ndr-actions button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
 .document-download-tool {
   margin-top: 18px;
 }

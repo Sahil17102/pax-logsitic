@@ -133,6 +133,26 @@ try {
     }),
   });
   const rvpQcDocument = await request(`/api/client/shipments/${rvpQcShipment.data.id}/document?waybill=${rvpQcShipment.data.waybill}&doc_type=RVP_QC_IMAGE`, { headers: authorization });
+  const ndrShipment = await request("/api/client/shipments", {
+    method: "POST",
+    headers: { ...authorization, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer: "NDR Reattempt Receiver",
+      phone: "9123456789",
+      address: "NDR delivery address",
+      city: "Leh",
+      pincode: "194103",
+      weight: 1,
+      payment: "Prepaid",
+      amount: 250,
+    }),
+  });
+  const ndrAction = await request(`/api/client/shipments/${ndrShipment.data.id}/ndr`, {
+    method: "POST",
+    headers: { ...authorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ waybill: ndrShipment.data.waybill, act: "RE-ATTEMPT" }),
+  });
+  const publicNdrTracking = await request(`/api/tracking/${ndrShipment.data.id}`);
   const tracked = await request(`/api/tracking/${created.data.id}`);
   const publicRvpQcTracking = await request(`/api/tracking/${rvpQcShipment.data.id}`);
   const after = await request("/api/client/bootstrap", { headers: authorization });
@@ -250,7 +270,7 @@ try {
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
-  assert.equal(after.data.shipments.length, 2);
+  assert.equal(after.data.shipments.length, 3);
   assert.equal(created.data.status, "Manifested");
   assert.match(created.data.waybill, /^\d{8,20}$/);
   assert.equal(created.data.packageCount, 1);
@@ -263,13 +283,20 @@ try {
   assert.equal(deliveryDocument.data.documentCount, 1);
   assert.match(deliveryDocument.data.downloadUrl, /^https:\/\/documents\.test\.delhivery\.local\//);
   assert.equal(rvpQcDocument.data.documentType, "RVP_QC_IMAGE");
+  assert.equal(ndrAction.provider.action, "RE-ATTEMPT");
+  assert.equal(ndrAction.provider.status, "Pending");
+  assert.match(ndrAction.provider.uplId, /^UPL-NDR-/);
+  assert.equal(ndrAction.data.ndrActions.length, 1);
+  assert.equal(Object.hasOwn(publicNdrTracking.data, "ndrActions"), false);
+  assert.equal(Object.hasOwn(publicNdrTracking.data.tracking.shipments[0], "attemptCount"), false);
+  assert.equal(Object.hasOwn(publicNdrTracking.data.tracking.shipments[0].currentStatus, "nslCode"), false);
   assert.equal(pickupRequest.data.status, "Scheduled");
   assert.equal(pickupRequest.data.expectedPackageCount, 1);
   assert.equal(Object.hasOwn(pickupRequest.data, "ownerEmail"), false);
   assert.equal(after.data.pickupRequests.length, 1);
   assert.equal(secondBootstrap.data.pickupRequests.length, 0);
   assert.equal(secondBootstrap.data.shipments.length, 0);
-  assert.equal(dashboard.data.shipments.length, 2);
+  assert.equal(dashboard.data.shipments.length, 3);
   assert.equal(dashboard.data.customers.length, 2);
   assert.deepEqual(dashboard.data.customers.map((customer) => customer.name).sort(), ["API Test User", "Second API User"]);
   assert.equal(dashboard.data.customers.some((customer) => ["CUS-1048", "CUS-1042", "CUS-1039", "CUS-1033"].includes(customer.id)), false);
@@ -288,6 +315,7 @@ try {
     createdId: created.data.id,
     trackedStatus: tracked.data.status,
     rvpQcQuestions: rvpQcShipment.data.qualityCheck.questionCount,
+    ndrUplId: ndrAction.provider.uplId,
     adminShipments: dashboard.data.shipments.length,
     adminCustomers: dashboard.data.customers.length,
     secondCustomerShipments: secondBootstrap.data.shipments.length,
