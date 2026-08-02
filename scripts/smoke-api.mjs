@@ -92,6 +92,7 @@ try {
     }),
   });
   const shippingLabel = await request(`/api/client/shipments/${created.data.id}/label?waybill=${created.data.waybill}&pdf=true&pdf_size=4R`, { headers: authorization });
+  const deliveryDocument = await request(`/api/client/shipments/${created.data.id}/document?waybill=${created.data.waybill}&doc_type=EPOD`, { headers: authorization });
   const pickupDate = new Date(Date.now() + (330 * 60 * 1000) + (24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
   const pickupRequest = await request("/api/client/pickup-requests", {
     method: "POST",
@@ -131,6 +132,7 @@ try {
       }],
     }),
   });
+  const rvpQcDocument = await request(`/api/client/shipments/${rvpQcShipment.data.id}/document?waybill=${rvpQcShipment.data.waybill}&doc_type=RVP_QC_IMAGE`, { headers: authorization });
   const tracked = await request(`/api/tracking/${created.data.id}`);
   const publicRvpQcTracking = await request(`/api/tracking/${rvpQcShipment.data.id}`);
   const after = await request("/api/client/bootstrap", { headers: authorization });
@@ -257,6 +259,10 @@ try {
   assert.equal(Object.hasOwn(publicRvpQcTracking.data, "qualityCheck"), false);
   assert.equal(shippingLabel.data.format, "pdf");
   assert.match(shippingLabel.data.downloadUrl, /^https:\/\/labels\.test\.delhivery\.local\//);
+  assert.equal(deliveryDocument.data.documentType, "EPOD");
+  assert.equal(deliveryDocument.data.documentCount, 1);
+  assert.match(deliveryDocument.data.downloadUrl, /^https:\/\/documents\.test\.delhivery\.local\//);
+  assert.equal(rvpQcDocument.data.documentType, "RVP_QC_IMAGE");
   assert.equal(pickupRequest.data.status, "Scheduled");
   assert.equal(pickupRequest.data.expectedPackageCount, 1);
   assert.equal(Object.hasOwn(pickupRequest.data, "ownerEmail"), false);
@@ -292,6 +298,7 @@ try {
     adminExpectedTatDays: adminExpectedTat.data.tatDays,
     estimatedShippingCost: shippingCost.data.estimatedAmount,
     shippingLabelFormat: shippingLabel.data.format,
+    downloadedDocumentType: deliveryDocument.data.documentType,
     pickupRequestStatus: pickupRequest.data.status,
     registeredWarehouses: warehouses.data.length,
     updatedWarehousePin: updatedWarehouse.data.pin,

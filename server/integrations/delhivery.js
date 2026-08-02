@@ -21,6 +21,8 @@ const DEFAULT_SHIPPING_COST_RATE_LIMIT_REQUESTS = 45;
 const DEFAULT_SHIPPING_COST_TIMEOUT_MS = 65000;
 const DEFAULT_LABEL_RATE_LIMIT_REQUESTS = 2700;
 const DEFAULT_LABEL_TIMEOUT_MS = 65000;
+const DEFAULT_DOCUMENT_RATE_LIMIT_REQUESTS = 300;
+const DEFAULT_DOCUMENT_TIMEOUT_MS = 30000;
 const DEFAULT_PICKUP_RATE_LIMIT_REQUESTS = 3600;
 const DEFAULT_PICKUP_TIMEOUT_MS = 5000;
 const DEFAULT_WAREHOUSE_RATE_LIMIT_REQUESTS = 9;
@@ -36,6 +38,7 @@ const PAYMENT_MODES = new Map([
   ["pickup", "Pickup"],
   ["repl", "REPL"],
 ]);
+const DOCUMENT_TYPES = new Set(["SIGNATURE_URL", "RVP_QC_IMAGE", "EPOD", "SELLER_RETURN_IMAGE"]);
 
 export class DelhiveryError extends Error {
   constructor(message, { code = "DELHIVERY_ERROR", status = 502, cause } = {}) {
@@ -748,6 +751,56 @@ export function normalizeDelhiveryShippingLabel(payload, request) {
   };
 }
 
+export function normalizeDocumentRequest(input = {}) {
+  const waybill = String(firstDefined(input, ["waybill", "awb", "AWB"]) || "").trim();
+  if (!/^\d{8,20}$/.test(waybill)) {
+    throw new DelhiveryError("A valid Delhivery waybill is required to download a document.", { code: "INVALID_WAYBILL", status: 400 });
+  }
+  const documentType = String(firstDefined(input, ["documentType", "docType", "doc_type"]) || "").trim().toUpperCase();
+  if (!DOCUMENT_TYPES.has(documentType)) {
+    throw new DelhiveryError("Document type must be SIGNATURE_URL, RVP_QC_IMAGE, EPOD or SELLER_RETURN_IMAGE.", { code: "INVALID_DOCUMENT_TYPE", status: 400 });
+  }
+  return { waybill, documentType };
+}
+
+function collectSecureDocumentUrls(value, urls = []) {
+  if (typeof value === "string") {
+    const secureUrl = secureLabelUrl(value);
+    if (secureUrl) urls.push(secureUrl);
+    return urls;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectSecureDocumentUrls(item, urls));
+    return urls;
+  }
+  if (value && typeof value === "object") {
+    Object.values(value).forEach((item) => collectSecureDocumentUrls(item, urls));
+  }
+  return urls;
+}
+
+export function normalizeDelhiveryDocument(payload, request) {
+  const rawProviderError = firstDefined(payload, ["error", "Error"]);
+  const providerError = rawProviderError === false || rawProviderError === 0 ? "" : String(rawProviderError || "").trim();
+  const explicitlyRejected = payload?.success === false || payload?.status === false;
+  if (providerError || explicitlyRejected) {
+    throw new DelhiveryError(providerError || "Delhivery could not find this document.", { code: "DELHIVERY_DOCUMENT_REJECTED", status: 422 });
+  }
+  const downloadUrls = [...new Set(collectSecureDocumentUrls(payload))];
+  if (!downloadUrls.length) {
+    throw new DelhiveryError("Delhivery did not return a secure document link.", { code: "DELHIVERY_DOCUMENT_NOT_FOUND", status: 404 });
+  }
+  return {
+    provider: "delhivery",
+    waybill: request.waybill,
+    documentType: request.documentType,
+    documentCount: downloadUrls.length,
+    downloadUrl: downloadUrls[0],
+    documents: downloadUrls.map((downloadUrl, index) => ({ index: index + 1, downloadUrl })),
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 function indiaDateString(now = new Date()) {
   return new Date(now.getTime() + (330 * 60 * 1000)).toISOString().slice(0, 10);
 }
@@ -1278,6 +1331,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredLabelTimeout, 120000)
     : DEFAULT_LABEL_TIMEOUT_MS;
   const labelPath = validateProviderPath(process.env.DELHIVERY_LABEL_PATH || "/api/p/packing_slip", "DELHIVERY_LABEL_PATH");
+  const configuredDocumentRateLimit = Number(process.env.DELHIVERY_DOCUMENT_RATE_LIMIT_REQUESTS);
+  const documentRateLimitRequests = Number.isInteger(configuredDocumentRateLimit) && configuredDocumentRateLimit > 0
+    ? Math.min(configuredDocumentRateLimit, DEFAULT_DOCUMENT_RATE_LIMIT_REQUESTS)
+    : DEFAULT_DOCUMENT_RATE_LIMIT_REQUESTS;
+  const configuredDocumentTimeout = Number(process.env.DELHIVERY_DOCUMENT_TIMEOUT_MS);
+  const documentTimeoutMs = Number.isInteger(configuredDocumentTimeout) && configuredDocumentTimeout > 0
+    ? Math.min(configuredDocumentTimeout, 120000)
+    : DEFAULT_DOCUMENT_TIMEOUT_MS;
+  const documentPath = validateProviderPath(process.env.DELHIVERY_DOCUMENT_PATH || "/api/rest/fetch/pkg/document/", "DELHIVERY_DOCUMENT_PATH");
   const configuredPickupRateLimit = Number(process.env.DELHIVERY_PICKUP_RATE_LIMIT_REQUESTS);
   const pickupRateLimitRequests = Number.isInteger(configuredPickupRateLimit) && configuredPickupRateLimit > 0
     ? Math.min(configuredPickupRateLimit, 4000)
@@ -1571,6 +1633,17 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryShippingLabel(payload, request);
   }
 
+  async function fetchDocument(request) {
+    const endpoint = new URL(documentPath, `${baseUrl}/`);
+    endpoint.searchParams.set("doc_type", request.documentType);
+    endpoint.searchParams.set("waybill", request.waybill);
+    const payload = await requestJson(endpoint, "shipment-document", documentRateLimitRequests, {
+      headers: { "Content-Type": "application/json" },
+      requestTimeoutMs: documentTimeoutMs,
+    });
+    return normalizeDelhiveryDocument(payload, request);
+  }
+
   async function submitPickupRequest(request) {
     const endpoint = new URL(pickupPath, `${baseUrl}/`);
     const payload = await requestJson(endpoint, "pickup-request", pickupRateLimitRequests, {
@@ -1645,6 +1718,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   async function generateShippingLabel(input) {
     ensureConfigured();
     return fetchShippingLabel(normalizeShippingLabelRequest(input));
+  }
+
+  async function downloadDocument(input) {
+    ensureConfigured();
+    return fetchDocument(normalizeDocumentRequest(input));
   }
 
   async function createPickupRequest(input) {
@@ -1749,6 +1827,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     trackShipments,
     calculateShippingCost,
     generateShippingLabel,
+    downloadDocument,
     createPickupRequest,
     createWarehouse,
     updateWarehouse,

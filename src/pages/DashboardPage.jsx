@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShippingCost, getClientShippingLabel, logoutClient } from "../services/clientApi.js";
+import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShipmentDocument, getClientShippingCost, getClientShippingLabel, logoutClient } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -340,6 +340,8 @@ export default function DashboardPage() {
   const [labelPdf, setLabelPdf] = useState(true);
   const [labelPdfSize, setLabelPdfSize] = useState("4R");
   const [generatedLabel, setGeneratedLabel] = useState(null);
+  const [documentType, setDocumentType] = useState("EPOD");
+  const [downloadedDocument, setDownloadedDocument] = useState(null);
   const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", pickupLocation: "", expectedPackageCount: "1" });
   const [pickupSubmitting, setPickupSubmitting] = useState(false);
   const [newShipment, setNewShipment] = useState(createEmptyShipmentForm);
@@ -660,6 +662,23 @@ export default function DashboardPage() {
     }
     link.click();
     notify(`${generatedLabel.id} ${generatedLabel.format === "pdf" ? "PDF label opened" : "label JSON downloaded"}.`);
+  };
+
+  const fetchShipmentDocument = async (event) => {
+    event.preventDefault();
+    const shipment = shipments.find((item) => item.id === labelShipmentId);
+    const waybill = labelWaybill || (Array.isArray(shipment?.waybills) ? shipment.waybills[0] : shipment?.waybill);
+    if (!shipment || !waybill) {
+      setDownloadedDocument({ error: "Select a manifested shipment and waybill." });
+      return;
+    }
+    try {
+      setDownloadedDocument({ loading: true });
+      const result = await getClientShipmentDocument(shipment.id, { waybill: String(waybill), documentType });
+      setDownloadedDocument({ ...result, shipmentId: shipment.id });
+    } catch (error) {
+      setDownloadedDocument({ error: error.message || "Delhivery could not fetch this document." });
+    }
   };
 
   const saveProfile = (event) => {
@@ -1105,8 +1124,8 @@ export default function DashboardPage() {
         <form className="portal-card portal-tool-form" onSubmit={generateShippingLabel}>
           <div className="portal-card-head"><div><small>SELECT ORDER</small><h2>Prepare shipping label</h2></div><span className="tool-live-badge">Delhivery</span></div>
           <div className="portal-tool-fields">
-            <label>Shipment<select value={labelShipmentId} onChange={(event) => { const nextId = event.target.value; const nextShipment = shipments.find((shipment) => shipment.id === nextId); setLabelShipmentId(nextId); setLabelWaybill(String(nextShipment?.waybills?.[0] || nextShipment?.waybill || "")); setGeneratedLabel(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label>
-            <label>Waybill<select value={labelWaybill} onChange={(event) => { setLabelWaybill(event.target.value); setGeneratedLabel(null); }}>{labelWaybills.map((waybill) => <option value={waybill} key={waybill}>{waybill}</option>)}</select></label>
+            <label>Shipment<select value={labelShipmentId} onChange={(event) => { const nextId = event.target.value; const nextShipment = shipments.find((shipment) => shipment.id === nextId); setLabelShipmentId(nextId); setLabelWaybill(String(nextShipment?.waybills?.[0] || nextShipment?.waybill || "")); setGeneratedLabel(null); setDownloadedDocument(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label>
+            <label>Waybill<select value={labelWaybill} onChange={(event) => { setLabelWaybill(event.target.value); setGeneratedLabel(null); setDownloadedDocument(null); }}>{labelWaybills.map((waybill) => <option value={waybill} key={waybill}>{waybill}</option>)}</select></label>
             <label>Output<select value={labelPdf ? "pdf" : "json"} onChange={(event) => { setLabelPdf(event.target.value === "pdf"); setGeneratedLabel(null); }}><option value="pdf">PDF download</option><option value="json">Custom label JSON</option></select></label>
             <label>PDF size<select value={labelPdfSize} disabled={!labelPdf} onChange={(event) => { setLabelPdfSize(event.target.value); setGeneratedLabel(null); }}><option value="A4">A4 (8 × 11)</option><option value="4R">4R (4 × 6)</option></select></label>
           </div>
@@ -1122,6 +1141,28 @@ export default function DashboardPage() {
             <div className="shipping-label-meta"><span><small>SHIPMENT</small><b>{generatedLabel.id}</b></span><span><small>PAYMENT</small><b>{generatedLabel.payment}</b></span></div>
             <div className="shipping-label-bars" aria-label={`Barcode ${generatedLabel.barcode}`}></div><b>{generatedLabel.barcode}</b>
             <button className="portal-primary" type="button" onClick={downloadShippingLabel}>{generatedLabel.format === "pdf" ? "Open PDF label" : "Download label JSON"} <Icon name="arrow" /></button>
+          </div>}
+        </article>
+      </section>
+      <section className="portal-tool-layout document-download-tool">
+        <form className="portal-card portal-tool-form" onSubmit={fetchShipmentDocument}>
+          <div className="portal-card-head"><div><small>DELIVERY EVIDENCE</small><h2>Download order document</h2></div><span className="tool-live-badge">Secure</span></div>
+          <p className="document-tool-copy">Fetch documents for the selected shipment and waybill. Availability depends on the shipment lifecycle and Delhivery retention.</p>
+          <div className="portal-tool-fields">
+            <label>Document type<select value={documentType} onChange={(event) => { setDocumentType(event.target.value); setDownloadedDocument(null); }}><option value="EPOD">Electronic proof of delivery (EPOD)</option><option value="SIGNATURE_URL">Consignee signature</option><option value="RVP_QC_IMAGE">Reverse pickup QC image</option><option value="SELLER_RETURN_IMAGE">Seller return image</option></select></label>
+            <label>Selected waybill<input value={labelWaybill} readOnly /></label>
+          </div>
+          <button className="portal-primary portal-tool-submit" type="submit" disabled={downloadedDocument?.loading}><Icon name="audit" /> {downloadedDocument?.loading ? "Fetching..." : "Fetch document"}</button>
+        </form>
+        <article className="portal-card portal-tool-result" aria-live="polite">
+          {!downloadedDocument && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Order documents</h2><p>Choose a document type to retrieve its secure Delhivery link.</p></div>}
+          {downloadedDocument?.loading && <div className="portal-tool-empty"><span><Icon name="refresh" /></span><h2>Fetching document</h2><p>Waiting for Delhivery to locate the requested file.</p></div>}
+          {downloadedDocument?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Document unavailable</h2><p>{downloadedDocument.error}</p></div>}
+          {downloadedDocument && !downloadedDocument.error && !downloadedDocument.loading && <div className="shipment-document-result">
+            <small>{downloadedDocument.documentType.replaceAll("_", " ")}</small>
+            <h2>{downloadedDocument.documentCount} {downloadedDocument.documentCount === 1 ? "document" : "documents"} available</h2>
+            <p>{downloadedDocument.shipmentId} · {downloadedDocument.waybill}</p>
+            <div>{downloadedDocument.documents.map((item) => <a className="portal-primary" href={item.downloadUrl} target="_blank" rel="noopener noreferrer" key={item.downloadUrl}>Open document {item.index} <Icon name="arrow" /></a>)}</div>
           </div>}
         </article>
       </section>

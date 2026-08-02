@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, authenticated order-document downloads, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -117,6 +117,31 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer cannot request a label for an unrelated waybill', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_WAYBILL_MISMATCH');", "});"] } }]
     },
     {
+      "name": "Download customer EPOD",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=EPOD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives normalized secure EPOD links', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.waybill).to.eql(pm.collectionVariables.get('editableWaybill'));", "  pm.expect(data.documentType).to.eql('EPOD');", "  pm.expect(data.documentCount).to.eql(1);", "  pm.expect(data.downloadUrl).to.match(/^https:/);", "  pm.expect(data.documents[0].downloadUrl).to.eql(data.downloadUrl);", "});"] } }]
+    },
+    {
+      "name": "Download customer consignee signature",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=SIGNATURE_URL" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('SIGNATURE_URL is accepted', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.documentType).to.eql('SIGNATURE_URL');", "});"] } }]
+    },
+    {
+      "name": "Download customer seller return image",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=SELLER_RETURN_IMAGE" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('SELLER_RETURN_IMAGE is accepted', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.documentType).to.eql('SELLER_RETURN_IMAGE');", "});"] } }]
+    },
+    {
+      "name": "Reject unsupported document type",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=INVOICE" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only Delhivery document types are accepted', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_DOCUMENT_TYPE');", "});"] } }]
+    },
+    {
+      "name": "Reject document waybill mismatch",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill=999999999999&doc_type=EPOD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer cannot fetch a document for an unrelated waybill', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_WAYBILL_MISMATCH');", "});"] } }]
+    },
+    {
       "name": "Create warehouse pickup request",
       "request": {
         "method": "POST",
@@ -192,12 +217,17 @@
         "body": { "mode": "raw", "raw": "{\n  \"customer\": \"QC Return Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Consignee pickup address\",\n  \"city\": \"Leh\",\n  \"state\": \"Ladakh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"productsDescription\": \"Returned mobile and retail box\",\n  \"quantity\": 1,\n  \"amount\": 800,\n  \"customQc\": [\n    {\n      \"item\": \"Mobile\",\n      \"description\": \"Mi Note Pro\",\n      \"images\": [\"https://images.example.com/mobile.jpg\"],\n      \"returnReason\": \"Damaged\",\n      \"quantity\": 1,\n      \"brand\": \"Mi\",\n      \"productCategory\": \"mobile\",\n      \"questions\": [\n        { \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"SN12345\"], \"required\": true, \"type\": \"varchar\", \"questionImages\": [\"https://images.example.com/serial.jpg\"] },\n        { \"questionId\": \"color_check\", \"options\": [\"Black\", \"Other\"], \"value\": [\"Black\"], \"required\": false, \"type\": \"multi\" }\n      ]\n    },\n    {\n      \"description\": \"Retail box\",\n      \"images\": [\"https://images.example.com/box.jpg\"],\n      \"questions\": [\n        { \"questionId\": \"seal_check\", \"options\": [\"Intact\", \"Broken\"], \"value\": [\"Intact\"], \"required\": true, \"type\": \"multi\" }\n      ]\n    }\n  ]\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Parametric QC is manifested with both items and mapped questions', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.qualityCheck).to.eql({ type: 'param', itemCount: 2, questionCount: 3, status: 'Pending doorstep QC' });", "  pm.collectionVariables.set('rvpQcShipmentId', data.id);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Parametric QC is manifested with both items and mapped questions', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.qualityCheck).to.eql({ type: 'param', itemCount: 2, questionCount: 3, status: 'Pending doorstep QC' });", "  pm.collectionVariables.set('rvpQcShipmentId', data.id);", "  pm.collectionVariables.set('rvpQcWaybill', data.waybill);", "});"] } }]
     },
     {
       "name": "Public RVP QC tracking privacy",
       "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/tracking/{{rvpQcShipmentId}}" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking does not expose doorstep QC configuration', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data).not.to.have.property('qualityCheck');", "});"] } }]
+    },
+    {
+      "name": "Download RVP QC image",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{rvpQcShipmentId}}/document?waybill={{rvpQcWaybill}}&doc_type=RVP_QC_IMAGE" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('RVP QC evidence is available only through the authenticated shipment route', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.documentType).to.eql('RVP_QC_IMAGE');", "  pm.expect(data.downloadUrl).to.match(/^https:/);", "});"] } }]
     },
     {
       "name": "Reject RVP QC on forward shipment",
@@ -456,6 +486,11 @@
       "name": "Generate admin PDF shipping label - A4",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=true&pdf_size=A4" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives an A4 label for a persisted shipment', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.format).to.eql('pdf');", "  pm.expect(data.pdfSize).to.eql('A4');", "  pm.expect(data.packagesFound).to.eql(1);", "});"] } }]
+    },
+    {
+      "name": "Download admin EPOD",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=EPOD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can fetch a document for a persisted shipment', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.documentType).to.eql('EPOD');", "});"] } }]
     },
     {
       "name": "Admin updates shipment e-waybill",

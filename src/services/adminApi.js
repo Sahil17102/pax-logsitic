@@ -94,6 +94,12 @@ export async function getAdminShippingLabel(shipmentId, { waybill = "", pdf = tr
   return unwrapApiData(await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
 }
 
+export async function getAdminShipmentDocument(shipmentId, { waybill = "", documentType } = {}) {
+  const query = new URLSearchParams({ doc_type: documentType });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/document?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
 export async function createAdminPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {
   const payload = await request("/api/admin/pickup-requests", {
     method: "POST",

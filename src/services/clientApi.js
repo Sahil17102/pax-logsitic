@@ -104,6 +104,12 @@ export async function getClientShippingLabel(shipmentId, { waybill = "", pdf = t
   return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
 }
 
+export async function getClientShipmentDocument(shipmentId, { waybill = "", documentType } = {}) {
+  const query = new URLSearchParams({ doc_type: documentType });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/document?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
 export async function createClientPickupRequest({ pickupDate, pickupTime, pickupLocation = "", expectedPackageCount }) {
   const payload = await request("/api/client/pickup-requests", {
     method: "POST",

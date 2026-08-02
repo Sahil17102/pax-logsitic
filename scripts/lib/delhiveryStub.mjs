@@ -168,6 +168,23 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       }));
       return;
     }
+    if (request.method === "GET" && url.pathname === "/api/rest/fetch/pkg/document/") {
+      const waybill = String(url.searchParams.get("waybill") || "").trim();
+      const documentType = String(url.searchParams.get("doc_type") || "").trim().toUpperCase();
+      const allowedDocumentTypes = new Set(["SIGNATURE_URL", "RVP_QC_IMAGE", "EPOD", "SELLER_RETURN_IMAGE"]);
+      if (!manifestedWaybills.has(waybill) || !allowedDocumentTypes.has(documentType)) {
+        response.end(JSON.stringify({ success: false, error: "Document not found" }));
+        return;
+      }
+      const suffix = documentType.toLowerCase().replaceAll("_", "-");
+      response.end(JSON.stringify({
+        success: true,
+        waybill,
+        doc_type: documentType,
+        documents: [{ download_url: `https://documents.test.delhivery.local/${waybill}-${suffix}.pdf` }],
+      }));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/v1/packages/json/") {
       const waybills = String(url.searchParams.get("waybill") || "").split(",").map((value) => value.trim()).filter(Boolean);
       const refIds = String(url.searchParams.get("ref_ids") || "").trim();

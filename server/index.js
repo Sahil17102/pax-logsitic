@@ -865,6 +865,28 @@ async function handleShippingLabel(request, response) {
 app.get("/api/admin/shipments/:id/label", requireRole("admin"), handleShippingLabel);
 app.get("/api/client/shipments/:id/label", requireRole("customer"), handleShippingLabel);
 
+async function handleShipmentDocument(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  const waybill = shipmentActionWaybill(shipment, request.query.waybill, "used to fetch a document");
+  const data = await delhivery.downloadDocument({
+    waybill,
+    doc_type: request.query.doc_type,
+  });
+  response.json({ data });
+}
+
+app.get("/api/admin/shipments/:id/document", requireRole("admin"), handleShipmentDocument);
+app.get("/api/client/shipments/:id/document", requireRole("customer"), handleShipmentDocument);
+
 function registeredWarehouseNames(state) {
   const configured = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
   return new Set([
