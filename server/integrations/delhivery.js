@@ -17,6 +17,8 @@ const DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS = 18000;
 const DEFAULT_EDIT_RATE_LIMIT_REQUESTS = 11000;
 const DEFAULT_EWAYBILL_RATE_LIMIT_REQUESTS = 225;
 const DEFAULT_TRACKING_RATE_LIMIT_REQUESTS = 675;
+const DEFAULT_SHIPPING_COST_RATE_LIMIT_REQUESTS = 45;
+const DEFAULT_SHIPPING_COST_TIMEOUT_MS = 65000;
 const DEFAULT_TRACKING_CACHE_TTL_MS = 30 * 1000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
@@ -451,6 +453,110 @@ function normalizeTrackingRequest(input = {}) {
   return { waybills, refIds };
 }
 
+function shippingCostInteger(value, field, { optional = false, positive = false } = {}) {
+  if (value === undefined || value === null || value === "") {
+    if (optional) return undefined;
+    throw new DelhiveryError(`${field} is required.`, { code: "INVALID_SHIPPING_COST", status: 400 });
+  }
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric) || numeric < (positive ? 1 : 0)) {
+    throw new DelhiveryError(`${field} must be ${positive ? "a positive" : "a non-negative"} integer.`, {
+      code: "INVALID_SHIPPING_COST",
+      status: 400,
+    });
+  }
+  return numeric;
+}
+
+export function normalizeShippingCostRequest(input = {}) {
+  const md = String(firstDefined(input, ["md", "mot", "mode"]) || "").trim().toUpperCase();
+  if (!new Set(["E", "S"]).has(md)) {
+    throw new DelhiveryError("Billing mode must be E (Express) or S (Surface).", { code: "INVALID_BILLING_MODE", status: 400 });
+  }
+  const originPin = String(firstDefined(input, ["o_pin", "originPin", "origin_pin"]) || "").trim();
+  const destinationPin = String(firstDefined(input, ["d_pin", "destinationPin", "destination_pin"]) || "").trim();
+  if (!/^[1-9]\d{5}$/.test(originPin) || !/^[1-9]\d{5}$/.test(destinationPin)) {
+    throw new DelhiveryError("Origin and destination must be valid 6-digit Indian PIN codes.", { code: "INVALID_SHIPPING_COST_PINCODE", status: 400 });
+  }
+  const statusInput = String(firstDefined(input, ["ss", "status", "shipmentStatus"]) || "").trim().toLowerCase();
+  const status = new Map([["delivered", "Delivered"], ["rto", "RTO"], ["dto", "DTO"]]).get(statusInput);
+  if (!status) {
+    throw new DelhiveryError("Shipment status must be Delivered, RTO or DTO.", { code: "INVALID_SHIPPING_STATUS", status: 400 });
+  }
+  const paymentInput = String(firstDefined(input, ["pt", "payment", "paymentType"]) || "").trim().toLowerCase();
+  const paymentType = new Map([["prepaid", "Pre-paid"], ["pre-paid", "Pre-paid"], ["cod", "COD"]]).get(paymentInput);
+  if (!paymentType) {
+    throw new DelhiveryError("Payment type must be Pre-paid or COD.", { code: "INVALID_SHIPPING_PAYMENT", status: 400 });
+  }
+  const packageTypeInput = firstDefined(input, ["ipkg_type", "packageType", "package_type"]);
+  const packageType = packageTypeInput === undefined || packageTypeInput === null || packageTypeInput === ""
+    ? undefined
+    : String(packageTypeInput).trim().toLowerCase();
+  if (packageType && !new Set(["box", "flyer"]).has(packageType)) {
+    throw new DelhiveryError("Package type must be box or flyer.", { code: "INVALID_PACKAGE_TYPE", status: 400 });
+  }
+  return {
+    md,
+    cgm: shippingCostInteger(firstDefined(input, ["cgm", "chargeableWeightGrams", "weightGrams"]), "Chargeable weight"),
+    o_pin: originPin,
+    d_pin: destinationPin,
+    ss: status,
+    pt: paymentType,
+    l: shippingCostInteger(firstDefined(input, ["l", "length", "lengthCm"]), "Length", { optional: true, positive: true }),
+    b: shippingCostInteger(firstDefined(input, ["b", "breadth", "width", "widthCm"]), "Breadth", { optional: true, positive: true }),
+    h: shippingCostInteger(firstDefined(input, ["h", "height", "heightCm"]), "Height", { optional: true, positive: true }),
+    ipkg_type: packageType,
+  };
+}
+
+function finiteShippingCostValue(record, keys) {
+  const value = firstDefined(record, keys);
+  if (value === undefined || value === null || value === "" || typeof value === "boolean") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+export function normalizeDelhiveryShippingCost(payload, request) {
+  const providerError = String(firstDefined(payload, ["error", "Error"]) || "").trim();
+  if (providerError) {
+    throw new DelhiveryError(providerError, { code: "DELHIVERY_SHIPPING_COST_REJECTED", status: 422 });
+  }
+  let records = [];
+  if (Array.isArray(payload)) records = payload;
+  else if (Array.isArray(payload?.data)) records = payload.data;
+  else if (payload?.data && typeof payload.data === "object") records = [payload.data];
+  else if (payload && typeof payload === "object") records = [payload];
+  const details = records.filter((record) => record && typeof record === "object");
+  if (!details.length) {
+    throw new DelhiveryError("Delhivery returned an invalid shipping-cost response.", { code: "DELHIVERY_INVALID_RESPONSE", status: 502 });
+  }
+  const primary = details[0];
+  const recordError = String(firstDefined(primary, ["error", "Error"]) || "").trim();
+  if (recordError) {
+    throw new DelhiveryError(recordError, { code: "DELHIVERY_SHIPPING_COST_REJECTED", status: 422 });
+  }
+  const estimatedAmount = finiteShippingCostValue(primary, ["total_amount", "totalAmount", "gross_amount", "grossAmount", "shipping_charge", "shippingCharge", "amount", "total"]);
+  const chargedWeightGrams = finiteShippingCostValue(primary, ["charged_weight", "chargedWeight", "chargeable_weight", "chargeableWeight", "cgm"]);
+  return {
+    provider: "delhivery",
+    currency: "INR",
+    estimatedAmount,
+    chargedWeightGrams,
+    zone: String(firstDefined(primary, ["zone", "Zone"]) || "").trim(),
+    mode: request.md,
+    modeOfTransport: request.md === "E" ? "Express" : "Surface",
+    originPin: request.o_pin,
+    destinationPin: request.d_pin,
+    shipmentStatus: request.ss,
+    paymentType: request.pt,
+    requestedWeightGrams: request.cgm,
+    dimensions: { length: request.l ?? null, breadth: request.b ?? null, height: request.h ?? null },
+    packageType: request.ipkg_type || "",
+    details,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
   const deliveryCodes = Array.isArray(payload?.delivery_codes) ? payload.delivery_codes : [];
   const wrapper = deliveryCodes[0];
@@ -756,6 +862,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredTrackingRateLimit, 750)
     : DEFAULT_TRACKING_RATE_LIMIT_REQUESTS;
   const trackingPath = validateProviderPath(process.env.DELHIVERY_TRACKING_PATH || "/api/v1/packages/json/", "DELHIVERY_TRACKING_PATH");
+  const configuredShippingCostRateLimit = Number(process.env.DELHIVERY_SHIPPING_COST_RATE_LIMIT_REQUESTS);
+  const shippingCostRateLimitRequests = Number.isInteger(configuredShippingCostRateLimit) && configuredShippingCostRateLimit > 0
+    ? Math.min(configuredShippingCostRateLimit, 50)
+    : DEFAULT_SHIPPING_COST_RATE_LIMIT_REQUESTS;
+  const configuredShippingCostTimeout = Number(process.env.DELHIVERY_SHIPPING_COST_TIMEOUT_MS);
+  const shippingCostTimeoutMs = Number.isInteger(configuredShippingCostTimeout) && configuredShippingCostTimeout > 0
+    ? Math.min(configuredShippingCostTimeout, 120000)
+    : DEFAULT_SHIPPING_COST_TIMEOUT_MS;
+  const shippingCostPath = validateProviderPath(process.env.DELHIVERY_SHIPPING_COST_PATH || "/api/kinko/v1/invoice/charges/.json", "DELHIVERY_SHIPPING_COST_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -808,10 +923,10 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     waybillCountWindow.count += count;
   }
 
-  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true, method = "GET", headers = {}, body } = {}) {
+  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true, method = "GET", headers = {}, body, requestTimeoutMs = timeoutMs } = {}) {
     consumeRateLimit(rateLimitKey, limit);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
 
     try {
       const response = await fetchImpl(endpoint, {
@@ -993,6 +1108,18 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryTracking(payload, request.waybills);
   }
 
+  async function fetchShippingCost(request) {
+    const endpoint = new URL(shippingCostPath, `${baseUrl}/`);
+    Object.entries(request).forEach(([key, value]) => {
+      if (value !== undefined) endpoint.searchParams.set(key, String(value));
+    });
+    const payload = await requestJson(endpoint, "shipping-cost", shippingCostRateLimitRequests, {
+      headers: { "Content-Type": "application/json" },
+      requestTimeoutMs: shippingCostTimeoutMs,
+    });
+    return normalizeDelhiveryShippingCost(payload, request);
+  }
+
   async function trackShipments(input) {
     ensureConfigured();
     const normalized = normalizeTrackingRequest(input);
@@ -1004,6 +1131,24 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
       .then((data) => {
         if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
         cache.set(cacheKey, { data, expiresAt: Date.now() + DEFAULT_TRACKING_CACHE_TTL_MS });
+        return data;
+      })
+      .finally(() => pending.delete(cacheKey));
+    pending.set(cacheKey, request);
+    return structuredClone(await request);
+  }
+
+  async function calculateShippingCost(input) {
+    ensureConfigured();
+    const normalized = normalizeShippingCostRequest(input);
+    const cacheKey = `shipping-cost:${JSON.stringify(normalized)}`;
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return structuredClone(cached.data);
+    if (pending.has(cacheKey)) return structuredClone(await pending.get(cacheKey));
+    const request = fetchShippingCost(normalized)
+      .then((data) => {
+        if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+        cache.set(cacheKey, { data, expiresAt: Date.now() + DEFAULT_CACHE_TTL_MS });
         return data;
       })
       .finally(() => pending.delete(cacheKey));
@@ -1094,5 +1239,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     cancelShipment,
     updateEwaybill,
     trackShipments,
+    calculateShippingCost,
   };
 }

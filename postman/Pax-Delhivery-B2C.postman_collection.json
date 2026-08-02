@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, waybill inventory, SPS/MPS manifestation and shipment editing. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -280,6 +280,21 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid transport mode is rejected locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_TRANSPORT_MODE');", "});"] } }]
     },
     {
+      "name": "Calculate shipping cost - Surface box",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipping-cost?md=S&cgm=1500&o_pin=122003&d_pin=136118&ss=Delivered&pt=Pre-paid&l=20&b=15&h=10&ipkg_type=box" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Shipping charge is normalized from the Delhivery invoice response', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.modeOfTransport).to.eql('Surface');", "  pm.expect(data.requestedWeightGrams).to.eql(1500);", "  pm.expect(data.chargedWeightGrams).to.eql(1500);", "  pm.expect(data.dimensions).to.eql({ length: 20, breadth: 15, height: 10 });", "  pm.expect(data.packageType).to.eql('box');", "  pm.expect(data.estimatedAmount).to.eql(160.48);", "  pm.expect(data.currency).to.eql('INR');", "});"] } }]
+    },
+    {
+      "name": "Reject invalid shipping cost status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipping-cost?md=S&cgm=1500&o_pin=122003&d_pin=136118&ss=Pending&pt=Pre-paid" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Unsupported shipment status is rejected before the provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_SHIPPING_STATUS');", "});"] } }]
+    },
+    {
+      "name": "Surface provider shipping cost rejection",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipping-cost?md=S&cgm=1500&o_pin=999996&d_pin=136118&ss=Delivered&pt=Pre-paid" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200 provider error is surfaced as a rejected quote', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('DELHIVERY_SHIPPING_COST_REJECTED');", "});"] } }]
+    },
+    {
       "name": "Admin login",
       "request": {
         "method": "POST",
@@ -465,6 +480,11 @@
       "name": "Admin Expected TAT - Express",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/expected-tat?origin_pin=122003&destination_pin=136118&mot=E&pdt=B2C" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives Express TAT', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.modeOfTransport).to.eql('Express');", "  pm.expect(data.tatDays).to.eql(2);", "});"] } }]
+    },
+    {
+      "name": "Admin calculate COD shipping cost - Express",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipping-cost?md=E&cgm=1000&o_pin=122003&d_pin=136118&ss=Delivered&pt=COD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives account-specific Express COD estimate', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.modeOfTransport).to.eql('Express');", "  pm.expect(data.paymentType).to.eql('COD');", "  pm.expect(data.estimatedAmount).to.eql(234.82);", "});"] } }]
     }
   ],
   "variable": [

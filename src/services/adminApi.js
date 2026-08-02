@@ -3,14 +3,15 @@ import { normalizeAdminDashboard, normalizeCustomer, normalizeShipment, unwrapAp
 
 const ADMIN_TOKEN_KEY = "pax-admin-token";
 const REQUEST_TIMEOUT = 8000;
+const SHIPPING_COST_REQUEST_TIMEOUT = 70000;
 
 function getToken() {
   return sessionStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 }
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = REQUEST_TIMEOUT) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   const token = getToken();
 
   try {
@@ -76,6 +77,15 @@ export async function getAdminExpectedTat({ originPin, destinationPin, mot, pdt 
   const query = new URLSearchParams({ originPin, destinationPin, mot, pdt });
   if (expectedPickupDate) query.set("expectedPickupDate", expectedPickupDate);
   return unwrapApiData(await request(`/api/admin/expected-tat?${query}`));
+}
+
+export async function getAdminShippingCost({ md, cgm, originPin, destinationPin, status = "Delivered", paymentType, length, breadth, height, packageType }) {
+  const query = new URLSearchParams({ md, cgm: String(cgm), o_pin: originPin, d_pin: destinationPin, ss: status, pt: paymentType });
+  if (length !== undefined && length !== "") query.set("l", String(length));
+  if (breadth !== undefined && breadth !== "") query.set("b", String(breadth));
+  if (height !== undefined && height !== "") query.set("h", String(height));
+  if (packageType) query.set("ipkg_type", packageType);
+  return unwrapApiData(await request(`/api/admin/shipping-cost?${query}`, {}, SHIPPING_COST_REQUEST_TIMEOUT));
 }
 
 export async function fetchDelhiveryWaybills(count) {

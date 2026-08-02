@@ -223,6 +223,40 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       }));
       return;
     }
+    if (request.method === "GET" && url.pathname === "/api/kinko/v1/invoice/charges/.json") {
+      const md = url.searchParams.get("md");
+      const cgm = Number(url.searchParams.get("cgm"));
+      const originPin = url.searchParams.get("o_pin");
+      const destinationPin = url.searchParams.get("d_pin");
+      const shipmentStatus = url.searchParams.get("ss");
+      const paymentType = url.searchParams.get("pt");
+      const packageType = url.searchParams.get("ipkg_type");
+      const dimensions = ["l", "b", "h"].map((key) => url.searchParams.has(key) ? Number(url.searchParams.get(key)) : null);
+      if (originPin === "999996" || !/^[1-9]\d{5}$/.test(String(originPin || ""))) {
+        response.end(JSON.stringify({ error: "Unable to process request for provided o_pin" }));
+        return;
+      }
+      if (!/^[1-9]\d{5}$/.test(String(destinationPin || "")) || !["S", "E"].includes(md)
+        || !Number.isSafeInteger(cgm) || cgm < 0 || !["Delivered", "RTO", "DTO"].includes(shipmentStatus)
+        || !["Pre-paid", "COD"].includes(paymentType) || (packageType && !["box", "flyer"].includes(packageType))
+        || dimensions.some((value) => value !== null && (!Number.isSafeInteger(value) || value < 1))) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: "Invalid shipping charge parameters" }));
+        return;
+      }
+      const freight = (md === "E" ? 150 : 100) + Math.ceil(cgm / 500) * 12;
+      const cod = paymentType === "COD" ? 25 : 0;
+      const serviceTax = Number(((freight + cod) * 0.18).toFixed(2));
+      response.end(JSON.stringify([{
+        zone: "D",
+        charged_weight: cgm,
+        charge_freight: freight,
+        charge_COD: cod,
+        tax_data: { service_tax: serviceTax },
+        total_amount: Number((freight + cod + serviceTax).toFixed(2)),
+      }]));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/dc/fetch/serviceability/pincode") {
       const pincode = url.searchParams.get("pincode");
       if (url.searchParams.get("product_type") !== "Heavy") {

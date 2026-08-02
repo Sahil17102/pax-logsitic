@@ -3,10 +3,11 @@ import { normalizeClientBootstrap, normalizeShipment, unwrapApiData } from "./ap
 
 const CLIENT_TOKEN_KEY = "pax-client-token";
 const REQUEST_TIMEOUT = 6000;
+const SHIPPING_COST_REQUEST_TIMEOUT = 70000;
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = REQUEST_TIMEOUT) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   const token = localStorage.getItem(CLIENT_TOKEN_KEY) || sessionStorage.getItem(CLIENT_TOKEN_KEY);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -86,6 +87,15 @@ export async function getClientExpectedTat({ originPin, destinationPin, mot, pdt
   const query = new URLSearchParams({ originPin, destinationPin, mot, pdt });
   if (expectedPickupDate) query.set("expectedPickupDate", expectedPickupDate);
   return unwrapApiData(await request(`/api/client/expected-tat?${query}`));
+}
+
+export async function getClientShippingCost({ md, cgm, originPin, destinationPin, status = "Delivered", paymentType, length, breadth, height, packageType }) {
+  const query = new URLSearchParams({ md, cgm: String(cgm), o_pin: originPin, d_pin: destinationPin, ss: status, pt: paymentType });
+  if (length !== undefined && length !== "") query.set("l", String(length));
+  if (breadth !== undefined && breadth !== "") query.set("b", String(breadth));
+  if (height !== undefined && height !== "") query.set("h", String(height));
+  if (packageType) query.set("ipkg_type", packageType);
+  return unwrapApiData(await request(`/api/client/shipping-cost?${query}`, {}, SHIPPING_COST_REQUEST_TIMEOUT));
 }
 
 export async function getClientBootstrap() {

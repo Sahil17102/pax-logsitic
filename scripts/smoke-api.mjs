@@ -74,6 +74,7 @@ try {
   const serviceability = await request("/api/client/serviceability/194103", { headers: authorization });
   const heavyServiceability = await request("/api/client/heavy-serviceability/400086", { headers: authorization });
   const expectedTat = await request("/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=S&pdt=B2C", { headers: authorization });
+  const shippingCost = await request("/api/client/shipping-cost?md=S&cgm=1500&o_pin=122003&d_pin=136118&ss=Delivered&pt=Pre-paid&l=20&b=15&h=10&ipkg_type=box", { headers: authorization });
   const created = await request("/api/client/shipments", {
     method: "POST",
     headers: { ...authorization, "Content-Type": "application/json" },
@@ -150,6 +151,8 @@ try {
   assert.equal(heavyServiceability.data.serviceable, true);
   assert.equal(expectedTat.data.tatDays, 3);
   assert.equal(expectedTat.data.modeOfTransport, "Surface");
+  assert.equal(shippingCost.data.estimatedAmount, 160.48);
+  assert.equal(shippingCost.data.chargedWeightGrams, 1500);
   assert.equal(adminExpectedTat.data.tatDays, 2);
   assert.equal(fetchedWaybills.data.storedCount, 3);
   assert.equal(fetchedWaybills.data.duplicateCount, 0);
@@ -194,6 +197,7 @@ try {
     delhiveryHeavyServiceable: heavyServiceability.data.serviceable,
     expectedTatDays: expectedTat.data.tatDays,
     adminExpectedTatDays: adminExpectedTat.data.tatDays,
+    estimatedShippingCost: shippingCost.data.estimatedAmount,
     storedWaybills: inventoryAfterSingle.data.summary.stored,
     duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
     singleWaybillStored: singleWaybill.data.storedCount,

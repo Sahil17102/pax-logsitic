@@ -6,6 +6,7 @@ import {
   getAdminExpectedTat,
   getAdminHeavyServiceability,
   getAdminServiceability,
+  getAdminShippingCost,
   getAdminDashboard,
   getDelhiveryWaybills,
   hasAdminToken,
@@ -464,22 +465,34 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, contro
       return;
     }
     try {
-      const tat = await getAdminExpectedTat({ originPin: rate.pickup, destinationPin: rate.delivery, mot: rate.mot, pdt: "B2C" });
+      const [tat, shippingCost] = await Promise.all([
+        getAdminExpectedTat({ originPin: rate.pickup, destinationPin: rate.delivery, mot: rate.mot, pdt: "B2C" }),
+        getAdminShippingCost({
+          md: rate.mot,
+          cgm: Math.ceil(weight * 1000),
+          originPin: rate.pickup,
+          destinationPin: rate.delivery,
+          status: "Delivered",
+          paymentType: rate.payment === "COD" ? "COD" : "Pre-paid",
+        }),
+      ]);
       if (!tat.serviceable || tat.tatDays === null) {
         setRateResult({ error: tat.remark || "Delhivery could not provide an expected TAT for this lane." });
         return;
       }
-      const sameRegion = rate.pickup[0] === rate.delivery[0];
-      const base = (sameRegion ? 78 : 128) + Math.ceil(weight * 31) + (rate.payment === "COD" ? 45 : 0);
-      setRateResult({ standard: base, express: Math.round(base * 1.48), tat });
+      if (!Number.isFinite(shippingCost.estimatedAmount)) {
+        setRateResult({ error: "Delhivery did not return an estimated charge for this lane." });
+        return;
+      }
+      setRateResult({ amount: shippingCost.estimatedAmount, shippingCost, tat });
     } catch (error) {
-      setRateResult({ error: error.message || "Delhivery expected TAT could not be loaded." });
+      setRateResult({ error: error.message || "Delhivery shipping cost could not be loaded." });
     }
   };
 
   if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={checkPinServiceability}><p>DELHIVERY PIN CODE CHECK</p><h2>Check and control serviceability</h2><label>Product type<select value={serviceProductType} onChange={(event) => { setServiceProductType(event.target.value); setPinResult(null); }}><option>Parcel</option><option>Heavy</option></select></label><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check live coverage</button><div className="admin-service-toggles">{[["standard", "Standard"], ["express", "Express"], ["cod", "COD"]].map(([key, label]) => <button className={controlState.settings.serviceability[key] ? "is-on" : ""} type="button" key={key} onClick={() => toggleService(key)}><i></i><span>{label}</span></button>)}</div></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view live Delhivery parcel or Heavy delivery availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>{pinResult.productType || "Parcel"} · PIN {pin} · {pinResult.stateCode || pinResult.district || "Delhivery"}</span><h2>{pinResult.serviceable ? "Serviceable" : pinResult.embargoed ? "Temporary embargo" : "Not serviceable"}</h2><ul><li><b>Standard delivery</b><StatusBadge status={controlState.settings.serviceability.standard && pinResult.serviceable ? "Active" : "Disabled"} /></li><li><b>Prepaid delivery</b><StatusBadge status={pinResult.prepaid ? "Active" : "Disabled"} /></li><li><b>Cash on delivery</b><StatusBadge status={controlState.settings.serviceability.cod && pinResult.cod ? "Active" : "Disabled"} /></li></ul></>}</div></section>;
 
-  if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={calculateAdminRate}><p>SHIPPING RATE &amp; TAT TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Transport<select value={rate.mot} onChange={(event) => setRate({ ...rate, mot: event.target.value })}><option value="S">Surface</option><option value="E">Express</option><option value="N">Next Day Delivery</option></select></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate &amp; TAT</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer charges and live Delhivery TAT.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>ESTIMATED CUSTOMER RATE</span><h2>{formatMoney(rateResult.standard)}</h2><ul><li><b>Expected TAT</b><strong>{rateResult.tat.tatDays} {rateResult.tat.tatDays === 1 ? "day" : "days"}</strong></li>{rateResult.tat.expectedDeliveryDate && <li><b>Expected delivery</b><span>{rateResult.tat.expectedDeliveryDate}</span></li>}<li><b>Pax Standard</b><strong>{formatMoney(rateResult.standard)}</strong></li><li><b>Pax Express</b><strong>{formatMoney(rateResult.express)}</strong></li><li><b>GST</b><span>Calculated at checkout</span></li></ul></>}</div></section>;
+  if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={calculateAdminRate}><p>SHIPPING RATE &amp; TAT TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Transport<select value={rate.mot} onChange={(event) => setRate({ ...rate, mot: event.target.value })}><option value="S">Surface</option><option value="E">Express</option></select></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate &amp; TAT</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer charges and live Delhivery TAT.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>DELHIVERY ESTIMATED RATE</span><h2>{formatMoney(rateResult.amount)}</h2><ul><li><b>Expected TAT</b><strong>{rateResult.tat.tatDays} {rateResult.tat.tatDays === 1 ? "day" : "days"}</strong></li>{rateResult.tat.expectedDeliveryDate && <li><b>Expected delivery</b><span>{rateResult.tat.expectedDeliveryDate}</span></li>}<li><b>Mode</b><strong>{rateResult.shippingCost.modeOfTransport}</strong></li><li><b>Charged weight</b><span>{rateResult.shippingCost.chargedWeightGrams ?? rateResult.shippingCost.requestedWeightGrams} g</span></li><li><b>GST</b><span>Provider estimate; final invoice may vary</span></li></ul></>}</div></section>;
 
   if (page === "tracking") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const found = shipments.find((item) => item.id.toLowerCase() === trackingId.trim().toLowerCase()); setTrackingResult(found || { error: "No matching order found." }); }}><p>LIVE ORDER LOOKUP</p><h2>Track an order</h2><label>Pax reference<input value={trackingId} onChange={(event) => setTrackingId(event.target.value.toUpperCase())} placeholder="PAX shipment reference" /></label><button type="submit">Track order</button></form><div className="admin-card admin-tool-result">{!trackingResult ? <p>Search a Pax reference to inspect its current milestone.</p> : trackingResult.error ? <p className="is-error">{trackingResult.error}</p> : <><span>{trackingResult.id}</span><h2>{trackingResult.customer}</h2><ul><li><b>Destination</b><span>{trackingResult.destination}</span></li><li><b>Payment</b><span>{trackingResult.payment}</span></li><li><b>Latest status</b><StatusBadge status={trackingResult.status} /></li></ul></>}</div></section>;
 

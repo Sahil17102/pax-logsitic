@@ -610,12 +610,19 @@ async function handleExpectedTat(request, response) {
   response.json({ data });
 }
 
+async function handleShippingCost(request, response) {
+  const data = await delhivery.calculateShippingCost(request.query);
+  response.json({ data });
+}
+
 app.get("/api/admin/serviceability/:pincode", requireRole("admin"), handleServiceability);
 app.get("/api/client/serviceability/:pincode", requireRole("customer"), handleServiceability);
 app.get("/api/admin/heavy-serviceability/:pincode", requireRole("admin"), handleHeavyServiceability);
 app.get("/api/client/heavy-serviceability/:pincode", requireRole("customer"), handleHeavyServiceability);
 app.get("/api/admin/expected-tat", requireRole("admin"), handleExpectedTat);
 app.get("/api/client/expected-tat", requireRole("customer"), handleExpectedTat);
+app.get("/api/admin/shipping-cost", requireRole("admin"), handleShippingCost);
+app.get("/api/client/shipping-cost", requireRole("customer"), handleShippingCost);
 
 app.post("/api/admin/delhivery/waybills/fetch", requireRole("admin"), async (request, response) => {
   const fetched = await delhivery.fetchWaybills(request.body?.count);
