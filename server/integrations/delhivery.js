@@ -95,6 +95,98 @@ function requiredText(value, field) {
   return normalized;
 }
 
+function qcText(value, field, { required = false, maxLength = 500 } = {}) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if ((required && !normalized) || normalized.length > maxLength || /[\u0000-\u001F\u007F]/.test(normalized)) {
+    throw new DelhiveryError(`${field} ${required ? "is required and " : ""}must be at most ${maxLength} characters.`, { code: "INVALID_RVP_QC", status: 400 });
+  }
+  return normalized || undefined;
+}
+
+function qcList(value, field, { allowEmptyValues = false, maxItems = 20, maxLength = 500 } = {}) {
+  const source = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  const values = source.map((item) => String(item ?? "").trim());
+  if (!values.length || values.length > maxItems || values.some((item) => item.length > maxLength) || (!allowEmptyValues && values.some((item) => !item))) {
+    throw new DelhiveryError(`${field} must contain between 1 and ${maxItems} values.`, { code: "INVALID_RVP_QC", status: 400 });
+  }
+  return values;
+}
+
+function qcImageList(value, field, { required = false } = {}) {
+  if ((value === undefined || value === null || value === "") && !required) return undefined;
+  const images = qcList(value, field, { maxLength: 2048 });
+  if (images.some((image) => {
+    try {
+      const url = new URL(image);
+      return !["http:", "https:"].includes(url.protocol);
+    } catch {
+      return true;
+    }
+  })) {
+    throw new DelhiveryError(`${field} must contain valid HTTP(S) image URLs.`, { code: "INVALID_RVP_QC_IMAGE", status: 400 });
+  }
+  return images;
+}
+
+export function normalizeDelhiveryCustomQc(input) {
+  if (!Array.isArray(input) || !input.length || input.length > 2) {
+    throw new DelhiveryError("RVP QC requires one or two items.", { code: "INVALID_RVP_QC_ITEMS", status: 400 });
+  }
+  return input.map((item, itemIndex) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new DelhiveryError(`RVP QC item ${itemIndex + 1} must be an object.`, { code: "INVALID_RVP_QC", status: 400 });
+    }
+    if (!Array.isArray(item.questions) || !item.questions.length || item.questions.length > 6) {
+      throw new DelhiveryError(`RVP QC item ${itemIndex + 1} requires between one and six questions.`, { code: "INVALID_RVP_QC_QUESTIONS", status: 400 });
+    }
+    const quantity = item.quantity === undefined || item.quantity === null || item.quantity === "" ? 1 : Number(item.quantity);
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
+      throw new DelhiveryError(`RVP QC item ${itemIndex + 1} requires a positive integer quantity.`, { code: "INVALID_RVP_QC_QUANTITY", status: 400 });
+    }
+    const questions = item.questions.map((question, questionIndex) => {
+      if (!question || typeof question !== "object" || Array.isArray(question)) {
+        throw new DelhiveryError(`RVP QC question ${questionIndex + 1} must be an object.`, { code: "INVALID_RVP_QC", status: 400 });
+      }
+      const questionId = qcText(firstDefined(question, ["questions_id", "questionId"]), `RVP QC question ${questionIndex + 1} ID`, { required: true, maxLength: 100 });
+      const type = String(question.type || "").trim().toLowerCase();
+      if (!["varchar", "multi"].includes(type)) {
+        throw new DelhiveryError("RVP QC question type must be varchar or multi.", { code: "INVALID_RVP_QC_TYPE", status: 400 });
+      }
+      if (typeof question.required !== "boolean") {
+        throw new DelhiveryError("RVP QC question required must be a boolean.", { code: "INVALID_RVP_QC_REQUIRED", status: 400 });
+      }
+      const options = qcList(question.options, `RVP QC question ${questionIndex + 1} options`, { allowEmptyValues: type === "varchar" });
+      const value = qcList(question.value, `RVP QC question ${questionIndex + 1} correct value`);
+      const questionImages = qcImageList(firstDefined(question, ["ques_images", "questionImages"]), `RVP QC question ${questionIndex + 1} images`);
+      if (type === "multi" && !options.includes(value[0])) {
+        throw new DelhiveryError("The first correct value for a multi-select QC question must be one of its options.", { code: "INVALID_RVP_QC_VALUE", status: 400 });
+      }
+      return {
+        questions_id: questionId,
+        options,
+        value,
+        required: question.required,
+        type,
+        ...(questionImages ? { ques_images: questionImages } : {}),
+      };
+    });
+    const itemName = qcText(item.item, `RVP QC item ${itemIndex + 1} name`, { maxLength: 200 });
+    const returnReason = qcText(firstDefined(item, ["return_reason", "returnReason"]), `RVP QC item ${itemIndex + 1} return reason`, { maxLength: 300 });
+    const brand = qcText(item.brand, `RVP QC item ${itemIndex + 1} brand`, { maxLength: 200 });
+    const productCategory = qcText(firstDefined(item, ["product_category", "productCategory"]), `RVP QC item ${itemIndex + 1} product category`, { maxLength: 200 });
+    return {
+      ...(itemName ? { item: itemName } : {}),
+      description: qcText(item.description, `RVP QC item ${itemIndex + 1} description`, { required: true }),
+      images: qcImageList(item.images, `RVP QC item ${itemIndex + 1} images`, { required: true }),
+      ...(returnReason ? { return_reason: returnReason } : {}),
+      quantity,
+      ...(brand ? { brand } : {}),
+      ...(productCategory ? { product_category: productCategory } : {}),
+      questions,
+    };
+  });
+}
+
 export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, shipments, masterWaybill, mpsAmount }) {
   const warehouse = requiredText(pickupLocation, "Pickup location");
   const client = requiredText(clientName, "Delhivery client name");
@@ -148,6 +240,14 @@ export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, ship
     if (Number.isFinite(totalAmount) && totalAmount >= 50000 && !String(shipment.ewbn || "").trim()) {
       throw new DelhiveryError("An e-waybill number is required when the shipment value is at least INR 50,000.", { code: "EWAYBILL_REQUIRED", status: 400 });
     }
+    const customQcInput = firstDefined(shipment, ["customQc", "custom_qc"]);
+    const customQc = customQcInput === undefined ? undefined : normalizeDelhiveryCustomQc(customQcInput);
+    if (customQc && paymentMode !== "Pickup") {
+      throw new DelhiveryError("RVP QC 3.0 can only be used with a reverse Pickup shipment.", { code: "RVP_QC_REQUIRES_PICKUP", status: 400 });
+    }
+    if (customQc && shipment.qcType !== undefined && String(shipment.qcType).trim().toLowerCase() !== "param") {
+      throw new DelhiveryError("RVP QC type must be param.", { code: "INVALID_RVP_QC_TYPE", status: 400 });
+    }
     const providerShipment = {
       name: requiredText(shipment.name, "Consignee name"),
       order: requiredText(shipment.order, "Order ID"),
@@ -185,6 +285,8 @@ export function buildDelhiveryShipmentPayload({ pickupLocation, clientName, ship
       plastic_packaging: optionalValue(shipment.plasticPackaging),
       quantity: optionalValue(shipment.quantity),
       transport_speed: optionalValue(transportSpeed),
+      qc_type: customQc ? "param" : undefined,
+      custom_qc: customQc,
     };
     return Object.fromEntries(Object.entries(providerShipment).filter(([, value]) => value !== undefined));
   });
@@ -1129,6 +1231,10 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   const manifestRateLimitRequests = Number.isInteger(configuredManifestRateLimit) && configuredManifestRateLimit > 0
     ? Math.min(configuredManifestRateLimit, 20000)
     : DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS;
+  const mappedRvpQcQuestionIds = new Set(String(process.env.DELHIVERY_RVP_QC_QUESTION_IDS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean));
   const manifestPath = validateProviderPath(process.env.DELHIVERY_MANIFEST_PATH || "/api/cmu/create.json", "DELHIVERY_MANIFEST_PATH");
   const configuredEditRateLimit = Number(process.env.DELHIVERY_EDIT_RATE_LIMIT_REQUESTS);
   const editRateLimitRequests = Number.isInteger(configuredEditRateLimit) && configuredEditRateLimit > 0
@@ -1370,6 +1476,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   async function createShipment(input) {
     ensureConfigured();
     const manifest = buildDelhiveryShipmentPayload(input);
+    const qcQuestionIds = manifest.shipments.flatMap((shipment) => (shipment.custom_qc || [])
+      .flatMap((item) => item.questions.map((question) => question.questions_id)));
+    if (qcQuestionIds.length && !mappedRvpQcQuestionIds.size) {
+      throw new DelhiveryError("Delhivery RVP QC question mapping is not configured for this account.", { code: "DELHIVERY_RVP_QC_MAPPING_NOT_CONFIGURED", status: 503 });
+    }
+    const unmappedQuestionIds = [...new Set(qcQuestionIds.filter((questionId) => !mappedRvpQcQuestionIds.has(questionId)))];
+    if (unmappedQuestionIds.length) {
+      throw new DelhiveryError(`Unmapped RVP QC question IDs: ${unmappedQuestionIds.join(", ")}.`, { code: "UNMAPPED_RVP_QC_QUESTION", status: 400 });
+    }
     const endpoint = new URL(manifestPath, `${baseUrl}/`);
     const multiPiece = manifest.shipments.length > 1;
     const form = multiPiece ? null : new URLSearchParams({ format: "json", data: JSON.stringify(manifest) });

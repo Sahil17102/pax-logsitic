@@ -17,6 +17,7 @@ const api = spawn(process.execPath, ["server/index.js"], {
     DELHIVERY_ALLOW_INSECURE_HTTP: "true",
     DELHIVERY_PICKUP_LOCATION: "Pax Test Warehouse",
     DELHIVERY_CLIENT_NAME: "Pax Test Client",
+    DELHIVERY_RVP_QC_QUESTION_IDS: "serial_check,color_check,seal_check",
   },
   stdio: ["ignore", "inherit", "inherit"],
 });

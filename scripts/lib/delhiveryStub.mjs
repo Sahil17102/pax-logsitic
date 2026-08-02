@@ -7,6 +7,22 @@ const SERVICEABILITY_FIXTURES = {
   "500029": { pin: 500029, cod: "N", pre_paid: "Y", pickup: "Y", reverse_pickup: "Y", remarks: "", district: "Hyderabad", state_code: "TS" },
 };
 
+function isValidRvpQcShipment(shipment) {
+  if (shipment.qc_type === undefined && shipment.custom_qc === undefined) return true;
+  if (shipment.payment_mode !== "Pickup" || shipment.qc_type !== "param" || !Array.isArray(shipment.custom_qc)
+    || !shipment.custom_qc.length || shipment.custom_qc.length > 2) return false;
+  return shipment.custom_qc.every((item) => String(item.description || "").trim()
+    && Array.isArray(item.images) && item.images.length
+    && Number.isSafeInteger(item.quantity) && item.quantity >= 1
+    && Array.isArray(item.questions) && item.questions.length >= 1 && item.questions.length <= 6
+    && item.questions.every((question) => ["serial_check", "color_check", "seal_check"].includes(question.questions_id)
+      && ["varchar", "multi"].includes(question.type)
+      && typeof question.required === "boolean"
+      && Array.isArray(question.options) && question.options.length
+      && Array.isArray(question.value) && question.value.length && String(question.value[0]).trim()
+      && (question.type !== "multi" || question.options.includes(question.value[0]))));
+}
+
 export async function startDelhiveryStub(port, token = "postman-delhivery-token") {
   let manifestSequence = 0;
   const manifestedOrders = new Set();
@@ -292,7 +308,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         return;
       }
       const packages = manifest.shipments.map((shipment) => {
-        if (shipment.name === "Reject Manifest" || shipment.client !== "Pax Test Client" || manifestedOrders.has(`${shipment.order}:${shipment.waybill || "dynamic"}`)) {
+        if (shipment.name === "Reject Manifest" || shipment.client !== "Pax Test Client" || !isValidRvpQcShipment(shipment) || manifestedOrders.has(`${shipment.order}:${shipment.waybill || "dynamic"}`)) {
           return { status: "Failure", remarks: "Invalid client or duplicate order", refnum: shipment.order };
         }
         manifestedOrders.add(`${shipment.order}:${shipment.waybill || "dynamic"}`);

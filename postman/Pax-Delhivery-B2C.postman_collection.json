@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, client warehouse registration/update, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -185,6 +185,36 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Reverse Pickup flow is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.packageCount).to.eql(1);", "  pm.collectionVariables.set('reverseShipmentId', data.id);", "  pm.collectionVariables.set('reverseWaybill', data.waybill);", "});"] } }]
     },
     {
+      "name": "Create RVP QC 3.0 reverse pickup",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"QC Return Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Consignee pickup address\",\n  \"city\": \"Leh\",\n  \"state\": \"Ladakh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"productsDescription\": \"Returned mobile and retail box\",\n  \"quantity\": 1,\n  \"amount\": 800,\n  \"customQc\": [\n    {\n      \"item\": \"Mobile\",\n      \"description\": \"Mi Note Pro\",\n      \"images\": [\"https://images.example.com/mobile.jpg\"],\n      \"returnReason\": \"Damaged\",\n      \"quantity\": 1,\n      \"brand\": \"Mi\",\n      \"productCategory\": \"mobile\",\n      \"questions\": [\n        { \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"SN12345\"], \"required\": true, \"type\": \"varchar\", \"questionImages\": [\"https://images.example.com/serial.jpg\"] },\n        { \"questionId\": \"color_check\", \"options\": [\"Black\", \"Other\"], \"value\": [\"Black\"], \"required\": false, \"type\": \"multi\" }\n      ]\n    },\n    {\n      \"description\": \"Retail box\",\n      \"images\": [\"https://images.example.com/box.jpg\"],\n      \"questions\": [\n        { \"questionId\": \"seal_check\", \"options\": [\"Intact\", \"Broken\"], \"value\": [\"Intact\"], \"required\": true, \"type\": \"multi\" }\n      ]\n    }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Parametric QC is manifested with both items and mapped questions', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.qualityCheck).to.eql({ type: 'param', itemCount: 2, questionCount: 3, status: 'Pending doorstep QC' });", "  pm.collectionVariables.set('rvpQcShipmentId', data.id);", "});"] } }]
+    },
+    {
+      "name": "Public RVP QC tracking privacy",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/tracking/{{rvpQcShipmentId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking does not expose doorstep QC configuration', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data).not.to.have.property('qualityCheck');", "});"] } }]
+    },
+    {
+      "name": "Reject RVP QC on forward shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Invalid QC Flow\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Forward address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Prepaid\",\n  \"customQc\": [{ \"description\": \"Mobile\", \"images\": [\"https://images.example.com/mobile.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"SN12345\"], \"required\": true, \"type\": \"varchar\" }] }]\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('QC is restricted to reverse Pickup shipments', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('RVP_QC_REQUIRES_PICKUP');", "});"] } }]
+    },
+    {
+      "name": "Reject RVP QC item limit",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Too Many QC Items\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Pickup address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"customQc\": [\n    { \"description\": \"One\", \"images\": [\"https://images.example.com/1.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"1\"], \"required\": true, \"type\": \"varchar\" }] },\n    { \"description\": \"Two\", \"images\": [\"https://images.example.com/2.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"2\"], \"required\": true, \"type\": \"varchar\" }] },\n    { \"description\": \"Three\", \"images\": [\"https://images.example.com/3.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"3\"], \"required\": true, \"type\": \"varchar\" }] }\n  ]\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('More than two QC items are rejected instead of silently becoming non-QC', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_RVP_QC_ITEMS');", "});"] } }]
+    },
+    {
+      "name": "Reject unmapped RVP QC question",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Unmapped QC Question\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Pickup address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"customQc\": [{ \"description\": \"Mobile\", \"images\": [\"https://images.example.com/mobile.jpg\"], \"questions\": [{ \"questionId\": \"not_mapped_by_delhivery\", \"options\": [\"Yes\", \"No\"], \"value\": [\"Yes\"], \"required\": true, \"type\": \"multi\" }] }]\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only question IDs mapped by Delhivery can be manifested', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('UNMAPPED_RVP_QC_QUESTION');", "});"] } }]
+    },
+    {
       "name": "Create replacement shipment",
       "request": {
         "method": "POST",
@@ -295,7 +325,7 @@
     {
       "name": "Verify only manifested shipments were saved",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/bootstrap" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(5);", "  pm.expect(shipments.every((item) => ['Manifested', 'Pickup scheduled'].includes(item.status))).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(6);", "  pm.expect(shipments.every((item) => ['Manifested', 'Pickup scheduled'].includes(item.status))).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
     },
     {
       "name": "Reject MPS with unprefetched waybills",

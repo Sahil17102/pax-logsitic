@@ -18,6 +18,7 @@ const server = spawn(process.execPath, ["server/index.js"], {
     DELHIVERY_ALLOW_INSECURE_HTTP: "true",
     DELHIVERY_PICKUP_LOCATION: "Pax Test Warehouse",
     DELHIVERY_CLIENT_NAME: "Pax Test Client",
+    DELHIVERY_RVP_QC_QUESTION_IDS: "serial_check,color_check,seal_check",
   },
   stdio: "ignore",
 });
@@ -97,7 +98,41 @@ try {
     headers: { ...authorization, "Content-Type": "application/json" },
     body: JSON.stringify({ pickup_date: pickupDate, pickup_time: "11:00:00", expected_package_count: 1 }),
   });
+  const rvpQcShipment = await request("/api/client/shipments", {
+    method: "POST",
+    headers: { ...authorization, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer: "QC Return Customer",
+      phone: "9123456789",
+      address: "Consignee pickup address",
+      city: "Leh",
+      pincode: "194103",
+      weight: 1,
+      paymentMode: "Pickup",
+      returnAddress: "Pax return centre",
+      returnCity: "Hyderabad",
+      returnState: "Telangana",
+      returnPincode: "500029",
+      productsDescription: "Returned mobile",
+      quantity: 1,
+      amount: 800,
+      customQc: [{
+        item: "Mobile",
+        description: "Mi Note Pro",
+        images: ["https://images.example.com/mobile.jpg"],
+        returnReason: "Damaged",
+        quantity: 1,
+        brand: "Mi",
+        productCategory: "mobile",
+        questions: [
+          { questionId: "serial_check", options: [""], value: ["SN12345"], required: true, type: "varchar" },
+          { questionId: "color_check", options: ["Black", "Other"], value: ["Black"], required: false, type: "multi" },
+        ],
+      }],
+    }),
+  });
   const tracked = await request(`/api/tracking/${created.data.id}`);
+  const publicRvpQcTracking = await request(`/api/tracking/${rvpQcShipment.data.id}`);
   const after = await request("/api/client/bootstrap", { headers: authorization });
   const secondRegister = await request("/api/client/users", {
     method: "POST",
@@ -213,10 +248,13 @@ try {
   assert.ok(passwordByPhone.token);
   assert.match(otpRequest.data.previewCode, /^\d{6}$/);
   assert.ok(otpLogin.token);
-  assert.equal(after.data.shipments.length, 1);
+  assert.equal(after.data.shipments.length, 2);
   assert.equal(created.data.status, "Manifested");
   assert.match(created.data.waybill, /^\d{8,20}$/);
   assert.equal(created.data.packageCount, 1);
+  assert.equal(rvpQcShipment.data.payment, "Pickup");
+  assert.deepEqual(rvpQcShipment.data.qualityCheck, { type: "param", itemCount: 1, questionCount: 2, status: "Pending doorstep QC" });
+  assert.equal(Object.hasOwn(publicRvpQcTracking.data, "qualityCheck"), false);
   assert.equal(shippingLabel.data.format, "pdf");
   assert.match(shippingLabel.data.downloadUrl, /^https:\/\/labels\.test\.delhivery\.local\//);
   assert.equal(pickupRequest.data.status, "Scheduled");
@@ -225,7 +263,7 @@ try {
   assert.equal(after.data.pickupRequests.length, 1);
   assert.equal(secondBootstrap.data.pickupRequests.length, 0);
   assert.equal(secondBootstrap.data.shipments.length, 0);
-  assert.equal(dashboard.data.shipments.length, 1);
+  assert.equal(dashboard.data.shipments.length, 2);
   assert.equal(dashboard.data.customers.length, 2);
   assert.deepEqual(dashboard.data.customers.map((customer) => customer.name).sort(), ["API Test User", "Second API User"]);
   assert.equal(dashboard.data.customers.some((customer) => ["CUS-1048", "CUS-1042", "CUS-1039", "CUS-1033"].includes(customer.id)), false);
@@ -243,6 +281,7 @@ try {
     otpLogin: Boolean(otpLogin.token),
     createdId: created.data.id,
     trackedStatus: tracked.data.status,
+    rvpQcQuestions: rvpQcShipment.data.qualityCheck.questionCount,
     adminShipments: dashboard.data.shipments.length,
     adminCustomers: dashboard.data.customers.length,
     secondCustomerShipments: secondBootstrap.data.shipments.length,

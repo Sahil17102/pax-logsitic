@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, buildDelhiveryWarehousePayload, buildDelhiveryWarehouseUpdatePayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryPickupRequest, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryShippingCost, normalizeDelhiveryShippingLabel, normalizeDelhiveryTracking, normalizeDelhiveryWarehouseCreation, normalizeDelhiveryWarehouseUpdate, normalizeDelhiveryWaybills, normalizePickupRequest, normalizeShippingCostRequest, normalizeShippingLabelRequest } from "../server/integrations/delhivery.js";
+import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, buildDelhiveryWarehousePayload, buildDelhiveryWarehouseUpdatePayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryCustomQc, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryPickupRequest, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryShippingCost, normalizeDelhiveryShippingLabel, normalizeDelhiveryTracking, normalizeDelhiveryWarehouseCreation, normalizeDelhiveryWarehouseUpdate, normalizeDelhiveryWaybills, normalizePickupRequest, normalizeShippingCostRequest, normalizeShippingLabelRequest } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
@@ -14,6 +14,27 @@ assert.equal(manifestPayload.pickup_location.name, "Pax Test Warehouse");
 assert.equal(manifestPayload.shipments[0].add, "House & Market #2");
 assert.equal(manifestPayload.shipments[0].payment_mode, "COD");
 assert.equal(manifestPayload.shipments[0].cod_amount, 999);
+const customQcInput = [
+  { item: "Mobile", description: "Mi Note Pro", images: ["https://images.example.com/mobile.jpg"], returnReason: "Damaged", quantity: 1, brand: "Mi", productCategory: "mobile", questions: [
+    { questionId: "serial_check", options: [""], value: ["SN12345"], required: true, type: "varchar", questionImages: ["https://images.example.com/serial.jpg"] },
+    { questionId: "color_check", options: ["Black", "Other"], value: ["Black"], required: false, type: "multi" },
+  ] },
+  { description: "Retail box", images: "https://images.example.com/box.jpg", questions: [
+    { questions_id: "seal_check", options: ["Intact", "Broken"], value: ["Intact"], required: true, type: "multi" },
+  ] },
+];
+const normalizedCustomQc = normalizeDelhiveryCustomQc(customQcInput);
+assert.equal(normalizedCustomQc.length, 2);
+assert.equal(normalizedCustomQc[0].questions[0].questions_id, "serial_check");
+assert.equal(normalizedCustomQc[1].quantity, 1);
+const rvpQcManifestInput = { ...manifestInput, shipments: [{ ...manifestInput.shipments[0], paymentMode: "Pickup", customQc: customQcInput }] };
+const rvpQcManifestPayload = buildDelhiveryShipmentPayload(rvpQcManifestInput);
+assert.equal(rvpQcManifestPayload.shipments[0].qc_type, "param");
+assert.deepEqual(rvpQcManifestPayload.shipments[0].custom_qc, normalizedCustomQc);
+assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [{ ...manifestInput.shipments[0], customQc: customQcInput }] }), (error) => error instanceof DelhiveryError && error.code === "RVP_QC_REQUIRES_PICKUP");
+assert.throws(() => normalizeDelhiveryCustomQc([...customQcInput, customQcInput[0]]), (error) => error instanceof DelhiveryError && error.code === "INVALID_RVP_QC_ITEMS");
+assert.throws(() => normalizeDelhiveryCustomQc([{ ...customQcInput[0], questions: Array.from({ length: 7 }, () => customQcInput[0].questions[0]) }]), (error) => error instanceof DelhiveryError && error.code === "INVALID_RVP_QC_QUESTIONS");
+assert.throws(() => normalizeDelhiveryCustomQc([{ ...customQcInput[0], questions: [{ ...customQcInput[0].questions[1], value: ["Blue"] }] }]), (error) => error instanceof DelhiveryError && error.code === "INVALID_RVP_QC_VALUE");
 assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [{ ...manifestInput.shipments[0], totalAmount: 50000 }] }), (error) => error instanceof DelhiveryError && error.code === "EWAYBILL_REQUIRED");
 assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [manifestInput.shipments[0], { ...manifestInput.shipments[0], order: "PAX-ORDER-2" }] }), (error) => error instanceof DelhiveryError && error.code === "MPS_WAYBILL_REQUIRED");
 assert.throws(() => buildDelhiveryShipmentPayload({ ...manifestInput, shipments: [{ ...manifestInput.shipments[0], waybill: "900000000001" }, { ...manifestInput.shipments[0], order: "PAX-ORDER-2", waybill: "900000000001" }] }), (error) => error instanceof DelhiveryError && error.code === "DUPLICATE_MPS_WAYBILL");
@@ -211,10 +232,12 @@ assert.throws(() => normalizeDelhiveryWarehouseUpdate({ success: false, error: "
 const originalToken = process.env.DELHIVERY_API_TOKEN;
 const originalBaseUrl = process.env.DELHIVERY_BASE_URL;
 const originalInsecure = process.env.DELHIVERY_ALLOW_INSECURE_HTTP;
+const originalRvpQcQuestionIds = process.env.DELHIVERY_RVP_QC_QUESTION_IDS;
 try {
   process.env.DELHIVERY_API_TOKEN = "test-token";
   process.env.DELHIVERY_BASE_URL = "http://127.0.0.1:9999";
   process.env.DELHIVERY_ALLOW_INSECURE_HTTP = "true";
+  process.env.DELHIVERY_RVP_QC_QUESTION_IDS = "serial_check,color_check,seal_check";
   let requestCount = 0;
   const client = createDelhiveryClient({
     fetchImpl: async (url, options) => {
@@ -333,7 +356,15 @@ try {
         assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded");
         const form = new URLSearchParams(options.body);
         assert.equal(form.get("format"), "json");
-        assert.deepEqual(JSON.parse(form.get("data")), manifestPayload);
+        const submittedManifest = JSON.parse(form.get("data"));
+        if (submittedManifest.shipments[0].qc_type === "param") {
+          assert.deepEqual(submittedManifest, rvpQcManifestPayload);
+          return new Response(JSON.stringify({ packages: [{ status: "Success", waybill: "920000000003", refnum: "PAX-ORDER-1" }], upload_wbn: "UP-QC" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        assert.deepEqual(submittedManifest, manifestPayload);
         return new Response(JSON.stringify({ packages: [{ status: "Success", waybill: "920000000001", refnum: "PAX-ORDER-1" }], upload_wbn: "UP-1" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -389,6 +420,9 @@ try {
   assert.equal(manifested.packages[0].waybill, "920000000001");
   const manifestedMps = await client.createShipment(mpsManifestInput);
   assert.equal(manifestedMps.packageCount, 2);
+  const manifestedRvpQc = await client.createShipment(rvpQcManifestInput);
+  assert.equal(manifestedRvpQc.packages[0].waybill, "920000000003");
+  await assert.rejects(() => client.createShipment({ ...rvpQcManifestInput, shipments: [{ ...rvpQcManifestInput.shipments[0], customQc: [{ ...customQcInput[0], questions: [{ ...customQcInput[0].questions[0], questionId: "unmapped_question" }] }] }] }), (error) => error instanceof DelhiveryError && error.code === "UNMAPPED_RVP_QC_QUESTION");
   const pdfLabel = await client.generateShippingLabel(pdfLabelRequest);
   assert.equal(pdfLabel.downloadUrl, "https://labels.test.delhivery.local/920000000001-4R.pdf");
   const jsonLabel = await client.generateShippingLabel(jsonLabelRequest);
@@ -413,7 +447,7 @@ try {
   const tracked = await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
   assert.equal(tracked.shipments[0].currentStatus.status, "In Transit");
   await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
-  assert.equal(requestCount, 17, "each Delhivery contract uses its independent provider request path and cache");
+  assert.equal(requestCount, 18, "each Delhivery contract uses its independent provider request path and cache");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -421,10 +455,14 @@ try {
   await assert.rejects(() => client.getExpectedTat({ ...tatRequest, expectedPickupDate: "2026-02-30" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_PICKUP_DATE");
   await assert.rejects(() => client.trackShipments({ waybills: Array.from({ length: 51 }, (_, index) => String(930000000000 + index)) }), (error) => error instanceof DelhiveryError && error.code === "INVALID_TRACKING_WAYBILLS");
   await assert.rejects(() => client.calculateShippingCost({ ...shippingCostRequest, ss: "Pending" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_SHIPPING_STATUS");
+  delete process.env.DELHIVERY_RVP_QC_QUESTION_IDS;
+  const missingMappingClient = createDelhiveryClient({ fetchImpl: async () => { throw new Error("Provider must not be called without QC mapping"); } });
+  await assert.rejects(() => missingMappingClient.createShipment(rvpQcManifestInput), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_RVP_QC_MAPPING_NOT_CONFIGURED");
 } finally {
   if (originalToken === undefined) delete process.env.DELHIVERY_API_TOKEN; else process.env.DELHIVERY_API_TOKEN = originalToken;
   if (originalBaseUrl === undefined) delete process.env.DELHIVERY_BASE_URL; else process.env.DELHIVERY_BASE_URL = originalBaseUrl;
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
+  if (originalRvpQcQuestionIds === undefined) delete process.env.DELHIVERY_RVP_QC_QUESTION_IDS; else process.env.DELHIVERY_RVP_QC_QUESTION_IDS = originalRvpQcQuestionIds;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, shippingCost: normalizedShippingCost.estimatedAmount, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, shippingCostVerified: true, shippingLabelVerified: true, pickupRequestVerified: true, warehouseCreationVerified: true, warehouseUpdateVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, shippingCost: normalizedShippingCost.estimatedAmount, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, rvpQcVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, shippingCostVerified: true, shippingLabelVerified: true, pickupRequestVerified: true, warehouseCreationVerified: true, warehouseUpdateVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));

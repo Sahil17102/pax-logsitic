@@ -9,7 +9,7 @@ import {
   readAppState,
   writeAppState,
 } from "./appState.js";
-import { createDelhiveryClient, DelhiveryError } from "./integrations/delhivery.js";
+import { createDelhiveryClient, DelhiveryError, normalizeDelhiveryCustomQc } from "./integrations/delhivery.js";
 import { hashPassword, passwordMatches } from "./passwords.js";
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -337,6 +337,8 @@ function manifestPiece(body, piece, user, orderId, paymentMode) {
     plasticPackaging: value("plasticPackaging"),
     quantity: value("quantity"),
     transportSpeed: value("transportSpeed"),
+    qcType: value("qcType", value("qc_type")),
+    customQc: value("customQc", value("custom_qc")),
   };
 }
 
@@ -1235,6 +1237,7 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
   const inputPieces = Array.isArray(body.pieces) && body.pieces.length ? body.pieces : [body];
   if (inputPieces.length > 100) return response.status(400).json({ code: "TOO_MANY_PIECES", message: "A multi-piece shipment cannot contain more than 100 boxes." });
   const providerPieces = inputPieces.map((piece) => manifestPiece(body, piece, user, id, payment));
+  const qcItems = providerPieces.flatMap((piece) => piece.customQc === undefined ? [] : normalizeDelhiveryCustomQc(piece.customQc));
   const mpsWaybills = inputPieces.length > 1 ? providerPieces.map((piece) => String(piece.waybill || "")) : [];
   if (mpsWaybills.length) await reserveMpsWaybills(mpsWaybills, id);
   let manifestation;
@@ -1247,7 +1250,9 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
       mpsAmount: payment === "COD" ? Number(body.codAmount ?? body.amount ?? 0) : 0,
     });
   } catch (error) {
-    if (mpsWaybills.length && Number(error?.status) < 500) {
+    const canReleaseReservedWaybills = Number(error?.status) < 500
+      || error?.code === "DELHIVERY_RVP_QC_MAPPING_NOT_CONFIGURED";
+    if (mpsWaybills.length && canReleaseReservedWaybills) {
       await releaseMpsWaybills(mpsWaybills, id).catch((releaseError) => console.error("Unable to release rejected MPS waybills:", releaseError.message));
     }
     throw error;
@@ -1281,6 +1286,12 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
       masterWaybill: String(body.masterWaybill || mpsWaybills[0]),
       mpsAmount: payment === "COD" ? Number(body.codAmount ?? body.amount ?? 0) : 0,
     } : {}),
+    ...(qcItems.length ? { qualityCheck: {
+      type: "param",
+      itemCount: qcItems.length,
+      questionCount: qcItems.reduce((count, item) => count + item.questions.length, 0),
+      status: "Pending doorstep QC",
+    } } : {}),
     providerStatus: "Manifested",
     manifestedAt: new Date().toISOString(),
     pickupLocation,
@@ -1317,6 +1328,7 @@ app.get("/api/tracking/:id", async (request, response) => {
     ewaybills,
     ewaybillUpdates,
     codAmount,
+    qualityCheck: _qualityCheck,
     ...publicShipment
   } = shipment;
   response.json({ data: { ...publicShipment, tracking } });

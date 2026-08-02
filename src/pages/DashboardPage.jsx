@@ -204,6 +204,36 @@ function indiaDateAfter(days = 0) {
   return new Date(Date.now() + (330 * 60 * 1000) + (days * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
 }
 
+function createEmptyQcQuestion() {
+  return { questionId: "", type: "multi", options: "", value: "", required: true, questionImages: "" };
+}
+
+function createEmptyQcItem() {
+  return { item: "", description: "", images: "", returnReason: "", quantity: "1", brand: "", productCategory: "", questions: [createEmptyQcQuestion()] };
+}
+
+function createEmptyShipmentForm() {
+  return {
+    customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", pickupLocation: "", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "", qcEnabled: false, customQc: [],
+  };
+}
+
+function RvpQcEditor({ items, onChange }) {
+  const updateItem = (itemIndex, changes) => onChange(items.map((item, index) => index === itemIndex ? { ...item, ...changes } : item));
+  const updateQuestion = (itemIndex, questionIndex, changes) => updateItem(itemIndex, {
+    questions: items[itemIndex].questions.map((question, index) => index === questionIndex ? { ...question, ...changes } : question),
+  });
+  return <section className="rvp-qc-editor span-two">
+    <div className="rvp-qc-heading"><div><strong>RVP QC 3.0 items</strong><small>Maximum 2 items and 6 mapped questions per item.</small></div><button type="button" disabled={items.length >= 2} onClick={() => onChange([...items, createEmptyQcItem()])}>Add QC item</button></div>
+    {items.map((item, itemIndex) => <article className="rvp-qc-item" key={`qc-item-${itemIndex}`}>
+      <div className="rvp-qc-heading"><strong>Item {itemIndex + 1}</strong>{items.length > 1 && <button type="button" onClick={() => onChange(items.filter((_, index) => index !== itemIndex))}>Remove</button>}</div>
+      <div className="rvp-qc-grid"><label>Item name<input value={item.item} onChange={(event) => updateItem(itemIndex, { item: event.target.value })} /></label><label>Description *<input value={item.description} onChange={(event) => updateItem(itemIndex, { description: event.target.value })} required /></label><label className="span-two">Item image URLs *<input value={item.images} onChange={(event) => updateItem(itemIndex, { images: event.target.value })} placeholder="Comma-separated HTTPS URLs" required /></label><label>Return reason<input value={item.returnReason} onChange={(event) => updateItem(itemIndex, { returnReason: event.target.value })} /></label><label>Quantity<input type="number" min="1" value={item.quantity} onChange={(event) => updateItem(itemIndex, { quantity: event.target.value })} /></label><label>Brand<input value={item.brand} onChange={(event) => updateItem(itemIndex, { brand: event.target.value })} /></label><label>Product category<input value={item.productCategory} onChange={(event) => updateItem(itemIndex, { productCategory: event.target.value })} /></label></div>
+      {item.questions.map((question, questionIndex) => <div className="rvp-qc-question" key={`qc-question-${questionIndex}`}><div className="rvp-qc-heading"><strong>Question {questionIndex + 1}</strong>{item.questions.length > 1 && <button type="button" onClick={() => updateItem(itemIndex, { questions: item.questions.filter((_, index) => index !== questionIndex) })}>Remove</button>}</div><div className="rvp-qc-grid"><label>Mapped client question ID *<input value={question.questionId} onChange={(event) => updateQuestion(itemIndex, questionIndex, { questionId: event.target.value })} required /></label><label>Answer type<select value={question.type} onChange={(event) => updateQuestion(itemIndex, questionIndex, { type: event.target.value })}><option value="multi">Select options</option><option value="varchar">Typed answer</option></select></label><label>Options *<input value={question.options} onChange={(event) => updateQuestion(itemIndex, questionIndex, { options: event.target.value })} placeholder={question.type === "multi" ? "Black, Other" : "Leave blank for typed answer"} /></label><label>Correct value *<input value={question.value} onChange={(event) => updateQuestion(itemIndex, questionIndex, { value: event.target.value })} required /></label><label className="span-two">Question image URLs<input value={question.questionImages} onChange={(event) => updateQuestion(itemIndex, questionIndex, { questionImages: event.target.value })} placeholder="Optional comma-separated URLs" /></label><label className="rvp-qc-required"><input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(itemIndex, questionIndex, { required: event.target.checked })} /> Answer affects the QC result</label></div></div>)}
+      <button className="rvp-qc-add-question" type="button" disabled={item.questions.length >= 6} onClick={() => updateItem(itemIndex, { questions: [...item.questions, createEmptyQcQuestion()] })}>Add question</button>
+    </article>)}
+  </section>;
+}
+
 function buildOverviewAnalytics(shipments, days, label) {
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
   const records = shipments.filter((shipment) => {
@@ -312,9 +342,7 @@ export default function DashboardPage() {
   const [generatedLabel, setGeneratedLabel] = useState(null);
   const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", pickupLocation: "", expectedPackageCount: "1" });
   const [pickupSubmitting, setPickupSubmitting] = useState(false);
-  const [newShipment, setNewShipment] = useState({
-    customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", pickupLocation: "", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "",
-  });
+  const [newShipment, setNewShipment] = useState(createEmptyShipmentForm);
   const notificationMenuRef = useRef(null);
   const walletMenuRef = useRef(null);
   const accountMenuRef = useRef(null);
@@ -487,8 +515,10 @@ export default function DashboardPage() {
       return;
     }
     try {
+      const { qcEnabled, customQc, ...shipmentInput } = newShipment;
       const shipment = await createClientShipment({
-        ...newShipment,
+        ...shipmentInput,
+        ...(qcEnabled ? { customQc } : {}),
         paymentMode: newShipment.flow === "Reverse" ? "Pickup" : newShipment.flow === "Replacement" ? "REPL" : newShipment.payment,
         weight: Number(newShipment.weight),
         amount: Number(newShipment.amount) || 0,
@@ -497,7 +527,7 @@ export default function DashboardPage() {
       setShipments(next);
       localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
       setShipmentModal(false);
-      setNewShipment({ customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", pickupLocation: "", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "" });
+      setNewShipment(createEmptyShipmentForm());
       notify(`${shipment.id} manifested with Delhivery waybill ${shipment.waybill}.`);
     } catch (error) {
       notify(error.message || "Shipment could not be created.");
@@ -1490,7 +1520,7 @@ export default function DashboardPage() {
               <label>PIN code *<input value={newShipment.pincode} onChange={(event) => setNewShipment({ ...newShipment, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="6-digit PIN" /></label>
               <label>Weight (kg)<input value={newShipment.weight} onChange={(event) => setNewShipment({ ...newShipment, weight: event.target.value })} type="number" min=".1" step=".1" /></label>
               <label>Product type<select value={newShipment.productType} onChange={(event) => setNewShipment({ ...newShipment, productType: event.target.value })}><option>Parcel</option><option>Heavy</option></select></label>
-              <label>Shipment flow<select value={newShipment.flow} onChange={(event) => setNewShipment({ ...newShipment, flow: event.target.value, productType: event.target.value === "Forward" ? newShipment.productType : "Parcel" })}><option>Forward</option><option>Reverse</option><option>Replacement</option></select></label>
+              <label>Shipment flow<select value={newShipment.flow} onChange={(event) => setNewShipment({ ...newShipment, flow: event.target.value, productType: event.target.value === "Forward" ? newShipment.productType : "Parcel", ...(event.target.value === "Reverse" ? {} : { qcEnabled: false, customQc: [] }) })}><option>Forward</option><option>Reverse</option><option>Replacement</option></select></label>
               <label>Pickup warehouse<select value={newShipment.pickupLocation} onChange={(event) => setNewShipment({ ...newShipment, pickupLocation: event.target.value })}><option value="">Default registered warehouse</option>{warehouses.filter((warehouse) => !warehouse.isDefault).map((warehouse) => <option value={warehouse.name} key={warehouse.name}>{warehouse.name}</option>)}</select></label>
               {newShipment.flow === "Forward" && <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>}
               <label>Shipping mode<select value={newShipment.shippingMode} onChange={(event) => setNewShipment({ ...newShipment, shippingMode: event.target.value })}><option>Surface</option><option>Express</option></select></label>
@@ -1500,6 +1530,8 @@ export default function DashboardPage() {
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
               {Number(newShipment.amount) >= 50000 && <label className="span-two">E-waybill number *<input value={newShipment.ewbn} onChange={(event) => setNewShipment({ ...newShipment, ewbn: event.target.value })} required /></label>}
               {newShipment.flow !== "Forward" && <><label className="span-two">Return address<textarea value={newShipment.returnAddress} onChange={(event) => setNewShipment({ ...newShipment, returnAddress: event.target.value })} rows="2" placeholder="Optional; registered warehouse is used if blank" /></label><label>Return city<input value={newShipment.returnCity} onChange={(event) => setNewShipment({ ...newShipment, returnCity: event.target.value })} /></label><label>Return state<input value={newShipment.returnState} onChange={(event) => setNewShipment({ ...newShipment, returnState: event.target.value })} /></label><label>Return PIN<input value={newShipment.returnPincode} onChange={(event) => setNewShipment({ ...newShipment, returnPincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></label></>}
+              {newShipment.flow === "Reverse" && <label className="rvp-qc-toggle span-two"><input type="checkbox" checked={newShipment.qcEnabled} onChange={(event) => setNewShipment({ ...newShipment, qcEnabled: event.target.checked, customQc: event.target.checked && !newShipment.customQc.length ? [createEmptyQcItem()] : newShipment.customQc })} /> Perform RVP QC 3.0 at the consignee's doorstep</label>}
+              {newShipment.flow === "Reverse" && newShipment.qcEnabled && <RvpQcEditor items={newShipment.customQc} onChange={(customQc) => setNewShipment({ ...newShipment, customQc })} />}
             </div>
             <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Validate & create order <Icon name="arrow" /></button></div>
           </form>
