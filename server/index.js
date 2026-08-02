@@ -917,6 +917,37 @@ app.post("/api/admin/delhivery/warehouses", requireRole("admin"), async (request
   response.status(201).json({ data: warehouse });
 });
 
+app.patch("/api/admin/delhivery/warehouses/:id", requireRole("admin"), async (request, response) => {
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const supported = new Set(["address", "pin", "phone"]);
+  const unsupported = Object.keys(body).filter((key) => !supported.has(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported warehouse update field: ${unsupported.join(", ")}. The warehouse name cannot be changed.`, { code: "UNSUPPORTED_WAREHOUSE_UPDATE_FIELD", status: 400 });
+  }
+  if (!Object.keys(body).length) {
+    throw new DelhiveryError("Provide at least one warehouse field to update.", { code: "NO_WAREHOUSE_UPDATES", status: 400 });
+  }
+  const state = await readState();
+  const warehouse = state.warehouses.find((item) => item.id === request.params.id);
+  if (!warehouse) return response.status(404).json({ message: "Warehouse not found." });
+  const provider = await delhivery.updateWarehouse({
+    name: warehouse.name,
+    pin: body.pin ?? warehouse.pin,
+    ...(Object.hasOwn(body, "address") ? { address: body.address } : {}),
+    ...(Object.hasOwn(body, "phone") ? { phone: body.phone } : {}),
+  });
+  ["address", "pin", "phone"].forEach((field) => {
+    if (Object.hasOwn(body, field) && Object.hasOwn(provider.updates, field)) warehouse[field] = provider.updates[field];
+  });
+  warehouse.remark = provider.remark || warehouse.remark;
+  warehouse.updatedAt = provider.updatedAt;
+  warehouse.updatedBy = request.session.subject;
+  state.activities.unshift({ title: `${warehouse.name} warehouse updated`, detail: Object.keys(body).join(", "), tone: "blue", createdAt: warehouse.updatedAt });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "warehouse.updated");
+  response.json({ data: warehouse });
+});
+
 function customerPickupRequestView(pickupRequest) {
   const { ownerEmail, customerId, createdByRole, ...safePickupRequest } = pickupRequest;
   return safePickupRequest;

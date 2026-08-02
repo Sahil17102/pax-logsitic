@@ -17,6 +17,7 @@ import {
   saveAdminConfiguration,
   setCustomerAccess,
   setShipmentStatus,
+  updateAdminWarehouse,
 } from "../services/adminApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
@@ -51,7 +52,7 @@ const pageTitles = {
   providers: ["Service providers", "Control logistics providers available to the booking engine."],
   serviceability: ["Serviceability", "Check delivery and COD coverage for an Indian PIN code."],
   waybills: ["Waybill inventory", "Fetch Delhivery B2C waybills in advance and monitor the stored inventory."],
-  warehouses: ["Pickup warehouses", "Register exact case-sensitive Delhivery warehouse names and return addresses."],
+  warehouses: ["Pickup warehouses", "Register and update exact case-sensitive Delhivery warehouse details."],
   "pricing-b2b": ["B2B pricing", "Manage business shipment slabs and freight rates."],
   "pricing-b2c": ["B2C pricing", "Manage parcel pricing by zone and weight slab."],
   invoices: ["Invoices", "Review platform invoices, due dates and payment state."],
@@ -529,6 +530,8 @@ function AdminApp() {
   const [toast, setToast] = useState("");
   const [warehouseSubmitting, setWarehouseSubmitting] = useState(false);
   const [warehouseForm, setWarehouseForm] = useState({ name: "", phone: "", email: "", address: "", city: "", pin: "", country: "India", registered_name: "", return_address: "", return_city: "", return_pin: "", return_state: "", return_country: "India" });
+  const [warehouseUpdating, setWarehouseUpdating] = useState(false);
+  const [warehouseEditForm, setWarehouseEditForm] = useState({ id: "", name: "", phone: "", address: "", pin: "" });
 
   const loadDashboard = async () => {
     if (!authenticated) return;
@@ -704,6 +707,33 @@ function AdminApp() {
     }
   };
 
+  const beginWarehouseEdit = (warehouse) => {
+    setWarehouseEditForm({ id: warehouse.id, name: warehouse.name, phone: warehouse.phone || "", address: warehouse.address || "", pin: warehouse.pin || "" });
+  };
+
+  const updateWarehouse = async (event) => {
+    event.preventDefault();
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to update a Delhivery warehouse.");
+      return;
+    }
+    setWarehouseUpdating(true);
+    try {
+      const warehouse = await updateAdminWarehouse(warehouseEditForm.id, {
+        pin: warehouseEditForm.pin,
+        ...(warehouseEditForm.phone ? { phone: warehouseEditForm.phone } : {}),
+        ...(warehouseEditForm.address ? { address: warehouseEditForm.address } : {}),
+      });
+      setSnapshot((current) => ({ ...current, warehouses: (current.warehouses || []).map((item) => item.id === warehouse.id ? warehouse : item) }));
+      setWarehouseEditForm({ id: "", name: "", phone: "", address: "", pin: "" });
+      flash(`${warehouse.name} updated in Delhivery.`);
+    } catch (error) {
+      flash(`Warehouse was not updated: ${error.message}`);
+    } finally {
+      setWarehouseUpdating(false);
+    }
+  };
+
   const changeCustomerAccess = async (customer) => {
     if (!previewMode && connection !== "live") {
       flash("The API is offline. Customer access was not changed.");
@@ -806,7 +836,11 @@ function AdminApp() {
 
           {active === "waybills" && <WaybillWorkspace flash={flash} />}
 
-          {active === "warehouses" && <section className="admin-health-grid"><form className="admin-card admin-settings-card" onSubmit={registerWarehouse}><div><p>DELHIVERY WAREHOUSE</p><h2>Register pickup location</h2><span>The name is case-sensitive and the return address is mandatory.</span></div><dl><div><dt>Warehouse name *</dt><dd><input value={warehouseForm.name} onChange={(event) => setWarehouseForm({ ...warehouseForm, name: event.target.value })} required /></dd></div><div><dt>POC phone *</dt><dd><input value={warehouseForm.phone} onChange={(event) => setWarehouseForm({ ...warehouseForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" required /></dd></div><div><dt>Email</dt><dd><input type="email" value={warehouseForm.email} onChange={(event) => setWarehouseForm({ ...warehouseForm, email: event.target.value })} /></dd></div><div><dt>Pickup address</dt><dd><input value={warehouseForm.address} onChange={(event) => setWarehouseForm({ ...warehouseForm, address: event.target.value })} /></dd></div><div><dt>City</dt><dd><input value={warehouseForm.city} onChange={(event) => setWarehouseForm({ ...warehouseForm, city: event.target.value })} /></dd></div><div><dt>Pickup PIN *</dt><dd><input value={warehouseForm.pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div><div><dt>Registered account</dt><dd><input value={warehouseForm.registered_name} onChange={(event) => setWarehouseForm({ ...warehouseForm, registered_name: event.target.value })} placeholder="Uses backend account name if blank" /></dd></div><div><dt>Return address *</dt><dd><input value={warehouseForm.return_address} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_address: event.target.value })} required /></dd></div><div><dt>Return city</dt><dd><input value={warehouseForm.return_city} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_city: event.target.value })} /></dd></div><div><dt>Return PIN</dt><dd><input value={warehouseForm.return_pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></dd></div><div><dt>Return state</dt><dd><input value={warehouseForm.return_state} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_state: event.target.value })} /></dd></div></dl><button className="admin-compact-primary" type="submit" disabled={warehouseSubmitting}>{warehouseSubmitting ? "Registering…" : "Register warehouse"}</button></form><article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>REGISTERED LOCATIONS</p><h2>{warehouses.length} API warehouses</h2></div></div><div className="admin-activity-list">{warehouses.length ? warehouses.map((warehouse) => <div key={warehouse.id}><i className="is-green"></i><span><strong>{warehouse.name}</strong><small>{warehouse.city || "—"} · {warehouse.pin || "—"} · {warehouse.status}</small></span></div>) : <div className="admin-empty">No warehouse has been registered through Pax yet.</div>}</div></article></section>}
+          {active === "warehouses" && <section className="admin-health-grid">
+            <form className="admin-card admin-settings-card" onSubmit={registerWarehouse}><div><p>DELHIVERY WAREHOUSE</p><h2>Register pickup location</h2><span>The name is case-sensitive and the return address is mandatory.</span></div><dl><div><dt>Warehouse name *</dt><dd><input value={warehouseForm.name} onChange={(event) => setWarehouseForm({ ...warehouseForm, name: event.target.value })} required /></dd></div><div><dt>POC phone *</dt><dd><input value={warehouseForm.phone} onChange={(event) => setWarehouseForm({ ...warehouseForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" required /></dd></div><div><dt>Email</dt><dd><input type="email" value={warehouseForm.email} onChange={(event) => setWarehouseForm({ ...warehouseForm, email: event.target.value })} /></dd></div><div><dt>Pickup address</dt><dd><input value={warehouseForm.address} onChange={(event) => setWarehouseForm({ ...warehouseForm, address: event.target.value })} /></dd></div><div><dt>City</dt><dd><input value={warehouseForm.city} onChange={(event) => setWarehouseForm({ ...warehouseForm, city: event.target.value })} /></dd></div><div><dt>Pickup PIN *</dt><dd><input value={warehouseForm.pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div><div><dt>Registered account</dt><dd><input value={warehouseForm.registered_name} onChange={(event) => setWarehouseForm({ ...warehouseForm, registered_name: event.target.value })} placeholder="Uses backend account name if blank" /></dd></div><div><dt>Return address *</dt><dd><input value={warehouseForm.return_address} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_address: event.target.value })} required /></dd></div><div><dt>Return city</dt><dd><input value={warehouseForm.return_city} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_city: event.target.value })} /></dd></div><div><dt>Return PIN</dt><dd><input value={warehouseForm.return_pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></dd></div><div><dt>Return state</dt><dd><input value={warehouseForm.return_state} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_state: event.target.value })} /></dd></div></dl><button className="admin-compact-primary" type="submit" disabled={warehouseSubmitting}>{warehouseSubmitting ? "Registering…" : "Register warehouse"}</button></form>
+            <article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>REGISTERED LOCATIONS</p><h2>{warehouses.length} API warehouses</h2></div></div><div className="admin-activity-list">{warehouses.length ? warehouses.map((warehouse) => <div key={warehouse.id}><i className="is-green"></i><span><strong>{warehouse.name}</strong><small>{warehouse.city || "—"} · {warehouse.pin || "—"} · {warehouse.status}</small></span><button className="admin-row-action" type="button" onClick={() => beginWarehouseEdit(warehouse)}>Edit</button></div>) : <div className="admin-empty">No warehouse has been registered through Pax yet.</div>}</div></article>
+            {warehouseEditForm.id && <form className="admin-card admin-settings-card" onSubmit={updateWarehouse}><div><p>UPDATE WAREHOUSE</p><h2>{warehouseEditForm.name}</h2><span>The registered name is immutable. Only address, PIN and phone can be changed.</span></div><dl><div><dt>Warehouse name</dt><dd><input value={warehouseEditForm.name} disabled /></dd></div><div><dt>Phone</dt><dd><input value={warehouseEditForm.phone} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" /></dd></div><div><dt>Address</dt><dd><input value={warehouseEditForm.address} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, address: event.target.value })} /></dd></div><div><dt>PIN *</dt><dd><input value={warehouseEditForm.pin} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div></dl><div className="admin-row-actions"><button className="admin-compact-primary" type="submit" disabled={warehouseUpdating}>{warehouseUpdating ? "Updating…" : "Update warehouse"}</button><button type="button" onClick={() => setWarehouseEditForm({ id: "", name: "", phone: "", address: "", pin: "" })}>Cancel</button></div></form>}
+          </section>}
 
           {active === "ndr" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>NDR action queue</strong><span>Contact the customer or reattempt delivery before RTO.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("NDR report exported.")}>Export report</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "Exception")} onStatusChange={changeStatus} /></section>}
 

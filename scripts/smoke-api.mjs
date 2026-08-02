@@ -142,6 +142,15 @@ try {
       returnCountry: "India",
     }),
   });
+  const updatedWarehouse = await request(`/api/admin/delhivery/warehouses/${warehouse.data.id}`, {
+    method: "PATCH",
+    headers: { ...adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phone: "9888888888",
+      address: "Updated Industrial Area, Kota",
+      pin: "324002",
+    }),
+  });
   const warehouses = await request("/api/admin/delhivery/warehouses", { headers: adminAuthorization });
   const dashboard = await request("/api/admin/dashboard", {
     headers: adminAuthorization,
@@ -183,7 +192,13 @@ try {
   assert.equal(adminExpectedTat.data.tatDays, 2);
   assert.equal(warehouse.data.name, "Kota Test Warehouse");
   assert.equal(warehouse.data.status, "Registered");
+  assert.equal(updatedWarehouse.data.name, "Kota Test Warehouse");
+  assert.equal(updatedWarehouse.data.phone, "9888888888");
+  assert.equal(updatedWarehouse.data.address, "Updated Industrial Area, Kota");
+  assert.equal(updatedWarehouse.data.pin, "324002");
+  assert.ok(updatedWarehouse.data.updatedAt);
   assert.equal(warehouses.data.length, 1);
+  assert.equal(warehouses.data[0].pin, "324002");
   assert.equal(dashboard.data.warehouses.length, 1);
   assert.equal(fetchedWaybills.data.storedCount, 3);
   assert.equal(fetchedWaybills.data.duplicateCount, 0);
@@ -240,6 +255,7 @@ try {
     shippingLabelFormat: shippingLabel.data.format,
     pickupRequestStatus: pickupRequest.data.status,
     registeredWarehouses: warehouses.data.length,
+    updatedWarehousePin: updatedWarehouse.data.pin,
     storedWaybills: inventoryAfterSingle.data.summary.stored,
     duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
     singleWaybillStored: singleWaybill.data.storedCount,

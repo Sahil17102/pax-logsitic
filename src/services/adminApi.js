@@ -127,6 +127,14 @@ export async function createAdminWarehouse(warehouse) {
   return normalizeWarehouse(unwrapApiData(payload));
 }
 
+export async function updateAdminWarehouse(warehouseId, updates) {
+  const payload = await request(`/api/admin/delhivery/warehouses/${encodeURIComponent(warehouseId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+  return normalizeWarehouse(unwrapApiData(payload));
+}
+
 export async function getAdminWarehouses() {
   const data = unwrapApiData(await request("/api/admin/delhivery/warehouses"));
   return Array.isArray(data) ? data.map(normalizeWarehouse).filter((item) => item.name) : [];

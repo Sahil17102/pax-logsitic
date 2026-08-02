@@ -25,6 +25,7 @@ const DEFAULT_PICKUP_RATE_LIMIT_REQUESTS = 3600;
 const DEFAULT_PICKUP_TIMEOUT_MS = 5000;
 const DEFAULT_WAREHOUSE_RATE_LIMIT_REQUESTS = 9;
 const DEFAULT_WAREHOUSE_TIMEOUT_MS = 5000;
+const DEFAULT_WAREHOUSE_EDIT_TIMEOUT_MS = 65000;
 const WAREHOUSE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_TRACKING_CACHE_TTL_MS = 30 * 1000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
@@ -765,6 +766,57 @@ export function normalizeDelhiveryWarehouseCreation(payload, request) {
   };
 }
 
+export function buildDelhiveryWarehouseUpdatePayload(input = {}) {
+  const name = warehouseText(input.name, "Warehouse name", { required: true, maxLength: 100 });
+  const pin = String(input.pin || "").trim();
+  const phoneInput = input.phone === undefined || input.phone === null ? "" : String(input.phone).replace(/\D/g, "");
+  const address = warehouseText(input.address, "Warehouse address", { maxLength: 500 });
+  if (!/^[1-9]\d{5}$/.test(pin)) {
+    throw new DelhiveryError("Warehouse PIN code must be a valid 6-digit Indian PIN code.", { code: "INVALID_WAREHOUSE_PINCODE", status: 400 });
+  }
+  if (input.phone !== undefined && input.phone !== null && !/^\d{10}$/.test(phoneInput)) {
+    throw new DelhiveryError("Warehouse phone must be a valid 10-digit number.", { code: "INVALID_WAREHOUSE_PHONE", status: 400 });
+  }
+  if (input.address !== undefined && !address) {
+    throw new DelhiveryError("Warehouse address cannot be empty when it is updated.", { code: "INVALID_WAREHOUSE", status: 400 });
+  }
+  const payload = {
+    name,
+    pin,
+    address,
+    phone: input.phone === undefined || input.phone === null ? undefined : phoneInput,
+  };
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+}
+
+export function normalizeDelhiveryWarehouseUpdate(payload, request) {
+  const record = payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data : payload;
+  const status = firstDefined(record, ["success", "status", "updated"]);
+  const errorValue = firstDefined(record, ["error", "errors"])
+    ?? firstDefined(payload, ["error", "errors"]);
+  const error = errorValue === false || errorValue === 0 ? "" : providerMessage(errorValue);
+  const remark = providerMessage(firstDefined(record, ["message", "remark", "remarks", "detail"])
+    ?? firstDefined(payload, ["message", "remark", "remarks", "detail"]));
+  const rejected = Boolean(error)
+    || status === false
+    || status === 0
+    || /^(false|failure|failed|error|rejected)$/i.test(String(status ?? "").trim());
+  if (rejected) {
+    throw new DelhiveryError(error || remark || "Delhivery rejected the warehouse update.", {
+      code: "DELHIVERY_WAREHOUSE_UPDATE_REJECTED",
+      status: 422,
+    });
+  }
+  return {
+    provider: "delhivery",
+    updated: true,
+    name: request.name,
+    updates: Object.fromEntries(Object.entries(request).filter(([key]) => key !== "name")),
+    remark,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function normalizeDelhiveryPickupRequest(payload, request) {
   const record = payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data : payload;
   const status = firstDefined(record, ["success", "status", "created", "request_success"]);
@@ -1138,6 +1190,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredWarehouseTimeout, 30000)
     : DEFAULT_WAREHOUSE_TIMEOUT_MS;
   const warehousePath = validateProviderPath(process.env.DELHIVERY_WAREHOUSE_PATH || "/api/backend/clientwarehouse/create/", "DELHIVERY_WAREHOUSE_PATH");
+  const configuredWarehouseEditTimeout = Number(process.env.DELHIVERY_WAREHOUSE_EDIT_TIMEOUT_MS);
+  const warehouseEditTimeoutMs = Number.isInteger(configuredWarehouseEditTimeout) && configuredWarehouseEditTimeout > 0
+    ? Math.min(configuredWarehouseEditTimeout, 120000)
+    : DEFAULT_WAREHOUSE_EDIT_TIMEOUT_MS;
+  const warehouseEditPath = validateProviderPath(process.env.DELHIVERY_WAREHOUSE_EDIT_PATH || "/api/backend/clientwarehouse/edit/", "DELHIVERY_WAREHOUSE_EDIT_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -1412,7 +1469,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
 
   async function submitWarehouseCreation(request) {
     const endpoint = new URL(warehousePath, `${baseUrl}/`);
-    const payload = await requestJson(endpoint, "warehouse-create", warehouseRateLimitRequests, {
+    const payload = await requestJson(endpoint, "warehouse-management", warehouseRateLimitRequests, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
@@ -1420,6 +1477,18 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
       rateLimitWindowMs: WAREHOUSE_RATE_LIMIT_WINDOW_MS,
     });
     return normalizeDelhiveryWarehouseCreation(payload, request);
+  }
+
+  async function submitWarehouseUpdate(request) {
+    const endpoint = new URL(warehouseEditPath, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "warehouse-management", warehouseRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      requestTimeoutMs: warehouseEditTimeoutMs,
+      rateLimitWindowMs: WAREHOUSE_RATE_LIMIT_WINDOW_MS,
+    });
+    return normalizeDelhiveryWarehouseUpdate(payload, request);
   }
 
   async function trackShipments(input) {
@@ -1472,6 +1541,12 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ensureConfigured();
     const request = buildDelhiveryWarehousePayload(input);
     return submitWarehouseCreation(request);
+  }
+
+  async function updateWarehouse(input) {
+    ensureConfigured();
+    const request = buildDelhiveryWarehouseUpdatePayload(input);
+    return submitWarehouseUpdate(request);
   }
 
   async function checkServiceability(pincode) {
@@ -1561,5 +1636,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     generateShippingLabel,
     createPickupRequest,
     createWarehouse,
+    updateWarehouse,
   };
 }

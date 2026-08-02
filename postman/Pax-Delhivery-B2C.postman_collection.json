@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, client warehouse registration, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, client warehouse registration/update, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -355,12 +355,32 @@
         "body": { "mode": "raw", "raw": "{\n  \"name\": \"Kota Test Warehouse\",\n  \"registeredName\": \"Pax Test Client\",\n  \"phone\": \"9999999999\",\n  \"email\": \"warehouse@example.com\",\n  \"address\": \"Industrial Area, Kota\",\n  \"city\": \"Kota\",\n  \"pin\": \"324001\",\n  \"country\": \"India\",\n  \"returnAddress\": \"Industrial Area, Kota\",\n  \"returnCity\": \"Kota\",\n  \"returnPin\": \"324001\",\n  \"returnState\": \"Rajasthan\",\n  \"returnCountry\": \"India\"\n}" },
         "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin registers the exact case-sensitive pickup location', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.name).to.eql('Kota Test Warehouse');", "  pm.expect(data.status).to.eql('Registered');", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.pin).to.eql('324001');", "  pm.collectionVariables.set('warehouseName', data.name);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin registers the exact case-sensitive pickup location', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.name).to.eql('Kota Test Warehouse');", "  pm.expect(data.status).to.eql('Registered');", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.pin).to.eql('324001');", "  pm.collectionVariables.set('warehouseId', data.id);", "  pm.collectionVariables.set('warehouseName', data.name);", "});"] } }]
     },
     {
       "name": "List registered Delhivery warehouses",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/warehouses" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can inspect persisted warehouse details', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].name).to.eql(pm.collectionVariables.get('warehouseName'));", "});"] } }]
+    },
+    {
+      "name": "Update Delhivery client warehouse",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"phone\": \"9888888888\",\n  \"address\": \"Updated Industrial Area, Kota\",\n  \"pin\": \"324002\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses/{{warehouseId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin updates only provider-supported warehouse details', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.name).to.eql(pm.collectionVariables.get('warehouseName'));", "  pm.expect(data.phone).to.eql('9888888888');", "  pm.expect(data.address).to.eql('Updated Industrial Area, Kota');", "  pm.expect(data.pin).to.eql('324002');", "  pm.expect(data.updatedAt).to.be.a('string');", "});"] } }]
+    },
+    {
+      "name": "Reject Delhivery warehouse rename",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Renamed Warehouse\",\n  \"pin\": \"324002\"\n}" }, "url": "{{baseUrl}}/api/admin/delhivery/warehouses/{{warehouseId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('The immutable warehouse name cannot be sent as an update', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('UNSUPPORTED_WAREHOUSE_UPDATE_FIELD');", "});"] } }]
+    },
+    {
+      "name": "Reject invalid Delhivery warehouse update PIN",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pin\": \"123\"\n}" }, "url": "{{baseUrl}}/api/admin/delhivery/warehouses/{{warehouseId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid update PIN is rejected before the provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_WAREHOUSE_PINCODE');", "});"] } }]
     },
     {
       "name": "Reject duplicate Delhivery warehouse name",

@@ -66,6 +66,30 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ success: true, message: "Warehouse created successfully", name: warehouse.name }));
       return;
     }
+    if (request.method === "POST" && url.pathname === "/api/backend/clientwarehouse/edit/") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      let update;
+      try {
+        if (!String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")) throw new Error("JSON required");
+        update = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ success: false, error: "Invalid warehouse update JSON" }));
+        return;
+      }
+      const allowedKeys = new Set(["name", "address", "pin", "phone"]);
+      if (Object.keys(update).some((key) => !allowedKeys.has(key))
+        || !registeredWarehouses.has(update.name)
+        || !/^[1-9]\d{5}$/.test(String(update.pin || ""))
+        || (update.address !== undefined && !String(update.address).trim())
+        || (update.phone !== undefined && !/^\d{10}$/.test(String(update.phone)))) {
+        response.end(JSON.stringify({ success: false, error: "Invalid warehouse update" }));
+        return;
+      }
+      response.end(JSON.stringify({ success: true, message: "Warehouse updated successfully", name: update.name }));
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/fm/request/new/") {
       let pickup;
       try {
