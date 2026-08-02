@@ -13,6 +13,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
   const manifestedWaybills = new Set();
   const cancelledWaybills = new Set();
   const trackingByWaybill = new Map();
+  const pickupRequests = new Set();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
@@ -29,6 +30,38 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
     if (request.headers.authorization !== `Token ${token}`) {
       response.statusCode = 401;
       response.end(JSON.stringify({ detail: "Invalid token" }));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/fm/request/new/") {
+      let pickup;
+      try {
+        pickup = JSON.parse(await new Promise((resolve, reject) => {
+          let body = "";
+          request.on("data", (chunk) => { body += chunk; });
+          request.on("end", () => resolve(body));
+          request.on("error", reject);
+        }));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      const requestKey = `${pickup.pickup_location}:${pickup.pickup_date}`;
+      if (pickup.pickup_location !== "Pax Test Warehouse"
+        || !/^\d{4}-\d{2}-\d{2}$/.test(String(pickup.pickup_date || ""))
+        || !/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(String(pickup.pickup_time || ""))
+        || !Number.isInteger(pickup.expected_package_count)
+        || pickup.expected_package_count < 1) {
+        response.end(JSON.stringify({ success: false, error: "Invalid pickup request" }));
+        return;
+      }
+      if (pickupRequests.has(requestKey)) {
+        response.end(JSON.stringify({ success: false, error: "A Pickup Request for this Pickup Location Already Exist." }));
+        return;
+      }
+      pickupRequests.add(requestKey);
+      response.statusCode = 201;
+      response.end(JSON.stringify({ success: true, pickup_id: `PUR-STUB-${pickupRequests.size}`, message: "Pickup request submitted successfully." }));
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/p/packing_slip") {

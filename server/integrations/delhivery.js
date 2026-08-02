@@ -21,6 +21,8 @@ const DEFAULT_SHIPPING_COST_RATE_LIMIT_REQUESTS = 45;
 const DEFAULT_SHIPPING_COST_TIMEOUT_MS = 65000;
 const DEFAULT_LABEL_RATE_LIMIT_REQUESTS = 2700;
 const DEFAULT_LABEL_TIMEOUT_MS = 65000;
+const DEFAULT_PICKUP_RATE_LIMIT_REQUESTS = 3600;
+const DEFAULT_PICKUP_TIMEOUT_MS = 5000;
 const DEFAULT_TRACKING_CACHE_TTL_MS = 30 * 1000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
@@ -640,6 +642,86 @@ export function normalizeDelhiveryShippingLabel(payload, request) {
   };
 }
 
+function indiaDateString(now = new Date()) {
+  return new Date(now.getTime() + (330 * 60 * 1000)).toISOString().slice(0, 10);
+}
+
+export function normalizePickupRequest(input = {}, { now = new Date() } = {}) {
+  const pickupDate = String(firstDefined(input, ["pickup_date", "pickupDate"]) || "").trim();
+  const pickupTime = String(firstDefined(input, ["pickup_time", "pickupTime"]) || "").trim();
+  const pickupLocation = String(firstDefined(input, ["pickup_location", "pickupLocation"]) || "").trim();
+  const expectedPackageCount = Number(firstDefined(input, ["expected_package_count", "expectedPackageCount"]));
+  const parsedPickupDate = Date.parse(`${pickupDate}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(pickupDate)
+    || Number.isNaN(parsedPickupDate)
+    || new Date(parsedPickupDate).toISOString().slice(0, 10) !== pickupDate) {
+    throw new DelhiveryError("Pickup date must use YYYY-MM-DD format.", { code: "INVALID_PICKUP_DATE", status: 400 });
+  }
+  const today = indiaDateString(now);
+  const pickupDay = parsedPickupDate;
+  const todayDay = Date.parse(`${today}T00:00:00Z`);
+  const dayDifference = Math.round((pickupDay - todayDay) / (24 * 60 * 60 * 1000));
+  if (dayDifference < 0 || dayDifference > 7) {
+    throw new DelhiveryError("Pickup date must be between today and the next 7 days.", { code: "INVALID_PICKUP_DATE", status: 400 });
+  }
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(pickupTime)) {
+    throw new DelhiveryError("Pickup time must use 24-hour HH:mm:ss format.", { code: "INVALID_PICKUP_TIME", status: 400 });
+  }
+  if (!pickupLocation || pickupLocation.length > 200 || /[\u0000-\u001F\u007F]/.test(pickupLocation)) {
+    throw new DelhiveryError("A valid registered pickup location is required.", { code: "INVALID_PICKUP_LOCATION", status: 400 });
+  }
+  if (!Number.isSafeInteger(expectedPackageCount) || expectedPackageCount < 1 || expectedPackageCount > 10000) {
+    throw new DelhiveryError("Expected package count must be an integer between 1 and 10,000.", { code: "INVALID_PICKUP_PACKAGE_COUNT", status: 400 });
+  }
+  return {
+    pickup_time: pickupTime,
+    pickup_date: pickupDate,
+    pickup_location: pickupLocation,
+    expected_package_count: expectedPackageCount,
+  };
+}
+
+function providerMessage(value) {
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) return value.map(providerMessage).filter(Boolean).join("; ");
+  if (value && typeof value === "object") {
+    return Object.entries(value).map(([key, item]) => `${key}: ${providerMessage(item)}`).filter((item) => !item.endsWith(": ")).join("; ");
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+export function normalizeDelhiveryPickupRequest(payload, request) {
+  const record = payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data : payload;
+  const status = firstDefined(record, ["success", "status", "created", "request_success"]);
+  const errorValue = firstDefined(record, ["error", "errors"])
+    ?? firstDefined(payload, ["error", "errors"]);
+  const error = errorValue === false || errorValue === 0 ? "" : providerMessage(errorValue);
+  const remark = providerMessage(firstDefined(record, ["message", "remark", "remarks", "detail"])
+    ?? firstDefined(payload, ["message", "remark", "remarks", "detail"]));
+  const rejected = Boolean(error)
+    || status === false
+    || status === 0
+    || /^(false|failure|failed|error|rejected)$/i.test(String(status ?? "").trim());
+  if (rejected) {
+    throw new DelhiveryError(error || remark || "Delhivery rejected the pickup request.", {
+      code: "DELHIVERY_PICKUP_REJECTED",
+      status: 422,
+    });
+  }
+  const providerPickupId = String(firstDefined(record, ["pickup_id", "pickupId", "request_id", "requestId", "id"]) || "").trim();
+  return {
+    provider: "delhivery",
+    scheduled: true,
+    providerPickupId: providerPickupId || null,
+    pickupDate: request.pickup_date,
+    pickupTime: request.pickup_time,
+    pickupLocation: request.pickup_location,
+    expectedPackageCount: request.expected_package_count,
+    remark,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
   const deliveryCodes = Array.isArray(payload?.delivery_codes) ? payload.delivery_codes : [];
   const wrapper = deliveryCodes[0];
@@ -963,6 +1045,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredLabelTimeout, 120000)
     : DEFAULT_LABEL_TIMEOUT_MS;
   const labelPath = validateProviderPath(process.env.DELHIVERY_LABEL_PATH || "/api/p/packing_slip", "DELHIVERY_LABEL_PATH");
+  const configuredPickupRateLimit = Number(process.env.DELHIVERY_PICKUP_RATE_LIMIT_REQUESTS);
+  const pickupRateLimitRequests = Number.isInteger(configuredPickupRateLimit) && configuredPickupRateLimit > 0
+    ? Math.min(configuredPickupRateLimit, 4000)
+    : DEFAULT_PICKUP_RATE_LIMIT_REQUESTS;
+  const configuredPickupTimeout = Number(process.env.DELHIVERY_PICKUP_TIMEOUT_MS);
+  const pickupTimeoutMs = Number.isInteger(configuredPickupTimeout) && configuredPickupTimeout > 0
+    ? Math.min(configuredPickupTimeout, 30000)
+    : DEFAULT_PICKUP_TIMEOUT_MS;
+  const pickupPath = validateProviderPath(process.env.DELHIVERY_PICKUP_PATH || "/fm/request/new/", "DELHIVERY_PICKUP_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -1224,6 +1315,17 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryShippingLabel(payload, request);
   }
 
+  async function submitPickupRequest(request) {
+    const endpoint = new URL(pickupPath, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "pickup-request", pickupRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      requestTimeoutMs: pickupTimeoutMs,
+    });
+    return normalizeDelhiveryPickupRequest(payload, request);
+  }
+
   async function trackShipments(input) {
     ensureConfigured();
     const normalized = normalizeTrackingRequest(input);
@@ -1263,6 +1365,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   async function generateShippingLabel(input) {
     ensureConfigured();
     return fetchShippingLabel(normalizeShippingLabelRequest(input));
+  }
+
+  async function createPickupRequest(input) {
+    ensureConfigured();
+    return submitPickupRequest(normalizePickupRequest(input));
   }
 
   async function checkServiceability(pincode) {
@@ -1350,5 +1457,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     trackShipments,
     calculateShippingCost,
     generateShippingLabel,
+    createPickupRequest,
   };
 }

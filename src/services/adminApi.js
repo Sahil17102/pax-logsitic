@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../config.js";
-import { normalizeAdminDashboard, normalizeCustomer, normalizeShipment, unwrapApiData } from "./apiData.js";
+import { normalizeAdminDashboard, normalizeCustomer, normalizePickupRequest, normalizeShipment, unwrapApiData } from "./apiData.js";
 
 const ADMIN_TOKEN_KEY = "pax-admin-token";
 const REQUEST_TIMEOUT = 8000;
@@ -92,6 +92,31 @@ export async function getAdminShippingLabel(shipmentId, { waybill = "", pdf = tr
   const query = new URLSearchParams({ pdf: String(pdf), pdf_size: pdfSize });
   if (waybill) query.set("waybill", waybill);
   return unwrapApiData(await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function createAdminPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {
+  const payload = await request("/api/admin/pickup-requests", {
+    method: "POST",
+    body: JSON.stringify({
+      pickup_date: pickupDate,
+      pickup_time: pickupTime,
+      expected_package_count: Number(expectedPackageCount),
+    }),
+  });
+  return normalizePickupRequest(unwrapApiData(payload));
+}
+
+export async function getAdminPickupRequests() {
+  const data = unwrapApiData(await request("/api/admin/pickup-requests"));
+  return Array.isArray(data) ? data.map(normalizePickupRequest).filter((item) => item.id) : [];
+}
+
+export async function completeAdminPickupRequest(pickupRequestId) {
+  const payload = await request(`/api/admin/pickup-requests/${encodeURIComponent(pickupRequestId)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "Completed" }),
+  });
+  return normalizePickupRequest(unwrapApiData(payload));
 }
 
 export async function fetchDelhiveryWaybills(count) {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   API_BASE_URL,
+  completeAdminPickupRequest,
   fetchDelhiverySingleWaybill,
   fetchDelhiveryWaybills,
   getAdminExpectedTat,
@@ -519,7 +520,7 @@ function AdminApp() {
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], customers: [], activities: [] });
+  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], pickupRequests: [], customers: [], activities: [] });
   const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [connection, setConnection] = useState("checking");
   const [loading, setLoading] = useState(false);
@@ -538,7 +539,7 @@ function AdminApp() {
     setConnection("checking");
     try {
       const data = await getAdminDashboard();
-      setSnapshot({ shipments: data.shipments || [], customers: data.customers || [], activities: data.activities || [] });
+      setSnapshot({ shipments: data.shipments || [], pickupRequests: data.pickupRequests || [], customers: data.customers || [], activities: data.activities || [] });
       if (data.configuration) {
         setControlState(data.configuration);
         cacheControlState(data.configuration);
@@ -580,6 +581,7 @@ function AdminApp() {
   }, [authenticated, previewMode]);
 
   const shipments = snapshot.shipments || [];
+  const pickupRequests = snapshot.pickupRequests || [];
   const customers = snapshot.customers || [];
   const filteredShipments = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -661,6 +663,20 @@ function AdminApp() {
     } catch (error) {
       setSnapshot(previous);
       flash(error.message);
+    }
+  };
+
+  const completePickupRequest = async (pickupRequest) => {
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to confirm pickup collection.");
+      return;
+    }
+    try {
+      const completed = await completeAdminPickupRequest(pickupRequest.id);
+      setSnapshot((current) => ({ ...current, pickupRequests: (current.pickupRequests || []).map((item) => item.id === completed.id ? completed : item) }));
+      flash(`${pickupRequest.id} marked completed after collection.`);
+    } catch (error) {
+      flash(`Pickup was not completed: ${error.message}`);
     }
   };
 
@@ -772,7 +788,7 @@ function AdminApp() {
 
           {active === "customers" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredCustomers.length} customer accounts</strong><span>Enable or disable client-panel access without exposing authentication secrets.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("New users register from the client panel and appear here automatically.")}>Invite user</button></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Customer</th><th>Business</th><th>Contact</th><th>City</th><th>Shipments</th><th>Status</th><th>Access</th></tr></thead><tbody>{filteredCustomers.map((customer) => <tr className={customer.status === "Disabled" ? "is-disabled" : ""} key={customer.id}><td><strong>{customer.name}</strong><small>{customer.id}</small></td><td>{customer.business}</td><td><span>{customer.email}</span><small>{customer.phone}</small></td><td>{customer.city}</td><td>{customer.shipments || 0}</td><td><StatusBadge status={customer.status || "Active"} /></td><td><button className={`admin-switch${customer.status === "Disabled" ? "" : " is-on"}`} type="button" onClick={() => changeCustomerAccess(customer)}><i></i><span>{customer.status === "Disabled" ? "Off" : "On"}</span></button></td></tr>)}</tbody></table></div></section>}
 
-          {active === "pickups" && <section className="admin-list-grid">{shipments.filter((item) => item.status === "Pickup scheduled").length ? shipments.filter((item) => item.status === "Pickup scheduled").map((shipment, index) => <article className="admin-card admin-pickup-card" key={shipment.id}><div className="admin-pickup-time"><strong>{index ? "04:30" : "02:30"}</strong><span>PM</span></div><div><StatusBadge status="Pickup scheduled" /><h2>{shipment.customer}</h2><p>Pickup for {shipment.id} · {shipment.destination}</p></div><button type="button" onClick={() => changeStatus(shipment.id, "In transit")}>Mark collected</button></article>) : <div className="admin-empty admin-card">No pickups are currently scheduled.</div>}</section>}
+          {active === "pickups" && <section className="admin-list-grid">{pickupRequests.length ? pickupRequests.map((pickup) => <article className="admin-card admin-pickup-card" key={pickup.id}><div className="admin-pickup-time"><strong>{pickup.pickupTime?.slice(0, 5) || "—"}</strong><span>{pickup.pickupDate}</span></div><div><StatusBadge status={pickup.status} /><h2>{pickup.pickupLocation}</h2><p>{pickup.id} · {pickup.expectedPackageCount} expected packages</p></div><button type="button" onClick={() => pickup.status === "Completed" ? loadDashboard() : completePickupRequest(pickup)}>{pickup.status === "Completed" ? "Refresh" : "Confirm collected"}</button></article>) : <div className="admin-empty admin-card">No Delhivery pickup requests have been scheduled.</div>}</section>}
 
           {active === "finance" && <><section className="admin-metrics"><MetricCard label="COD exposure" value={formatMoney(codValue)} note={`${shipments.filter((item) => item.payment === "COD").length} shipments`} tone="green" icon="wallet" /><MetricCard label="Prepaid value" value={formatMoney(prepaidValue)} note={`${shipments.filter((item) => item.payment === "Prepaid").length} shipments`} tone="blue" icon="wallet" /><MetricCard label="Gross booked value" value={formatMoney(codValue + prepaidValue)} note="Current shipment set" tone="purple" icon="grid" /><MetricCard label="Settlement health" value="—" note="Connect billing API" tone="amber" icon="support" /></section><section className="admin-card admin-finance-card"><div className="admin-card-head"><div><p>COLLECTION MIX</p><h2>Payment distribution</h2></div></div><div className="admin-finance-bar"><i style={{ width: `${(codValue / Math.max(codValue + prepaidValue, 1)) * 100}%` }}></i></div><div className="admin-finance-legend"><span><i className="is-cod"></i>COD <strong>{formatMoney(codValue)}</strong></span><span><i className="is-prepaid"></i>Prepaid <strong>{formatMoney(prepaidValue)}</strong></span></div></section></>}
 

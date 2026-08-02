@@ -3,7 +3,7 @@ import { cloneDefaultControlState } from "../src/data/defaultControlState.js";
 
 const { Pool } = pg;
 
-export const APP_STATE_SCHEMA_VERSION = 3;
+export const APP_STATE_SCHEMA_VERSION = 4;
 export const APP_STATE_ROW_ID = 1;
 
 function clone(value) {
@@ -18,6 +18,7 @@ export function createInitialAppState() {
     customers: [],
     users: [],
     shipments: [],
+    pickupRequests: [],
     activities: [],
     updatedAt: new Date().toISOString(),
   };
@@ -78,6 +79,7 @@ export function migrateAppState(value) {
   state.customers = Array.isArray(state.customers) ? state.customers : [];
   state.users = Array.isArray(state.users) ? state.users : [];
   state.shipments = Array.isArray(state.shipments) ? state.shipments : [];
+  state.pickupRequests = Array.isArray(state.pickupRequests) ? state.pickupRequests : [];
   state.activities = Array.isArray(state.activities) ? state.activities : [];
 
   const customerEmails = new Set(state.customers.map((customer) => String(customer.email || "").toLowerCase()));

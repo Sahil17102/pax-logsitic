@@ -91,6 +91,12 @@ try {
     }),
   });
   const shippingLabel = await request(`/api/client/shipments/${created.data.id}/label?waybill=${created.data.waybill}&pdf=true&pdf_size=4R`, { headers: authorization });
+  const pickupDate = new Date(Date.now() + (330 * 60 * 1000) + (24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+  const pickupRequest = await request("/api/client/pickup-requests", {
+    method: "POST",
+    headers: { ...authorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ pickup_date: pickupDate, pickup_time: "11:00:00", expected_package_count: 1 }),
+  });
   const tracked = await request(`/api/tracking/${created.data.id}`);
   const after = await request("/api/client/bootstrap", { headers: authorization });
   const secondRegister = await request("/api/client/users", {
@@ -174,6 +180,11 @@ try {
   assert.equal(created.data.packageCount, 1);
   assert.equal(shippingLabel.data.format, "pdf");
   assert.match(shippingLabel.data.downloadUrl, /^https:\/\/labels\.test\.delhivery\.local\//);
+  assert.equal(pickupRequest.data.status, "Scheduled");
+  assert.equal(pickupRequest.data.expectedPackageCount, 1);
+  assert.equal(Object.hasOwn(pickupRequest.data, "ownerEmail"), false);
+  assert.equal(after.data.pickupRequests.length, 1);
+  assert.equal(secondBootstrap.data.pickupRequests.length, 0);
   assert.equal(secondBootstrap.data.shipments.length, 0);
   assert.equal(dashboard.data.shipments.length, 1);
   assert.equal(dashboard.data.customers.length, 2);
@@ -185,6 +196,7 @@ try {
   assert.equal(Object.hasOwn(tracked.data, "phone"), false);
   assert.equal(Object.hasOwn(tracked.data, "address"), false);
   assert.equal(Object.hasOwn(tracked.data, "pickupLocation"), false);
+  assert.equal(Object.hasOwn(tracked.data, "pickupRequestId"), false);
 
   console.log(JSON.stringify({
     initialShipments: before.data.shipments.length,
@@ -202,6 +214,7 @@ try {
     adminExpectedTatDays: adminExpectedTat.data.tatDays,
     estimatedShippingCost: shippingCost.data.estimatedAmount,
     shippingLabelFormat: shippingLabel.data.format,
+    pickupRequestStatus: pickupRequest.data.status,
     storedWaybills: inventoryAfterSingle.data.summary.stored,
     duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
     singleWaybillStored: singleWaybill.data.storedCount,

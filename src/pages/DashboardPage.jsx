@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShippingCost, getClientShippingLabel, logoutClient } from "../services/clientApi.js";
+import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShippingCost, getClientShippingLabel, logoutClient } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -200,6 +200,10 @@ function StatusBadge({ status }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
 }
 
+function indiaDateAfter(days = 0) {
+  return new Date(Date.now() + (330 * 60 * 1000) + (days * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+}
+
 function buildOverviewAnalytics(shipments, days, label) {
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
   const records = shipments.filter((shipment) => {
@@ -285,6 +289,7 @@ export default function DashboardPage() {
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
+  const [pickupRequests, setPickupRequests] = useState([]);
   const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [search, setSearch] = useState("");
   const [shipmentModal, setShipmentModal] = useState(false);
@@ -304,6 +309,8 @@ export default function DashboardPage() {
   const [labelPdf, setLabelPdf] = useState(true);
   const [labelPdfSize, setLabelPdfSize] = useState("4R");
   const [generatedLabel, setGeneratedLabel] = useState(null);
+  const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", expectedPackageCount: "1" });
+  const [pickupSubmitting, setPickupSubmitting] = useState(false);
   const [newShipment, setNewShipment] = useState({
     customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "",
   });
@@ -322,6 +329,7 @@ export default function DashboardPage() {
           setShipments(data.shipments);
           localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(data.shipments));
         }
+        if (Array.isArray(data.pickupRequests)) setPickupRequests(data.pickupRequests);
       } catch {
         // Keep the customer workspace usable with its last synchronized snapshot.
       }
@@ -390,6 +398,9 @@ export default function DashboardPage() {
   const labelWaybills = labelShipment
     ? (Array.isArray(labelShipment.waybills) && labelShipment.waybills.length ? labelShipment.waybills : [labelShipment.waybill]).filter(Boolean).map(String)
     : [];
+  const readyPickupShipments = shipments.filter((shipment) => String(shipment.status).toLowerCase() === "manifested"
+    && !["pickup", "repl"].includes(String(shipment.payment).toLowerCase()));
+  const readyPickupPackageCount = readyPickupShipments.reduce((total, shipment) => total + Math.max(1, Number(shipment.packageCount) || 1), 0);
   useEffect(() => {
     if (!availablePaymentOptions.length) return;
     const fallback = availablePaymentOptions[0];
@@ -1154,6 +1165,54 @@ export default function DashboardPage() {
     </>
   );
 
+  const submitPickupRequest = async (event) => {
+    event.preventDefault();
+    if (!readyPickupPackageCount) {
+      notify("Manifest and pack at least one forward shipment before requesting pickup.");
+      return;
+    }
+    setPickupSubmitting(true);
+    try {
+      const created = await createClientPickupRequest(pickupForm);
+      setPickupRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setShipments((current) => current.map((shipment) => String(shipment.status).toLowerCase() === "manifested"
+        && !["pickup", "repl"].includes(String(shipment.payment).toLowerCase())
+        ? { ...shipment, status: "Pickup scheduled", pickupRequestId: created.id }
+        : shipment));
+      notify(`Pickup ${created.id} scheduled with Delhivery.`);
+    } catch (error) {
+      notify(`Pickup was not scheduled: ${error.message}`);
+    } finally {
+      setPickupSubmitting(false);
+    }
+  };
+
+  const renderPickupRequests = () => (
+    <>
+      <section className="section-title-row"><div><p>PICKUP REQUESTS</p><h1>Schedule warehouse pickup</h1><span>Raise one request for all packed forward shipments at the registered Delhivery warehouse.</span></div></section>
+      <section className="feature-workspace-grid">
+        <form className="portal-card portal-tool-form" onSubmit={submitPickupRequest}>
+          <div className="portal-card-head"><div><small>READY FOR HANDOVER</small><h2>{readyPickupPackageCount} packages</h2></div><StatusBadge status={readyPickupPackageCount ? "Manifested" : "Pending manifestation"} /></div>
+          <p>Reverse-pickup and replacement shipments are excluded because Delhivery schedules those collections automatically.</p>
+          <label>Pickup date<input type="date" min={indiaDateAfter(0)} max={indiaDateAfter(7)} value={pickupForm.pickupDate} onChange={(event) => setPickupForm({ ...pickupForm, pickupDate: event.target.value })} required /></label>
+          <label>Pickup time<input type="time" step="1" value={pickupForm.pickupTime} onChange={(event) => setPickupForm({ ...pickupForm, pickupTime: event.target.value })} required /></label>
+          <label>Expected package count<input type="number" min="1" max="10000" value={pickupForm.expectedPackageCount} onChange={(event) => setPickupForm({ ...pickupForm, expectedPackageCount: event.target.value })} required /></label>
+          <button className="portal-primary" type="submit" disabled={pickupSubmitting || !readyPickupPackageCount}>{pickupSubmitting ? "Scheduling…" : "Create pickup request"}</button>
+        </form>
+        <article className="portal-card feature-activity-card">
+          <div className="portal-card-head"><div><small>WAREHOUSE REQUESTS</small><h2>Pickup history</h2></div><span className="trend-pill">Delhivery</span></div>
+          {pickupRequests.length ? pickupRequests.map((pickup) => (
+            <div className="feature-activity-row" key={pickup.id}>
+              <span className="is-complete">✓</span>
+              <div><strong>{pickup.pickupDate} · {pickup.pickupTime}</strong><small>{pickup.expectedPackageCount} expected · {pickup.status}</small></div>
+              <StatusBadge status={pickup.status} />
+            </div>
+          )) : <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>No pickup requests yet</h2><p>Requests created through Pax will appear here.</p></div>}
+        </article>
+      </section>
+    </>
+  );
+
   const runFeatureAction = (toolId, label) => {
     if (toolId === "shipments-create") {
       openShipment();
@@ -1236,8 +1295,10 @@ export default function DashboardPage() {
   const toolRenderers = {
     "overview-home": renderOverview,
     "dashboard-operations": renderDashboard,
+    "dashboard-pickups": renderPickupRequests,
     "shipments-all": renderShipments,
     "shipments-track": renderTracking,
+    "shipments-pickups": renderPickupRequests,
     "exceptions-ndr": renderExceptions,
     "finance-cod": renderFinance,
     "audits-weight": renderAudits,

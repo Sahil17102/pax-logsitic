@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -115,6 +115,34 @@
       "name": "Reject shipping label waybill mismatch",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill=999999999999&pdf=true&pdf_size=A4" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer cannot request a label for an unrelated waybill', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_WAYBILL_MISMATCH');", "});"] } }]
+    },
+    {
+      "name": "Create warehouse pickup request",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"11:00:00\",\n  \"expected_package_count\": 1\n}" },
+        "url": "{{baseUrl}}/api/client/pickup-requests"
+      },
+      "event": [
+        { "listen": "prerequest", "script": { "exec": ["pm.collectionVariables.set('pickupDate', new Date(Date.now() + 86400000).toISOString().slice(0, 10));"] } },
+        { "listen": "test", "script": { "exec": ["pm.test('Warehouse pickup is accepted once for all ready packages', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.status).to.eql('Scheduled');", "  pm.expect(data.pickupDate).to.eql(pm.collectionVariables.get('pickupDate'));", "  pm.expect(data.expectedPackageCount).to.eql(1);", "  pm.expect(data.providerPickupId).to.match(/^PUR-STUB-/);", "  pm.collectionVariables.set('pickupRequestId', data.id);", "});"] } }
+      ]
+    },
+    {
+      "name": "Reject duplicate warehouse pickup request",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"14:00:00\",\n  \"expected_package_count\": 1\n}" }, "url": "{{baseUrl}}/api/client/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('A second open request for the warehouse and date is blocked', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('PICKUP_REQUEST_ALREADY_EXISTS');", "});"] } }]
+    },
+    {
+      "name": "Reject pickup warehouse override",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"14:00:00\",\n  \"pickup_location\": \"Unregistered Warehouse\",\n  \"expected_package_count\": 1\n}" }, "url": "{{baseUrl}}/api/client/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customers cannot send pickup requests to an arbitrary warehouse', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_PICKUP_LOCATION');", "});"] } }]
+    },
+    {
+      "name": "List customer pickup requests",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer sees only the persisted warehouse pickup', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].id).to.eql(pm.collectionVariables.get('pickupRequestId'));", "});"] } }]
     },
     {
       "name": "Edit manifested COD shipment",
@@ -267,7 +295,7 @@
     {
       "name": "Verify only manifested shipments were saved",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/bootstrap" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(5);", "  pm.expect(shipments.every((item) => item.status === 'Manifested')).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(5);", "  pm.expect(shipments.every((item) => ['Manifested', 'Pickup scheduled'].includes(item.status))).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
     },
     {
       "name": "Reject MPS with unprefetched waybills",
@@ -318,6 +346,21 @@
         "url": "{{baseUrl}}/api/admin/auth/login"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "List admin pickup requests",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can inspect warehouse-level pickup requests', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].id).to.eql(pm.collectionVariables.get('pickupRequestId'));", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate admin pickup request",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"16:00:00\",\n  \"expected_package_count\": 1\n}" }, "url": "{{baseUrl}}/api/admin/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin route enforces the same warehouse duplicate guard', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('PICKUP_REQUEST_ALREADY_EXISTS');", "});"] } }]
+    },
+    {
+      "name": "Complete collected pickup request",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"Completed\"\n}" }, "url": "{{baseUrl}}/api/admin/pickup-requests/{{pickupRequestId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin confirms completion only after warehouse collection', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Completed');", "  pm.expect(data.completedAt).to.be.a('string');", "});"] } }]
     },
     {
       "name": "Generate admin PDF shipping label - A4",

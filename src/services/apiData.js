@@ -59,6 +59,19 @@ export function normalizeActivity(record = {}) {
   };
 }
 
+export function normalizePickupRequest(record = {}) {
+  return {
+    ...record,
+    id: String(firstValue(record, ["id", "pickupId", "pickup_id", "requestId", "request_id"])),
+    pickupDate: String(firstValue(record, ["pickupDate", "pickup_date"])),
+    pickupTime: String(firstValue(record, ["pickupTime", "pickup_time"])),
+    pickupLocation: String(firstValue(record, ["pickupLocation", "pickup_location"], "Registered warehouse")),
+    expectedPackageCount: Number(firstValue(record, ["expectedPackageCount", "expected_package_count"], 0)) || 0,
+    readyPackageCount: Number(firstValue(record, ["readyPackageCount", "ready_package_count"], 0)) || 0,
+    status: String(firstValue(record, ["status"], "Scheduled")),
+  };
+}
+
 export function normalizeConfiguration(configuration) {
   const defaults = cloneDefaultControlState();
   if (!configuration || typeof configuration !== "object") return defaults;
@@ -82,6 +95,7 @@ export function normalizeAdminDashboard(payload) {
   const data = unwrapApiData(payload);
   return {
     shipments: Array.isArray(data.shipments) ? data.shipments.map(normalizeShipment).filter((item) => item.id) : [],
+    pickupRequests: Array.isArray(data.pickupRequests) ? data.pickupRequests.map(normalizePickupRequest).filter((item) => item.id) : [],
     customers: Array.isArray(data.customers) ? data.customers.map(normalizeCustomer).filter((item) => item.id) : [],
     activities: Array.isArray(data.activities) ? data.activities.map(normalizeActivity) : [],
     configuration: normalizeConfiguration(data.configuration),
@@ -93,6 +107,7 @@ export function normalizeClientBootstrap(payload) {
   const data = unwrapApiData(payload);
   return {
     shipments: Array.isArray(data.shipments) ? data.shipments.map(normalizeShipment).filter((item) => item.id) : [],
+    pickupRequests: Array.isArray(data.pickupRequests) ? data.pickupRequests.map(normalizePickupRequest).filter((item) => item.id) : [],
     configuration: normalizeConfiguration(data.configuration),
     user: data.user ? normalizeCustomer(data.user) : null,
     updatedAt: data.updatedAt || data.updated_at || null,

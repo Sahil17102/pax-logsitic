@@ -41,6 +41,7 @@ const memoryWaybills = new Map();
 let databaseReady = false;
 const eventClients = new Set();
 const otpChallenges = new Map();
+const pickupRequestKeysInFlight = new Set();
 const environmentAdminAuthenticationConfigured = Boolean(adminPassword || /^[a-f0-9]{64}$/.test(adminPasswordSha256));
 const delhivery = createDelhiveryClient();
 
@@ -381,7 +382,7 @@ function ensureShipmentEditAllowed(shipment) {
   const status = String(shipment.status || "").trim().toLowerCase().replace(/[_-]+/g, " ");
   const allowed = shipment.payment === "Pickup"
     ? new Set(["scheduled", "pickup scheduled"])
-    : new Set(["manifested", "in transit", "pending"]);
+    : new Set(["manifested", "pickup scheduled", "scheduled", "in transit", "pending"]);
   if (!allowed.has(status)) {
     throw new DelhiveryError(`Shipment cannot be edited while its status is ${shipment.status || "unknown"}.`, {
       code: "SHIPMENT_EDIT_NOT_ALLOWED",
@@ -394,7 +395,7 @@ function ensureShipmentCancellationAllowed(shipment) {
   const status = String(shipment.status || "").trim().toLowerCase().replace(/[_-]+/g, " ");
   const allowed = shipment.payment === "Pickup"
     ? new Set(["scheduled", "pickup scheduled"])
-    : new Set(["manifested", "in transit", "pending"]);
+    : new Set(["manifested", "pickup scheduled", "scheduled", "in transit", "pending"]);
   if (!allowed.has(status)) {
     throw new DelhiveryError(`Shipment cannot be cancelled while its status is ${shipment.status || "unknown"}.`, {
       code: "SHIPMENT_CANCELLATION_NOT_ALLOWED",
@@ -559,7 +560,7 @@ app.post("/api/admin/auth/login", async (request, response) => {
 
 app.get("/api/admin/dashboard", requireRole("admin"), async (_request, response) => {
   const state = await readState();
-  response.json({ data: { shipments: state.shipments, customers: state.customers, activities: state.activities, configuration: state.configuration, updatedAt: state.updatedAt } });
+  response.json({ data: { shipments: state.shipments, pickupRequests: state.pickupRequests, customers: state.customers, activities: state.activities, configuration: state.configuration, updatedAt: state.updatedAt } });
 });
 
 app.put("/api/admin/configuration", requireRole("admin"), async (request, response) => {
@@ -862,13 +863,145 @@ async function handleShippingLabel(request, response) {
 app.get("/api/admin/shipments/:id/label", requireRole("admin"), handleShippingLabel);
 app.get("/api/client/shipments/:id/label", requireRole("customer"), handleShippingLabel);
 
+function customerPickupRequestView(pickupRequest) {
+  const { ownerEmail, customerId, createdByRole, ...safePickupRequest } = pickupRequest;
+  return safePickupRequest;
+}
+
+function pickupEligibleShipment(shipment, pickupLocation, ownerEmail, customerId) {
+  const status = String(shipment.status || "").trim().toLowerCase();
+  const payment = String(shipment.payment || "").trim().toLowerCase();
+  const owned = !ownerEmail || shipment.ownerEmail === ownerEmail || shipment.customerId === customerId;
+  return owned
+    && status === "manifested"
+    && !["pickup", "repl"].includes(payment)
+    && String(shipment.pickupLocation || "").trim() === pickupLocation;
+}
+
+async function handlePickupRequestCreation(request, response) {
+  const pickupLocation = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
+  if (!pickupLocation) {
+    throw new DelhiveryError("Delhivery pickup location is not configured.", { code: "DELHIVERY_PICKUP_NOT_CONFIGURED", status: 503 });
+  }
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const supportedFields = new Set(["pickup_time", "pickupTime", "pickup_date", "pickupDate", "pickup_location", "pickupLocation", "expected_package_count", "expectedPackageCount"]);
+  const unsupported = Object.keys(body).filter((key) => !supportedFields.has(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported pickup request field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_PICKUP_FIELD", status: 400 });
+  }
+  const suppliedLocation = String(body.pickup_location ?? body.pickupLocation ?? "").trim();
+  if (suppliedLocation && suppliedLocation !== pickupLocation) {
+    throw new DelhiveryError("Pickup requests can only use the registered Delhivery warehouse configured for this service.", { code: "INVALID_PICKUP_LOCATION", status: 400 });
+  }
+  const state = await readState();
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  if (request.session.role === "customer" && (!currentUser || currentUser.disabled)) {
+    return response.status(403).json({ message: "This customer account is not available." });
+  }
+  const pickupDate = String(body.pickup_date ?? body.pickupDate ?? "").trim();
+  const duplicate = state.pickupRequests.some((item) => item.pickupLocation === pickupLocation
+    && item.pickupDate === pickupDate
+    && !["completed", "closed", "cancelled"].includes(String(item.status || "").toLowerCase()));
+  const requestKey = `${pickupLocation}:${pickupDate}`;
+  if (duplicate || pickupRequestKeysInFlight.has(requestKey)) {
+    throw new DelhiveryError("An open pickup request already exists for this warehouse on the selected date.", { code: "PICKUP_REQUEST_ALREADY_EXISTS", status: 409 });
+  }
+  const eligibleShipments = state.shipments.filter((shipment) => pickupEligibleShipment(
+    shipment,
+    pickupLocation,
+    request.session.role === "customer" ? request.session.subject : "",
+    currentUser?.id,
+  ));
+  if (!eligibleShipments.length) {
+    throw new DelhiveryError("Manifest at least one ready forward shipment at this warehouse before scheduling pickup.", { code: "NO_SHIPMENTS_READY_FOR_PICKUP", status: 409 });
+  }
+  pickupRequestKeysInFlight.add(requestKey);
+  try {
+    const provider = await delhivery.createPickupRequest({
+      pickup_time: body.pickup_time ?? body.pickupTime,
+      pickup_date: pickupDate,
+      pickup_location: pickupLocation,
+      expected_package_count: body.expected_package_count ?? body.expectedPackageCount,
+    });
+    const createdAt = provider.createdAt || new Date().toISOString();
+    const pickupRequest = {
+      id: `PUR-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+      provider: provider.provider,
+      providerPickupId: provider.providerPickupId,
+      pickupDate: provider.pickupDate,
+      pickupTime: provider.pickupTime,
+      pickupLocation: provider.pickupLocation,
+      expectedPackageCount: provider.expectedPackageCount,
+      readyPackageCount: eligibleShipments.reduce((total, shipment) => total + Math.max(1, Number(shipment.packageCount) || 1), 0),
+      status: "Scheduled",
+      remark: provider.remark,
+      createdAt,
+      createdByRole: request.session.role,
+      ownerEmail: request.session.role === "customer" ? request.session.subject : null,
+      customerId: currentUser?.id || null,
+    };
+    state.pickupRequests.unshift(pickupRequest);
+    eligibleShipments.forEach((shipment) => {
+      shipment.status = "Pickup scheduled";
+      shipment.pickupRequestId = pickupRequest.id;
+      shipment.pickupScheduledAt = createdAt;
+    });
+    state.activities.unshift({
+      title: `${pickupRequest.id} pickup scheduled`,
+      detail: `${pickupRequest.expectedPackageCount} packages · ${pickupRequest.pickupDate} ${pickupRequest.pickupTime}`,
+      tone: "blue",
+      createdAt,
+    });
+    state.activities = state.activities.slice(0, 50);
+    await writeState(state, "pickup.request.created");
+    response.status(201).json({ data: request.session.role === "customer" ? customerPickupRequestView(pickupRequest) : pickupRequest });
+  } finally {
+    pickupRequestKeysInFlight.delete(requestKey);
+  }
+}
+
+app.get("/api/admin/pickup-requests", requireRole("admin"), async (_request, response) => {
+  const state = await readState();
+  response.json({ data: state.pickupRequests });
+});
+app.get("/api/client/pickup-requests", requireRole("customer"), async (request, response) => {
+  const state = await readState();
+  const user = state.users.find((item) => item.email === request.session.subject);
+  if (!user || user.disabled) return response.status(403).json({ message: "This customer account is not available." });
+  const pickupRequests = state.pickupRequests.filter((item) => item.ownerEmail === request.session.subject || item.customerId === user?.id);
+  response.json({ data: pickupRequests.map(customerPickupRequestView) });
+});
+app.post("/api/admin/pickup-requests", requireRole("admin"), handlePickupRequestCreation);
+app.post("/api/client/pickup-requests", requireRole("customer"), handlePickupRequestCreation);
+app.patch("/api/admin/pickup-requests/:id/status", requireRole("admin"), async (request, response) => {
+  if (String(request.body?.status || "").trim().toLowerCase() !== "completed") {
+    throw new DelhiveryError("Pickup request status can only be confirmed as Completed after collection.", { code: "INVALID_PICKUP_STATUS", status: 400 });
+  }
+  const state = await readState();
+  const pickupRequest = state.pickupRequests.find((item) => item.id === request.params.id);
+  if (!pickupRequest) return response.status(404).json({ message: "Pickup request not found." });
+  if (String(pickupRequest.status).toLowerCase() === "completed") {
+    throw new DelhiveryError("This pickup request is already completed.", { code: "PICKUP_REQUEST_ALREADY_COMPLETED", status: 409 });
+  }
+  pickupRequest.status = "Completed";
+  pickupRequest.completedAt = new Date().toISOString();
+  pickupRequest.completedBy = request.session.subject;
+  state.activities.unshift({ title: `${pickupRequest.id} pickup completed`, detail: pickupRequest.pickupLocation, tone: "green", createdAt: pickupRequest.completedAt });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "pickup.request.completed");
+  response.json({ data: pickupRequest });
+});
+
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();
   const user = state.users.find((item) => item.email === request.session.subject);
   if (!user || user.disabled) return response.status(403).json({ message: "This customer account is not available." });
   const { passwordHash, salt, ...safeUser } = user;
   const shipments = state.shipments.filter((item) => item.ownerEmail === request.session.subject || item.customerId === user.id);
-  response.json({ data: { configuration: state.configuration, shipments, user: safeUser, updatedAt: state.updatedAt } });
+  const pickupRequests = state.pickupRequests.filter((item) => item.ownerEmail === request.session.subject || item.customerId === user.id);
+  response.json({ data: { configuration: state.configuration, shipments, pickupRequests: pickupRequests.map(customerPickupRequestView), user: safeUser, updatedAt: state.updatedAt } });
 });
 
 app.post("/api/client/users", async (request, response) => {
@@ -1089,6 +1222,8 @@ app.get("/api/tracking/:id", async (request, response) => {
     phone,
     address,
     pickupLocation: _pickupLocation,
+    pickupRequestId: _pickupRequestId,
+    pickupScheduledAt: _pickupScheduledAt,
     invoiceNumber,
     ewbn,
     ewaybills,

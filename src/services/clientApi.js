@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../config.js";
-import { normalizeClientBootstrap, normalizeShipment, unwrapApiData } from "./apiData.js";
+import { normalizeClientBootstrap, normalizePickupRequest, normalizeShipment, unwrapApiData } from "./apiData.js";
 
 const CLIENT_TOKEN_KEY = "pax-client-token";
 const REQUEST_TIMEOUT = 6000;
@@ -102,6 +102,23 @@ export async function getClientShippingLabel(shipmentId, { waybill = "", pdf = t
   const query = new URLSearchParams({ pdf: String(pdf), pdf_size: pdfSize });
   if (waybill) query.set("waybill", waybill);
   return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function createClientPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {
+  const payload = await request("/api/client/pickup-requests", {
+    method: "POST",
+    body: JSON.stringify({
+      pickup_date: pickupDate,
+      pickup_time: pickupTime,
+      expected_package_count: Number(expectedPackageCount),
+    }),
+  });
+  return normalizePickupRequest(unwrapApiData(payload));
+}
+
+export async function getClientPickupRequests() {
+  const data = unwrapApiData(await request("/api/client/pickup-requests"));
+  return Array.isArray(data) ? data.map(normalizePickupRequest).filter((item) => item.id) : [];
 }
 
 export async function getClientBootstrap() {
