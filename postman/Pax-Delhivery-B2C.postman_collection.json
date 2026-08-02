@@ -202,6 +202,24 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Exact EWB update is accepted and persisted after provider success', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.provider.waybill).to.eql(pm.collectionVariables.get('ewaybillWaybill'));", "  pm.expect(body.data.ewbn).to.eql('181000000002');", "  pm.expect(body.data.invoiceNumber).to.eql('INV-2026/001-REV1');", "  pm.expect(body.data.ewaybillUpdates).to.have.lengthOf(1);", "});"] } }]
     },
     {
+      "name": "Track shipment with scan history",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+        "url": "{{baseUrl}}/api/client/shipments/{{ewaybillShipmentId}}/tracking"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives normalized live status and scans', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.requestedCount).to.eql(1);", "  pm.expect(data.foundCount).to.eql(1);", "  pm.expect(data.shipments[0].waybill).to.eql(pm.collectionVariables.get('ewaybillWaybill'));", "  pm.expect(data.shipments[0].referenceId).to.eql(pm.collectionVariables.get('ewaybillShipmentId'));", "  pm.expect(data.shipments[0].currentStatus.status).to.eql('Manifested');", "  pm.expect(data.shipments[0].scans).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Public Pax reference tracking",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/tracking/{{ewaybillShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking includes live history without private shipment data', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.tracking.foundCount).to.eql(1);", "  pm.expect(data.tracking.shipments[0].scans[0].status).to.eql('Manifested');", "  pm.expect(data).to.not.have.property('phone');", "  pm.expect(data).to.not.have.property('address');", "  pm.expect(data).to.not.have.property('ownerEmail');", "  pm.expect(data).to.not.have.property('invoiceNumber');", "  pm.expect(data).to.not.have.property('ewbn');", "  pm.expect(data).to.not.have.property('ewaybillUpdates');", "});"] } }]
+    },
+    {
       "name": "Reject e-waybill update without invoice",
       "request": {
         "method": "PUT",
@@ -280,6 +298,15 @@
         "url": "{{baseUrl}}/api/admin/shipments/{{ewaybillShipmentId}}/ewaybill"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can update a persisted high-value shipment EWB', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.data.ewbn).to.eql('181000000004');", "  pm.expect(body.data.ewaybillUpdates).to.have.lengthOf(2);", "});"] } }]
+    },
+    {
+      "name": "Admin tracks shipment",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/api/admin/shipments/{{ewaybillShipmentId}}/tracking"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives the same provider-backed tracking contract', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.foundCount).to.eql(1);", "  pm.expect(data.shipments[0].currentStatus.statusType).to.eql('UD');", "});"] } }]
     },
     {
       "name": "Move forward shipment to In Transit",
@@ -398,7 +425,16 @@
         "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"masterWaybill\": \"900000000002\",\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box is manifested with master and child fields', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.masterWaybill).to.eql('900000000002');", "  pm.expect(data.mpsAmount).to.eql(0);", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box is manifested with master and child fields', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.masterWaybill).to.eql('900000000002');", "  pm.expect(data.mpsAmount).to.eql(0);", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "  pm.collectionVariables.set('mpsShipmentId', data.id);", "});"] } }]
+    },
+    {
+      "name": "Track MPS waybill batch",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+        "url": "{{baseUrl}}/api/client/shipments/{{mpsShipmentId}}/tracking"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('All MPS boxes are tracked in one provider batch', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.requestedCount).to.eql(2);", "  pm.expect(data.foundCount).to.eql(2);", "  pm.expect(data.shipments.map((item) => item.waybill)).to.eql(['900000000001', '900000000002']);", "});"] } }]
     },
     {
       "name": "Create COD MPS with aggregate amount",

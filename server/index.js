@@ -763,6 +763,75 @@ async function handleEwaybillUpdate(request, response) {
 app.put("/api/admin/shipments/:id/ewaybill", requireRole("admin"), handleEwaybillUpdate);
 app.put("/api/client/shipments/:id/ewaybill", requireRole("customer"), handleEwaybillUpdate);
 
+function storedShipmentWaybills(shipment) {
+  return [...new Set((Array.isArray(shipment.waybills) && shipment.waybills.length
+    ? shipment.waybills
+    : [shipment.waybill])
+    .map((waybill) => String(waybill || "").trim())
+    .filter((waybill) => /^\d{8,20}$/.test(waybill)))];
+}
+
+async function refreshShipmentTracking(shipment) {
+  const waybills = storedShipmentWaybills(shipment);
+  if (!waybills.length) {
+    throw new DelhiveryError("This shipment does not have a valid Delhivery waybill.", { code: "SHIPMENT_NOT_MANIFESTED", status: 409 });
+  }
+  const trackedShipments = [];
+  let remark = "";
+  for (let index = 0; index < waybills.length; index += 50) {
+    const batch = waybills.slice(index, index + 50);
+    const tracking = await delhivery.trackShipments({ waybills: batch, refIds: shipment.id });
+    trackedShipments.push(...tracking.shipments);
+    if (tracking.remark) remark = [remark, tracking.remark].filter(Boolean).join("; ");
+  }
+  return {
+    provider: "delhivery",
+    requestedCount: waybills.length,
+    foundCount: trackedShipments.length,
+    fetchedAt: new Date().toISOString(),
+    shipments: trackedShipments,
+    remark,
+  };
+}
+
+function applyTrackingSnapshot(shipment, tracking) {
+  const oldSnapshot = JSON.stringify(shipment.tracking?.shipments || []);
+  const newSnapshot = JSON.stringify(tracking.shipments);
+  const primaryWaybill = String(shipment.masterWaybill || shipment.waybill || "");
+  const primary = tracking.shipments.find((item) => item.waybill === primaryWaybill) || tracking.shipments[0];
+  const providerStatusChanged = Boolean(primary?.currentStatus?.status)
+    && (shipment.status !== primary.currentStatus.status
+      || (primary.currentStatus.statusType && shipment.statusType !== primary.currentStatus.statusType));
+  if (oldSnapshot === newSnapshot && !providerStatusChanged) return false;
+  shipment.tracking = tracking;
+  shipment.lastTrackingSyncAt = tracking.fetchedAt;
+  if (primary?.currentStatus?.status) {
+    shipment.status = primary.currentStatus.status;
+    shipment.providerStatus = primary.currentStatus.status;
+    shipment.statusType = primary.currentStatus.statusType || shipment.statusType;
+  }
+  return true;
+}
+
+async function handleShipmentTracking(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  const tracking = await refreshShipmentTracking(shipment);
+  if (applyTrackingSnapshot(shipment, tracking)) await writeState(state, "shipment.tracking.updated");
+  response.json({ data: tracking });
+}
+
+app.get("/api/admin/shipments/:id/tracking", requireRole("admin"), handleShipmentTracking);
+app.get("/api/client/shipments/:id/tracking", requireRole("customer"), handleShipmentTracking);
+
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();
   const user = state.users.find((item) => item.email === request.session.subject);
@@ -982,8 +1051,22 @@ app.get("/api/tracking/:id", async (request, response) => {
   const state = await readState();
   const shipment = state.shipments.find((item) => String(item.id).toUpperCase() === reference);
   if (!shipment) return response.status(404).json({ message: "Shipment not found." });
-  const { ownerEmail, customerId, phone, address, pickupLocation: _pickupLocation, ...publicShipment } = shipment;
-  response.json({ data: publicShipment });
+  const tracking = await refreshShipmentTracking(shipment);
+  if (applyTrackingSnapshot(shipment, tracking)) await writeState(state, "shipment.tracking.updated");
+  const {
+    ownerEmail,
+    customerId,
+    phone,
+    address,
+    pickupLocation: _pickupLocation,
+    invoiceNumber,
+    ewbn,
+    ewaybills,
+    ewaybillUpdates,
+    codAmount,
+    ...publicShipment
+  } = shipment;
+  response.json({ data: { ...publicShipment, tracking } });
 });
 
 app.use((error, _request, response, _next) => {

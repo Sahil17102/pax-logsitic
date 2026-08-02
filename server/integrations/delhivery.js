@@ -16,6 +16,8 @@ const DEFAULT_SINGLE_WAYBILL_RATE_LIMIT_REQUESTS = 675;
 const DEFAULT_MANIFEST_RATE_LIMIT_REQUESTS = 18000;
 const DEFAULT_EDIT_RATE_LIMIT_REQUESTS = 11000;
 const DEFAULT_EWAYBILL_RATE_LIMIT_REQUESTS = 225;
+const DEFAULT_TRACKING_RATE_LIMIT_REQUESTS = 675;
+const DEFAULT_TRACKING_CACHE_TTL_MS = 30 * 1000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
   ["prepaid", "Prepaid"],
@@ -390,6 +392,65 @@ export function normalizeDelhiveryEwaybillUpdate(payload, waybill) {
   }
 }
 
+function trackingStatus(record = {}) {
+  return {
+    status: String(firstDefined(record, ["Status", "status", "Scan", "scan"]) || "").trim(),
+    statusType: String(firstDefined(record, ["StatusType", "status_type", "ScanType", "scan_type"]) || "").trim(),
+    dateTime: String(firstDefined(record, ["StatusDateTime", "status_date_time", "ScanDateTime", "scan_date_time", "date_time"]) || "").trim(),
+    location: String(firstDefined(record, ["StatusLocation", "status_location", "ScannedLocation", "scanned_location", "location"]) || "").trim(),
+    instructions: String(firstDefined(record, ["Instructions", "instructions", "remark", "remarks"]) || "").trim(),
+  };
+}
+
+export function normalizeDelhiveryTracking(payload, requestedWaybills = []) {
+  const source = Array.isArray(payload?.ShipmentData)
+    ? payload.ShipmentData
+    : Array.isArray(payload?.shipmentData)
+      ? payload.shipmentData
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+  const shipments = source.map((wrapper) => wrapper?.Shipment || wrapper?.shipment || wrapper).filter(Boolean).map((shipment) => {
+    const scanSource = Array.isArray(shipment.Scans) ? shipment.Scans : Array.isArray(shipment.scans) ? shipment.scans : [];
+    return {
+      waybill: String(firstDefined(shipment, ["AWB", "awb", "waybill", "Waybill"]) || "").trim(),
+      referenceId: String(firstDefined(shipment, ["ReferenceNo", "reference_no", "ref_id", "order_id"]) || "").trim(),
+      pickupDate: String(firstDefined(shipment, ["PickUpDate", "pickup_date", "pickupDate"]) || "").trim(),
+      origin: String(firstDefined(shipment, ["Origin", "origin"]) || "").trim(),
+      destination: String(firstDefined(shipment, ["Destination", "destination"]) || "").trim(),
+      currentStatus: trackingStatus(shipment.Status || shipment.status || {}),
+      scans: scanSource.map((scan) => trackingStatus(scan?.ScanDetail || scan?.scan_detail || scan)).filter((scan) => scan.status || scan.dateTime),
+    };
+  }).filter((shipment) => /^\d{8,20}$/.test(shipment.waybill));
+  const remark = String(firstDefined(payload, ["Error", "error", "message", "remark", "remarks"]) || "").trim();
+  if (!shipments.length && remark) {
+    throw new DelhiveryError(remark, { code: "DELHIVERY_TRACKING_REJECTED", status: 422 });
+  }
+  return {
+    provider: "delhivery",
+    requestedCount: requestedWaybills.length,
+    foundCount: shipments.length,
+    fetchedAt: new Date().toISOString(),
+    shipments,
+    remark,
+  };
+}
+
+function normalizeTrackingRequest(input = {}) {
+  const source = input.waybills ?? input.waybill;
+  const waybills = [...new Set((Array.isArray(source) ? source : String(source || "").split(","))
+    .map((waybill) => String(waybill || "").trim())
+    .filter(Boolean))];
+  if (!waybills.length || waybills.length > 50 || waybills.some((waybill) => !/^\d{8,20}$/.test(waybill))) {
+    throw new DelhiveryError("Tracking requires between 1 and 50 valid waybills.", { code: "INVALID_TRACKING_WAYBILLS", status: 400 });
+  }
+  const refIds = String(input.refIds ?? input.ref_ids ?? "").trim();
+  if (refIds.length > 100 || /[\u0000-\u001F\u007F]/.test(refIds)) {
+    throw new DelhiveryError("Tracking order reference must be at most 100 characters.", { code: "INVALID_TRACKING_REFERENCE", status: 400 });
+  }
+  return { waybills, refIds };
+}
+
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
   const deliveryCodes = Array.isArray(payload?.delivery_codes) ? payload.delivery_codes : [];
   const wrapper = deliveryCodes[0];
@@ -690,6 +751,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
       status: 503,
     });
   }
+  const configuredTrackingRateLimit = Number(process.env.DELHIVERY_TRACKING_RATE_LIMIT_REQUESTS);
+  const trackingRateLimitRequests = Number.isInteger(configuredTrackingRateLimit) && configuredTrackingRateLimit > 0
+    ? Math.min(configuredTrackingRateLimit, 750)
+    : DEFAULT_TRACKING_RATE_LIMIT_REQUESTS;
+  const trackingPath = validateProviderPath(process.env.DELHIVERY_TRACKING_PATH || "/api/v1/packages/json/", "DELHIVERY_TRACKING_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -917,6 +983,34 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryEwaybillUpdate(payload, waybill);
   }
 
+  async function fetchTracking(request) {
+    const endpoint = new URL(trackingPath, `${baseUrl}/`);
+    endpoint.searchParams.set("waybill", request.waybills.join(","));
+    endpoint.searchParams.set("ref_ids", request.refIds);
+    const payload = await requestJson(endpoint, "shipment-tracking", trackingRateLimitRequests, {
+      headers: { "Content-Type": "application/json" },
+    });
+    return normalizeDelhiveryTracking(payload, request.waybills);
+  }
+
+  async function trackShipments(input) {
+    ensureConfigured();
+    const normalized = normalizeTrackingRequest(input);
+    const cacheKey = `tracking:${normalized.waybills.join(",")}:${normalized.refIds}`;
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return structuredClone(cached.data);
+    if (pending.has(cacheKey)) return structuredClone(await pending.get(cacheKey));
+    const request = fetchTracking(normalized)
+      .then((data) => {
+        if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+        cache.set(cacheKey, { data, expiresAt: Date.now() + DEFAULT_TRACKING_CACHE_TTL_MS });
+        return data;
+      })
+      .finally(() => pending.delete(cacheKey));
+    pending.set(cacheKey, request);
+    return structuredClone(await request);
+  }
+
   async function checkServiceability(pincode) {
     ensureConfigured();
     const normalizedPincode = String(pincode || "").trim();
@@ -999,5 +1093,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     editShipment,
     cancelShipment,
     updateEwaybill,
+    trackShipments,
   };
 }

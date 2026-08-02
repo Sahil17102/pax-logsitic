@@ -12,6 +12,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
   const manifestedOrders = new Set();
   const manifestedWaybills = new Set();
   const cancelledWaybills = new Set();
+  const trackingByWaybill = new Map();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
@@ -28,6 +29,43 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
     if (request.headers.authorization !== `Token ${token}`) {
       response.statusCode = 401;
       response.end(JSON.stringify({ detail: "Invalid token" }));
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/v1/packages/json/") {
+      const waybills = String(url.searchParams.get("waybill") || "").split(",").map((value) => value.trim()).filter(Boolean);
+      const refIds = String(url.searchParams.get("ref_ids") || "").trim();
+      if (!waybills.length || waybills.length > 50 || waybills.some((waybill) => !/^\d{8,20}$/.test(waybill))) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ Error: "Invalid waybill list" }));
+        return;
+      }
+      const ShipmentData = waybills.flatMap((waybill) => {
+        const tracked = trackingByWaybill.get(waybill);
+        if (!tracked || (refIds && tracked.order !== refIds)) return [];
+        const current = tracked.currentStatus || { status: "Manifested", statusType: "UD", instructions: "Manifest uploaded" };
+        return [{ Shipment: {
+          AWB: waybill,
+          ReferenceNo: tracked.order,
+          PickUpDate: "2026-08-02 10:00:00",
+          Origin: "Hyderabad",
+          Destination: "Leh",
+          Status: {
+            Status: current.status,
+            StatusType: current.statusType,
+            StatusDateTime: "2026-08-02T10:00:00.000",
+            StatusLocation: "HYD Hub",
+            Instructions: current.instructions,
+          },
+          Scans: [{ ScanDetail: {
+            Scan: "Manifested",
+            ScanType: "UD",
+            ScanDateTime: "2026-08-02T10:00:00.000",
+            ScannedLocation: "HYD Hub",
+            Instructions: "Manifest uploaded",
+          } }],
+        } }];
+      });
+      response.end(JSON.stringify({ ShipmentData }));
       return;
     }
     const ewaybillMatch = url.pathname.match(/^\/api\/rest\/ewaybill\/(\d{8,20})\/$/);
@@ -85,6 +123,8 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
           return;
         }
         cancelledWaybills.add(String(edit.waybill));
+        const tracked = trackingByWaybill.get(String(edit.waybill));
+        if (tracked) tracked.currentStatus = { status: "Manifested", statusType: "UD", instructions: "Cancellation accepted" };
         response.end(JSON.stringify({ status: true, message: "Shipment cancellation accepted", waybill: String(edit.waybill) }));
         return;
       }
@@ -138,6 +178,10 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         manifestSequence += 1;
         const waybill = shipment.waybill || String(920000000000 + manifestSequence);
         manifestedWaybills.add(String(waybill));
+        trackingByWaybill.set(String(waybill), {
+          order: String(shipment.order),
+          currentStatus: { status: "Manifested", statusType: "UD", instructions: "Manifest uploaded" },
+        });
         return { status: "Success", waybill, refnum: shipment.order, remarks: "" };
       });
       response.end(JSON.stringify({ packages, package_count: packages.length, upload_wbn: `UP-${manifestSequence}` }));

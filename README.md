@@ -56,6 +56,7 @@ PATCH /api/admin/shipments/:id/status
 PATCH /api/admin/shipments/:id
 POST  /api/admin/shipments/:id/cancel
 PUT   /api/admin/shipments/:id/ewaybill
+GET   /api/admin/shipments/:id/tracking
 PUT   /api/admin/configuration
 PATCH /api/admin/customers/:id/access
 GET   /api/client/bootstrap
@@ -67,6 +68,7 @@ POST  /api/client/shipments
 PATCH /api/client/shipments/:id
 POST  /api/client/shipments/:id/cancel
 PUT   /api/client/shipments/:id/ewaybill
+GET   /api/client/shipments/:id/tracking
 GET   /api/client/serviceability/:pincode
 GET   /api/admin/serviceability/:pincode
 GET   /api/client/heavy-serviceability/:pincode
@@ -125,6 +127,8 @@ DELHIVERY_EDIT_PATH=/api/p/edit
 DELHIVERY_EDIT_RATE_LIMIT_REQUESTS=11000
 DELHIVERY_EWAYBILL_PATH_TEMPLATE=/api/rest/ewaybill/{waybill}/
 DELHIVERY_EWAYBILL_RATE_LIMIT_REQUESTS=225
+DELHIVERY_TRACKING_PATH=/api/v1/packages/json/
+DELHIVERY_TRACKING_RATE_LIMIT_REQUESTS=675
 DELHIVERY_PICKUP_LOCATION=<exact registered warehouse name>
 DELHIVERY_CLIENT_NAME=<exact registered Delhivery client name>
 ```
@@ -161,6 +165,10 @@ E-waybill updates use authenticated `PUT /api/*/shipments/:id/ewaybill` routes f
 
 After Delhivery accepts the update, Pax stores append-only `ewaybillUpdates` history plus the current EWB per package. SPS records also update their top-level `ewbn` and `invoiceNumber`; MPS calls require an explicit box waybill and do not overwrite unrelated package data. The same endpoint supports forward and return-flow EWB updates according to Delhivery's current shipment flow. Provider rejection leaves the local shipment and audit history unchanged.
 
+Live shipment tracking is available through authenticated `GET /api/client/shipments/:id/tracking` and `GET /api/admin/shipments/:id/tracking` routes, and is also attached to the privacy-safe public `GET /api/tracking/:id` response. Pax never accepts an arbitrary customer/public AWB: it resolves the stored shipment's provider waybills, sends them comma-separated with the Pax order ID in `ref_ids`, and normalizes Delhivery `ShipmentData` into current status, status type, timestamp, location, instructions and detailed scan history.
+
+Each Delhivery tracking request is limited to 50 unique valid waybills. Larger Pax MPS orders are split into compliant batches and merged into one response; 30-second query caching and in-flight request coalescing avoid duplicate provider traffic. Tracking has a dedicated 675-request process window below Delhivery's 750-request/5-minute/IP limit. A changed provider snapshot updates the persisted shipment status from the master/SPS waybill, while unchanged cached reads do not rewrite PostgreSQL. Public responses continue to exclude receiver phone, address, customer account IDs and owner email.
+
 The committed Postman collection is `postman/Pax-Delhivery-B2C.postman_collection.json`. Run its complete local contract suite with:
 
 ```bash
@@ -168,9 +176,9 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement and updates, mandatory invoice/EWB validation, low-value EWB rejection, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Manifested/In Transit/Scheduled cancellation outcomes, duplicate cancellation protection, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement and updates, live SPS/MPS status and scan tracking, public tracking privacy, mandatory invoice/EWB validation, low-value EWB rejection, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Manifested/In Transit/Scheduled cancellation outcomes, duplicate cancellation protection, Surface/Express Expected TAT, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final staging/production acceptance run requires the real account token, pickup location and client name in the backend environment.
 
-Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, tracking, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, rates, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 
 ## Database seeds
 

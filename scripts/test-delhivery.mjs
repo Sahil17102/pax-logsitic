@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
+import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryTracking, normalizeDelhiveryWaybills } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
@@ -74,6 +74,19 @@ assert.deepEqual(ewaybillUpdatePayload, { data: [{ dcn: "INV-2026/001", ewbn: "1
 assert.throws(() => buildDelhiveryEwaybillUpdatePayload({ dcn: "", ewbn: "181000000001" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_EWAYBILL_UPDATE");
 assert.throws(() => buildDelhiveryEwaybillUpdatePayload({ dcn: "INV-1", ewbn: 181000000001 }), (error) => error instanceof DelhiveryError && error.code === "INVALID_EWAYBILL_UPDATE");
 assert.throws(() => normalizeDelhiveryEwaybillUpdate({ status: false, message: "No such waybill found" }, "920000000001"), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_EWAYBILL_REJECTED");
+const trackingFixture = { ShipmentData: [{ Shipment: {
+  AWB: "920000000001",
+  ReferenceNo: "PAX-ORDER-1",
+  PickUpDate: "2026-08-02 10:00:00",
+  Origin: "Hyderabad",
+  Destination: "Leh",
+  Status: { Status: "In Transit", StatusType: "UD", StatusDateTime: "2026-08-03T10:00:00.000", StatusLocation: "DEL Hub", Instructions: "In transit" },
+  Scans: [{ ScanDetail: { Scan: "Manifested", ScanType: "UD", ScanDateTime: "2026-08-02T10:00:00.000", ScannedLocation: "HYD Hub", Instructions: "Manifest uploaded" } }],
+} }] };
+const normalizedTracking = normalizeDelhiveryTracking(trackingFixture, ["920000000001"]);
+assert.equal(normalizedTracking.foundCount, 1);
+assert.equal(normalizedTracking.shipments[0].currentStatus.status, "In Transit");
+assert.equal(normalizedTracking.shipments[0].scans[0].location, "HYD Hub");
 
 const serviceable = normalizeDelhiveryServiceability({
   delivery_codes: [{ postal_code: { pin: 194103, cod: "Y", pre_paid: "Y", pickup: "N", reverse_pickup: "Y", remarks: "", district: "Leh", state_code: "LA" } }],
@@ -168,6 +181,16 @@ try {
         });
       }
       assert.equal(options.headers.Authorization, "Token test-token");
+      if (endpoint.pathname === "/api/v1/packages/json/") {
+        assert.equal(options.method, "GET");
+        assert.equal(endpoint.searchParams.get("waybill"), "920000000001");
+        assert.equal(endpoint.searchParams.get("ref_ids"), "PAX-ORDER-1");
+        assert.equal(options.headers["Content-Type"], "application/json");
+        return new Response(JSON.stringify(trackingFixture), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/api/rest/ewaybill/920000000001/") {
         assert.equal(options.method, "PUT");
         assert.equal(options.headers["Content-Type"], "application/json");
@@ -268,16 +291,20 @@ try {
   const ewaybillUpdated = await client.updateEwaybill({ waybill: "920000000001", dcn: "INV-2026/001", ewbn: "181000000001" });
   assert.equal(ewaybillUpdated.updated, true);
   assert.equal(ewaybillUpdated.waybill, "920000000001");
-  assert.equal(requestCount, 10, "each Delhivery contract uses its independent provider request path");
+  const tracked = await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
+  assert.equal(tracked.shipments[0].currentStatus.status, "In Transit");
+  await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
+  assert.equal(requestCount, 11, "each Delhivery contract uses its independent provider request path and tracking cache");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.getExpectedTat({ ...tatRequest, mot: "X" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_TRANSPORT_MODE");
   await assert.rejects(() => client.getExpectedTat({ ...tatRequest, expectedPickupDate: "2026-02-30" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_PICKUP_DATE");
+  await assert.rejects(() => client.trackShipments({ waybills: Array.from({ length: 51 }, (_, index) => String(930000000000 + index)) }), (error) => error instanceof DelhiveryError && error.code === "INVALID_TRACKING_WAYBILLS");
 } finally {
   if (originalToken === undefined) delete process.env.DELHIVERY_API_TOKEN; else process.env.DELHIVERY_API_TOKEN = originalToken;
   if (originalBaseUrl === undefined) delete process.env.DELHIVERY_BASE_URL; else process.env.DELHIVERY_BASE_URL = originalBaseUrl;
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
