@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShippingCost, logoutClient } from "../services/clientApi.js";
+import { createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShippingCost, getClientShippingLabel, logoutClient } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -300,6 +300,9 @@ export default function DashboardPage() {
   const [serviceProductType, setServiceProductType] = useState("Parcel");
   const [serviceResult, setServiceResult] = useState(null);
   const [labelShipmentId, setLabelShipmentId] = useState(() => shipments[0]?.id || "");
+  const [labelWaybill, setLabelWaybill] = useState(() => shipments[0]?.waybill || "");
+  const [labelPdf, setLabelPdf] = useState(true);
+  const [labelPdfSize, setLabelPdfSize] = useState("4R");
   const [generatedLabel, setGeneratedLabel] = useState(null);
   const [newShipment, setNewShipment] = useState({
     customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "",
@@ -383,6 +386,10 @@ export default function DashboardPage() {
     controlState.settings.paymentOptions.cod && "COD",
   ].filter(Boolean);
   const enabledCouriers = (controlState.resources.couriers || []).filter((courier) => courier.enabled);
+  const labelShipment = shipments.find((shipment) => shipment.id === labelShipmentId);
+  const labelWaybills = labelShipment
+    ? (Array.isArray(labelShipment.waybills) && labelShipment.waybills.length ? labelShipment.waybills : [labelShipment.waybill]).filter(Boolean).map(String)
+    : [];
   useEffect(() => {
     if (!availablePaymentOptions.length) return;
     const fallback = availablePaymentOptions[0];
@@ -574,29 +581,42 @@ export default function DashboardPage() {
     }
   };
 
-  const generateShippingLabel = (event) => {
+  const generateShippingLabel = async (event) => {
     event.preventDefault();
     const shipment = shipments.find((item) => item.id === labelShipmentId);
-    setGeneratedLabel(shipment ? { ...shipment, barcode: shipment.id.replace(/\D/g, "").padEnd(12, "0") } : { error: "Select a valid shipment." });
+    if (!shipment) {
+      setGeneratedLabel({ error: "Select a valid shipment." });
+      return;
+    }
+    const waybill = labelWaybill || (Array.isArray(shipment.waybills) ? shipment.waybills[0] : shipment.waybill);
+    if (!waybill) {
+      setGeneratedLabel({ error: "This shipment does not have a manifested Delhivery waybill." });
+      return;
+    }
+    try {
+      setGeneratedLabel({ loading: true });
+      const label = await getClientShippingLabel(shipment.id, { waybill: String(waybill), pdf: labelPdf, pdfSize: labelPdfSize });
+      setGeneratedLabel({ ...shipment, ...label, barcode: label.waybill });
+    } catch (error) {
+      setGeneratedLabel({ error: error.message || "Delhivery could not generate the shipping label." });
+    }
   };
 
   const downloadShippingLabel = () => {
-    if (!generatedLabel || generatedLabel.error) return;
-    const content = [
-      "PAX LOGISTICS — SHIPPING LABEL",
-      `Shipment: ${generatedLabel.id}`,
-      `Customer: ${generatedLabel.customer}`,
-      `Destination: ${generatedLabel.destination}`,
-      `Payment: ${generatedLabel.payment}`,
-      `Barcode: ${generatedLabel.barcode}`,
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    if (!generatedLabel || generatedLabel.error || generatedLabel.loading) return;
     const link = document.createElement("a");
-    link.href = url;
-    link.download = `${generatedLabel.id}-shipping-label.txt`;
+    if (generatedLabel.format === "pdf") {
+      link.href = generatedLabel.downloadUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    } else {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(generatedLabel.labelData, null, 2)], { type: "application/json;charset=utf-8" }));
+      link.href = url;
+      link.download = `${generatedLabel.id}-${generatedLabel.waybill}-shipping-label.json`;
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
     link.click();
-    URL.revokeObjectURL(url);
-    notify(`${generatedLabel.id} label downloaded.`);
+    notify(`${generatedLabel.id} ${generatedLabel.format === "pdf" ? "PDF label opened" : "label JSON downloaded"}.`);
   };
 
   const saveProfile = (event) => {
@@ -1040,19 +1060,25 @@ export default function DashboardPage() {
       <section className="section-title-row"><div><p>SHIPPING DOCUMENT</p><h1>Label generator</h1><span>Select a booked shipment and generate its dispatch label.</span></div></section>
       <section className="portal-tool-layout">
         <form className="portal-card portal-tool-form" onSubmit={generateShippingLabel}>
-          <div className="portal-card-head"><div><small>SELECT ORDER</small><h2>Prepare shipping label</h2></div><span className="tool-live-badge">A6 format</span></div>
-          <div className="portal-tool-fields"><label>Shipment<select value={labelShipmentId} onChange={(event) => { setLabelShipmentId(event.target.value); setGeneratedLabel(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label></div>
-          <button className="portal-primary portal-tool-submit" type="submit"><Icon name="audit" /> Generate label</button>
+          <div className="portal-card-head"><div><small>SELECT ORDER</small><h2>Prepare shipping label</h2></div><span className="tool-live-badge">Delhivery</span></div>
+          <div className="portal-tool-fields">
+            <label>Shipment<select value={labelShipmentId} onChange={(event) => { const nextId = event.target.value; const nextShipment = shipments.find((shipment) => shipment.id === nextId); setLabelShipmentId(nextId); setLabelWaybill(String(nextShipment?.waybills?.[0] || nextShipment?.waybill || "")); setGeneratedLabel(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label>
+            <label>Waybill<select value={labelWaybill} onChange={(event) => { setLabelWaybill(event.target.value); setGeneratedLabel(null); }}>{labelWaybills.map((waybill) => <option value={waybill} key={waybill}>{waybill}</option>)}</select></label>
+            <label>Output<select value={labelPdf ? "pdf" : "json"} onChange={(event) => { setLabelPdf(event.target.value === "pdf"); setGeneratedLabel(null); }}><option value="pdf">PDF download</option><option value="json">Custom label JSON</option></select></label>
+            <label>PDF size<select value={labelPdfSize} disabled={!labelPdf} onChange={(event) => { setLabelPdfSize(event.target.value); setGeneratedLabel(null); }}><option value="A4">A4 (8 × 11)</option><option value="4R">4R (4 × 6)</option></select></label>
+          </div>
+          <button className="portal-primary portal-tool-submit" type="submit" disabled={generatedLabel?.loading}><Icon name="audit" /> {generatedLabel?.loading ? "Generating..." : "Generate label"}</button>
         </form>
         <article className="portal-card portal-tool-result label-result-card" aria-live="polite">
-          {!generatedLabel && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Your A6 label preview</h2><p>Choose an order to create a printable dispatch label.</p></div>}
+          {!generatedLabel && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Your shipping label</h2><p>Choose a manifested order, PDF size and output format.</p></div>}
+          {generatedLabel?.loading && <div className="portal-tool-empty"><span><Icon name="refresh" /></span><h2>Generating label</h2><p>Waiting for Delhivery to prepare the document.</p></div>}
           {generatedLabel?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Label unavailable</h2><p>{generatedLabel.error}</p></div>}
-          {generatedLabel && !generatedLabel.error && <div className="shipping-label-preview">
-            <div className="shipping-label-head"><strong>PAX</strong><span>PREPAID / COD</span></div>
+          {generatedLabel && !generatedLabel.error && !generatedLabel.loading && <div className="shipping-label-preview">
+            <div className="shipping-label-head"><strong>PAX</strong><span>{generatedLabel.format.toUpperCase()} · {generatedLabel.pdfSize}</span></div>
             <small>SHIP TO</small><h2>{generatedLabel.customer}</h2><p>{generatedLabel.destination}</p>
             <div className="shipping-label-meta"><span><small>SHIPMENT</small><b>{generatedLabel.id}</b></span><span><small>PAYMENT</small><b>{generatedLabel.payment}</b></span></div>
             <div className="shipping-label-bars" aria-label={`Barcode ${generatedLabel.barcode}`}></div><b>{generatedLabel.barcode}</b>
-            <button className="portal-primary" type="button" onClick={downloadShippingLabel}>Download label <Icon name="arrow" /></button>
+            <button className="portal-primary" type="button" onClick={downloadShippingLabel}>{generatedLabel.format === "pdf" ? "Open PDF label" : "Download label JSON"} <Icon name="arrow" /></button>
           </div>}
         </article>
       </section>

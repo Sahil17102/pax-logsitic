@@ -31,6 +31,36 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ detail: "Invalid token" }));
       return;
     }
+    if (request.method === "GET" && url.pathname === "/api/p/packing_slip") {
+      const waybill = String(url.searchParams.get("wbns") || "").trim();
+      const pdf = String(url.searchParams.get("pdf") || "").trim().toLowerCase();
+      const pdfSize = String(url.searchParams.get("pdf_size") || "A4").trim().toUpperCase();
+      if (!/^\d{8,20}$/.test(waybill) || !manifestedWaybills.has(waybill) || !["true", "false"].includes(pdf) || !["A4", "4R"].includes(pdfSize)) {
+        response.end(JSON.stringify({ packages: [], packages_found: 0 }));
+        return;
+      }
+      const tracked = trackingByWaybill.get(waybill);
+      if (pdf === "true") {
+        response.end(JSON.stringify({
+          packages: [{ waybill, order: tracked?.order || "" }],
+          packages_found: 1,
+          pdf_download_link: `https://labels.test.delhivery.local/${waybill}-${pdfSize}.pdf`,
+        }));
+        return;
+      }
+      response.end(JSON.stringify({
+        packages: [{
+          waybill,
+          order: tracked?.order || "",
+          consignee: "Delhivery Test Receiver",
+          destination: "Leh",
+          payment_mode: "Pre-paid",
+          barcode: waybill,
+        }],
+        packages_found: 1,
+      }));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/v1/packages/json/") {
       const waybills = String(url.searchParams.get("waybill") || "").split(",").map((value) => value.trim()).filter(Boolean);
       const refIds = String(url.searchParams.get("ref_ids") || "").trim();

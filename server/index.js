@@ -839,6 +839,29 @@ async function handleShipmentTracking(request, response) {
 app.get("/api/admin/shipments/:id/tracking", requireRole("admin"), handleShipmentTracking);
 app.get("/api/client/shipments/:id/tracking", requireRole("customer"), handleShipmentTracking);
 
+async function handleShippingLabel(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  const waybill = shipmentActionWaybill(shipment, request.query.waybill, "labelled");
+  const data = await delhivery.generateShippingLabel({
+    waybill,
+    pdf: request.query.pdf,
+    pdf_size: request.query.pdf_size,
+  });
+  response.json({ data });
+}
+
+app.get("/api/admin/shipments/:id/label", requireRole("admin"), handleShippingLabel);
+app.get("/api/client/shipments/:id/label", requireRole("customer"), handleShippingLabel);
+
 app.get("/api/client/bootstrap", requireRole("customer"), async (request, response) => {
   const state = await readState();
   const user = state.users.find((item) => item.email === request.session.subject);

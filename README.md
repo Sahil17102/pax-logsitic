@@ -77,6 +77,8 @@ GET   /api/client/expected-tat
 GET   /api/admin/expected-tat
 GET   /api/client/shipping-cost
 GET   /api/admin/shipping-cost
+GET   /api/client/shipments/:id/label
+GET   /api/admin/shipments/:id/label
 POST  /api/admin/delhivery/waybills/fetch
 POST  /api/admin/delhivery/waybills/fetch-single
 GET   /api/admin/delhivery/waybills
@@ -134,6 +136,9 @@ DELHIVERY_TRACKING_RATE_LIMIT_REQUESTS=675
 DELHIVERY_SHIPPING_COST_PATH=/api/kinko/v1/invoice/charges/.json
 DELHIVERY_SHIPPING_COST_RATE_LIMIT_REQUESTS=45
 DELHIVERY_SHIPPING_COST_TIMEOUT_MS=65000
+DELHIVERY_LABEL_PATH=/api/p/packing_slip
+DELHIVERY_LABEL_RATE_LIMIT_REQUESTS=2700
+DELHIVERY_LABEL_TIMEOUT_MS=65000
 DELHIVERY_PICKUP_LOCATION=<exact registered warehouse name>
 DELHIVERY_CLIENT_NAME=<exact registered Delhivery client name>
 ```
@@ -147,6 +152,8 @@ Results are cached for five minutes and simultaneous checks for the same PIN/pro
 Expected TAT routes accept `originPin`, `destinationPin`, `mot` (`S`, `E` or `N`), optional `pdt` (`B2C` by default or `B2B`) and optional `expectedPickupDate` (`YYYY-MM-DD` or `YYYY-MM-DD HH:mm`). They call Delhivery's `/api/dc/expected_tat` endpoint and normalize the provider response into `tatDays`, `expectedDeliveryDate`, `modeOfTransport` and lane availability. TAT has its own 675-request process window under the provider's 750-request/5-minute/IP limit.
 
 Shipping-cost routes accept Delhivery's required `md` (`S` or `E`), `cgm` in grams, `o_pin`, `d_pin`, `ss` (`Delivered`, `RTO` or `DTO`) and `pt` (`Pre-paid` or `COD`) values. Optional `l`, `b`, `h` integer dimensions and `ipkg_type` (`box` or `flyer`) are forwarded when supplied. Pax calls `/api/kinko/v1/invoice/charges/.json`, preserves zero as a valid staging estimate, detects provider errors returned with HTTP 200, and normalizes account pricing into `estimatedAmount`, charged weight, currency, zone and provider details. Results are cached for five minutes with in-flight coalescing and a dedicated 45-request process window below Delhivery's 50-request/5-minute/IP limit. A separate 65-second provider timeout accommodates the documented long-tail latency. The authenticated customer and admin rate tools combine this live charge with Expected TAT instead of generating prices from local formulas.
+
+Shipping labels are generated through authenticated shipment-scoped routes. Pax resolves a persisted shipment, enforces customer ownership, verifies the selected waybill belongs to that SPS/MPS order, and calls `/api/p/packing_slip` with exactly one `wbns`. `pdf=true` returns a normalized secure PDF download link; `pdf=false` returns the provider JSON for a custom HTML/Code 128 renderer. `pdf_size` accepts `A4` or `4R` and defaults to `A4`. Missing manifested packages, insecure/missing PDF URLs, invalid booleans, unsupported sizes and unrelated waybills are rejected. The adapter reserves headroom with a 2,700-request process window below Delhivery's 3,000-request/5-minute/IP limit and uses a separate 65-second timeout for the documented long-tail latency. The customer label tool now opens provider PDFs or downloads the real custom-label JSON instead of fabricating a local text label.
 
 The admin-only bulk waybill endpoint accepts `{ "count": 1..10000 }`, calls the configured Delhivery waybill path and stores every unique numeric AWB in PostgreSQL. `delhivery_waybills` is created by the existing database initialization flow and tracks `stored`, `reserved` and `used` states without duplicating existing application data. Re-fetching the same AWB is safe because `waybill` is the primary key and duplicates are reported rather than inserted. The integration enforces five provider requests and at most 50,000 generated waybills per five-minute process window. `GET /api/admin/delhivery/waybills` supports `status`, `limit` (1-200) and `offset` filters; the admin panel exposes the same real inventory.
 
@@ -183,9 +190,9 @@ npm run test:delhivery
 npm run test:postman
 ```
 
-The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, URL-encoded SPS special characters, high-value e-waybill enforcement and updates, live SPS/MPS status and scan tracking, public tracking privacy, mandatory invoice/EWB validation, low-value EWB rejection, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Manifested/In Transit/Scheduled cancellation outcomes, duplicate cancellation protection, Surface/Express Expected TAT, Surface/Express shipping charges, optional dimensions/package type, HTTP-200 provider charge errors, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final production charge acceptance run requires the real account token because Delhivery does not store client charges in staging; shipment acceptance also requires the registered pickup location and client name in the backend environment.
+The Postman/Newman suite exercises authentication, parcel and Heavy coverage, empty-list/Heavy NSZ, temporary Embargo, blocked NSZ bookings, forward/Reverse Pickup/REPL manifestation, PDF/JSON shipping labels in A4/4R, label waybill ownership, URL-encoded SPS special characters, high-value e-waybill enforcement and updates, live SPS/MPS status and scan tracking, public tracking privacy, mandatory invoice/EWB validation, low-value EWB rejection, rejected unprefetched MPS, prepaid and COD MPS master/child fields, raw MPS JSON, shipment editing/payment conversion, terminal-status protection, Manifested/In Transit/Scheduled cancellation outcomes, duplicate cancellation protection, Surface/Express Expected TAT, Surface/Express shipping charges, optional dimensions/package type, HTTP-200 provider errors, bulk and single waybill storage, inventory lifecycle, duplicate protection and validation across customer/admin endpoints. It uses a deterministic local Delhivery contract server, so CI never needs or exposes a live provider token. A final production charge acceptance run requires the real account token because Delhivery does not store client charges in staging; shipment and label acceptance also require real manifested account waybills, the registered pickup location and client name in the backend environment.
 
-Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, labels, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
+Delhivery's authenticated developer portal lists other B2C contracts such as warehouse management, pickup requests and NDR updates. They are intentionally not guessed from undocumented payloads: add each adapter after its official request/response contract and required account identifiers are provided.
 
 ## Database seeds
 

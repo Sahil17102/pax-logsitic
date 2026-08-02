@@ -19,6 +19,8 @@ const DEFAULT_EWAYBILL_RATE_LIMIT_REQUESTS = 225;
 const DEFAULT_TRACKING_RATE_LIMIT_REQUESTS = 675;
 const DEFAULT_SHIPPING_COST_RATE_LIMIT_REQUESTS = 45;
 const DEFAULT_SHIPPING_COST_TIMEOUT_MS = 65000;
+const DEFAULT_LABEL_RATE_LIMIT_REQUESTS = 2700;
+const DEFAULT_LABEL_TIMEOUT_MS = 65000;
 const DEFAULT_TRACKING_CACHE_TTL_MS = 30 * 1000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
@@ -557,6 +559,87 @@ export function normalizeDelhiveryShippingCost(payload, request) {
   };
 }
 
+export function normalizeShippingLabelRequest(input = {}) {
+  const waybill = String(firstDefined(input, ["waybill", "wbns"]) || "").trim();
+  if (!/^\d{8,20}$/.test(waybill)) {
+    throw new DelhiveryError("A valid manifested waybill is required to generate a shipping label.", { code: "INVALID_WAYBILL", status: 400 });
+  }
+  const pdfInput = firstDefined(input, ["pdf"]);
+  let pdf = true;
+  if (pdfInput !== undefined && pdfInput !== null && pdfInput !== "") {
+    if (typeof pdfInput === "boolean") pdf = pdfInput;
+    else if (String(pdfInput).trim().toLowerCase() === "true") pdf = true;
+    else if (String(pdfInput).trim().toLowerCase() === "false") pdf = false;
+    else throw new DelhiveryError("pdf must be true or false.", { code: "INVALID_LABEL_FORMAT", status: 400 });
+  }
+  const pdfSize = String(firstDefined(input, ["pdfSize", "pdf_size"]) || "A4").trim().toUpperCase();
+  if (!new Set(["A4", "4R"]).has(pdfSize)) {
+    throw new DelhiveryError("Shipping label size must be A4 or 4R.", { code: "INVALID_LABEL_SIZE", status: 400 });
+  }
+  return { waybill, pdf, pdfSize };
+}
+
+function secureLabelUrl(value) {
+  if (typeof value !== "string") return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function findLabelDownloadUrl(value) {
+  const direct = secureLabelUrl(value);
+  if (direct) return direct;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findLabelDownloadUrl(item);
+      if (found) return found;
+    }
+    return "";
+  }
+  if (!value || typeof value !== "object") return "";
+  const preferredKeys = ["pdf_download_link", "pdfDownloadLink", "pdf_url", "pdfUrl", "download_link", "downloadLink", "s3_url", "s3Url"];
+  for (const key of preferredKeys) {
+    const found = findLabelDownloadUrl(value[key]);
+    if (found) return found;
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    if (preferredKeys.includes(key)) continue;
+    const found = findLabelDownloadUrl(nested);
+    if (found) return found;
+  }
+  return "";
+}
+
+export function normalizeDelhiveryShippingLabel(payload, request) {
+  const packages = Array.isArray(payload?.packages) ? payload.packages : [];
+  const packagesFoundValue = firstDefined(payload, ["packages_found", "packagesFound"]);
+  const packagesFound = Number.isInteger(Number(packagesFoundValue)) ? Number(packagesFoundValue) : packages.length;
+  const providerError = String(firstDefined(payload, ["error", "Error"]) || "").trim();
+  if (providerError || packagesFound === 0) {
+    throw new DelhiveryError(providerError || "Delhivery did not find a manifested shipment for this waybill.", {
+      code: "DELHIVERY_LABEL_REJECTED",
+      status: 422,
+    });
+  }
+  const downloadUrl = request.pdf ? findLabelDownloadUrl(payload) : "";
+  if (request.pdf && !downloadUrl) {
+    throw new DelhiveryError("Delhivery did not return a secure PDF label link.", { code: "DELHIVERY_INVALID_RESPONSE", status: 502 });
+  }
+  return {
+    provider: "delhivery",
+    waybill: request.waybill,
+    format: request.pdf ? "pdf" : "json",
+    pdfSize: request.pdfSize,
+    packagesFound,
+    downloadUrl,
+    labelData: request.pdf ? null : payload,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export function normalizeDelhiveryServiceability(payload, requestedPincode) {
   const deliveryCodes = Array.isArray(payload?.delivery_codes) ? payload.delivery_codes : [];
   const wrapper = deliveryCodes[0];
@@ -871,6 +954,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredShippingCostTimeout, 120000)
     : DEFAULT_SHIPPING_COST_TIMEOUT_MS;
   const shippingCostPath = validateProviderPath(process.env.DELHIVERY_SHIPPING_COST_PATH || "/api/kinko/v1/invoice/charges/.json", "DELHIVERY_SHIPPING_COST_PATH");
+  const configuredLabelRateLimit = Number(process.env.DELHIVERY_LABEL_RATE_LIMIT_REQUESTS);
+  const labelRateLimitRequests = Number.isInteger(configuredLabelRateLimit) && configuredLabelRateLimit > 0
+    ? Math.min(configuredLabelRateLimit, 3000)
+    : DEFAULT_LABEL_RATE_LIMIT_REQUESTS;
+  const configuredLabelTimeout = Number(process.env.DELHIVERY_LABEL_TIMEOUT_MS);
+  const labelTimeoutMs = Number.isInteger(configuredLabelTimeout) && configuredLabelTimeout > 0
+    ? Math.min(configuredLabelTimeout, 120000)
+    : DEFAULT_LABEL_TIMEOUT_MS;
+  const labelPath = validateProviderPath(process.env.DELHIVERY_LABEL_PATH || "/api/p/packing_slip", "DELHIVERY_LABEL_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -1120,6 +1212,18 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryShippingCost(payload, request);
   }
 
+  async function fetchShippingLabel(request) {
+    const endpoint = new URL(labelPath, `${baseUrl}/`);
+    endpoint.searchParams.set("wbns", request.waybill);
+    endpoint.searchParams.set("pdf", String(request.pdf));
+    endpoint.searchParams.set("pdf_size", request.pdfSize);
+    const payload = await requestJson(endpoint, "shipping-label", labelRateLimitRequests, {
+      headers: { "Content-Type": "application/json" },
+      requestTimeoutMs: labelTimeoutMs,
+    });
+    return normalizeDelhiveryShippingLabel(payload, request);
+  }
+
   async function trackShipments(input) {
     ensureConfigured();
     const normalized = normalizeTrackingRequest(input);
@@ -1154,6 +1258,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
       .finally(() => pending.delete(cacheKey));
     pending.set(cacheKey, request);
     return structuredClone(await request);
+  }
+
+  async function generateShippingLabel(input) {
+    ensureConfigured();
+    return fetchShippingLabel(normalizeShippingLabelRequest(input));
   }
 
   async function checkServiceability(pincode) {
@@ -1240,5 +1349,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     updateEwaybill,
     trackShipments,
     calculateShippingCost,
+    generateShippingLabel,
   };
 }

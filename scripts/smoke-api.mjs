@@ -90,6 +90,7 @@ try {
       amount: 750,
     }),
   });
+  const shippingLabel = await request(`/api/client/shipments/${created.data.id}/label?waybill=${created.data.waybill}&pdf=true&pdf_size=4R`, { headers: authorization });
   const tracked = await request(`/api/tracking/${created.data.id}`);
   const after = await request("/api/client/bootstrap", { headers: authorization });
   const secondRegister = await request("/api/client/users", {
@@ -171,6 +172,8 @@ try {
   assert.equal(created.data.status, "Manifested");
   assert.match(created.data.waybill, /^\d{8,20}$/);
   assert.equal(created.data.packageCount, 1);
+  assert.equal(shippingLabel.data.format, "pdf");
+  assert.match(shippingLabel.data.downloadUrl, /^https:\/\/labels\.test\.delhivery\.local\//);
   assert.equal(secondBootstrap.data.shipments.length, 0);
   assert.equal(dashboard.data.shipments.length, 1);
   assert.equal(dashboard.data.customers.length, 2);
@@ -198,6 +201,7 @@ try {
     expectedTatDays: expectedTat.data.tatDays,
     adminExpectedTatDays: adminExpectedTat.data.tatDays,
     estimatedShippingCost: shippingCost.data.estimatedAmount,
+    shippingLabelFormat: shippingLabel.data.format,
     storedWaybills: inventoryAfterSingle.data.summary.stored,
     duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
     singleWaybillStored: singleWaybill.data.storedCount,

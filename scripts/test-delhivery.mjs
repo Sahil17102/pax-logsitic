@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryShippingCost, normalizeDelhiveryTracking, normalizeDelhiveryWaybills, normalizeShippingCostRequest } from "../server/integrations/delhivery.js";
+import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryShippingCost, normalizeDelhiveryShippingLabel, normalizeDelhiveryTracking, normalizeDelhiveryWaybills, normalizeShippingCostRequest, normalizeShippingLabelRequest } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
@@ -170,6 +170,19 @@ assert.equal(normalizeDelhiveryShippingCost([{ total_amount: 0 }], shippingCostR
 assert.throws(() => normalizeShippingCostRequest({ ...shippingCostRequest, md: "N" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_BILLING_MODE");
 assert.throws(() => normalizeShippingCostRequest({ ...shippingCostRequest, pt: "Pickup" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_SHIPPING_PAYMENT");
 assert.throws(() => normalizeDelhiveryShippingCost({ error: "Unable to process request for provided o_pin" }, shippingCostRequest), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_SHIPPING_COST_REJECTED");
+const pdfLabelRequest = normalizeShippingLabelRequest({ waybill: "920000000001", pdf: "true", pdf_size: "4r" });
+assert.deepEqual(pdfLabelRequest, { waybill: "920000000001", pdf: true, pdfSize: "4R" });
+const pdfLabelFixture = { packages: [{ waybill: "920000000001" }], packages_found: 1, pdf_download_link: "https://labels.test.delhivery.local/920000000001-4R.pdf" };
+const normalizedPdfLabel = normalizeDelhiveryShippingLabel(pdfLabelFixture, pdfLabelRequest);
+assert.equal(normalizedPdfLabel.format, "pdf");
+assert.equal(normalizedPdfLabel.downloadUrl, "https://labels.test.delhivery.local/920000000001-4R.pdf");
+const jsonLabelRequest = normalizeShippingLabelRequest({ waybill: "920000000001", pdf: false });
+const normalizedJsonLabel = normalizeDelhiveryShippingLabel({ packages: [{ waybill: "920000000001", barcode: "920000000001" }], packages_found: 1 }, jsonLabelRequest);
+assert.equal(normalizedJsonLabel.format, "json");
+assert.equal(normalizedJsonLabel.labelData.packages[0].barcode, "920000000001");
+assert.throws(() => normalizeShippingLabelRequest({ waybill: "920000000001", pdf: "yes" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_LABEL_FORMAT");
+assert.throws(() => normalizeShippingLabelRequest({ waybill: "920000000001", pdf_size: "A6" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_LABEL_SIZE");
+assert.throws(() => normalizeDelhiveryShippingLabel({ packages: [], packages_found: 0 }, pdfLabelRequest), (error) => error instanceof DelhiveryError && error.code === "DELHIVERY_LABEL_REJECTED");
 
 const originalToken = process.env.DELHIVERY_API_TOKEN;
 const originalBaseUrl = process.env.DELHIVERY_BASE_URL;
@@ -192,6 +205,18 @@ try {
         });
       }
       assert.equal(options.headers.Authorization, "Token test-token");
+      if (endpoint.pathname === "/api/p/packing_slip") {
+        assert.equal(options.method, "GET");
+        assert.equal(endpoint.searchParams.get("wbns"), "920000000001");
+        assert.equal(endpoint.searchParams.get("pdf_size"), endpoint.searchParams.get("pdf") === "true" ? "4R" : "A4");
+        if (endpoint.searchParams.get("pdf") === "true") {
+          return new Response(JSON.stringify(pdfLabelFixture), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ packages: [{ waybill: "920000000001", barcode: "920000000001" }], packages_found: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/api/kinko/v1/invoice/charges/.json") {
         assert.equal(options.method, "GET");
         assert.equal(endpoint.searchParams.get("md"), "S");
@@ -310,6 +335,10 @@ try {
   assert.equal(manifested.packages[0].waybill, "920000000001");
   const manifestedMps = await client.createShipment(mpsManifestInput);
   assert.equal(manifestedMps.packageCount, 2);
+  const pdfLabel = await client.generateShippingLabel(pdfLabelRequest);
+  assert.equal(pdfLabel.downloadUrl, "https://labels.test.delhivery.local/920000000001-4R.pdf");
+  const jsonLabel = await client.generateShippingLabel(jsonLabelRequest);
+  assert.equal(jsonLabel.labelData.packages[0].barcode, "920000000001");
   const edited = await client.editShipment(editInput);
   assert.equal(edited.updated, true);
   assert.equal(edited.waybill, "920000000001");
@@ -322,7 +351,7 @@ try {
   const tracked = await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
   assert.equal(tracked.shipments[0].currentStatus.status, "In Transit");
   await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
-  assert.equal(requestCount, 12, "each Delhivery contract uses its independent provider request path and cache");
+  assert.equal(requestCount, 14, "each Delhivery contract uses its independent provider request path and cache");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -336,4 +365,4 @@ try {
   if (originalInsecure === undefined) delete process.env.DELHIVERY_ALLOW_INSECURE_HTTP; else process.env.DELHIVERY_ALLOW_INSECURE_HTTP = originalInsecure;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, shippingCost: normalizedShippingCost.estimatedAmount, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, shippingCostVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, shippingCost: normalizedShippingCost.estimatedAmount, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, shippingCostVerified: true, shippingLabelVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));

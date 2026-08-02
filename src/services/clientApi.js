@@ -3,7 +3,7 @@ import { normalizeClientBootstrap, normalizeShipment, unwrapApiData } from "./ap
 
 const CLIENT_TOKEN_KEY = "pax-client-token";
 const REQUEST_TIMEOUT = 6000;
-const SHIPPING_COST_REQUEST_TIMEOUT = 70000;
+const LONG_PROVIDER_REQUEST_TIMEOUT = 70000;
 
 async function request(path, options = {}, timeoutMs = REQUEST_TIMEOUT) {
   const controller = new AbortController();
@@ -95,7 +95,13 @@ export async function getClientShippingCost({ md, cgm, originPin, destinationPin
   if (breadth !== undefined && breadth !== "") query.set("b", String(breadth));
   if (height !== undefined && height !== "") query.set("h", String(height));
   if (packageType) query.set("ipkg_type", packageType);
-  return unwrapApiData(await request(`/api/client/shipping-cost?${query}`, {}, SHIPPING_COST_REQUEST_TIMEOUT));
+  return unwrapApiData(await request(`/api/client/shipping-cost?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function getClientShippingLabel(shipmentId, { waybill = "", pdf = true, pdfSize = "A4" } = {}) {
+  const query = new URLSearchParams({ pdf: String(pdf), pdf_size: pdfSize });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
 }
 
 export async function getClientBootstrap() {

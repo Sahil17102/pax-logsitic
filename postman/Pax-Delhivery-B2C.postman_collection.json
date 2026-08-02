@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -100,6 +100,21 @@
         "url": "{{baseUrl}}/api/client/shipments"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "  pm.collectionVariables.set('editableShipmentId', data.id);", "  pm.collectionVariables.set('editableWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Generate customer PDF shipping label - 4R",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=true&pdf_size=4R" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives a secure Delhivery PDF label link', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.waybill).to.eql(pm.collectionVariables.get('editableWaybill'));", "  pm.expect(data.format).to.eql('pdf');", "  pm.expect(data.pdfSize).to.eql('4R');", "  pm.expect(data.downloadUrl).to.match(/^https:\\/\\//);", "  pm.expect(data.labelData).to.eql(null);", "});"] } }]
+    },
+    {
+      "name": "Generate customer custom shipping label JSON",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=false" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives customizable label data', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.format).to.eql('json');", "  pm.expect(data.pdfSize).to.eql('A4');", "  pm.expect(data.downloadUrl).to.eql('');", "  pm.expect(data.labelData.packages[0].barcode).to.eql(pm.collectionVariables.get('editableWaybill'));", "});"] } }]
+    },
+    {
+      "name": "Reject shipping label waybill mismatch",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill=999999999999&pdf=true&pdf_size=A4" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer cannot request a label for an unrelated waybill', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_WAYBILL_MISMATCH');", "});"] } }]
     },
     {
       "name": "Edit manifested COD shipment",
@@ -303,6 +318,11 @@
         "url": "{{baseUrl}}/api/admin/auth/login"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Generate admin PDF shipping label - A4",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=true&pdf_size=A4" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives an A4 label for a persisted shipment', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.format).to.eql('pdf');", "  pm.expect(data.pdfSize).to.eql('A4');", "  pm.expect(data.packagesFound).to.eql(1);", "});"] } }]
     },
     {
       "name": "Admin updates shipment e-waybill",
