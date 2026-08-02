@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   API_BASE_URL,
   completeAdminPickupRequest,
+  createAdminWarehouse,
   fetchDelhiverySingleWaybill,
   fetchDelhiveryWaybills,
   getAdminExpectedTat,
@@ -29,7 +30,7 @@ const navigation = [
   { id: "shipments", label: "Orders", icon: "box", badge: true },
   { id: "operations", label: "Operations", icon: "support", children: [["ndr", "NDR"], ["rto", "RTO"]] },
   { id: "accounts", label: "Accounts", icon: "users", children: [["customers", "Users Management"], ["plans", "Plan Management"]] },
-  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["waybills", "Waybill Inventory"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
+  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["warehouses", "Pickup Warehouses"], ["waybills", "Waybill Inventory"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
   { id: "billing", label: "Billing", icon: "wallet", children: [["invoices", "Invoices"], ["billing-preferences", "Billing Preferences"], ["cod", "COD Remittance"], ["wallet", "Wallet"]] },
   { id: "reconciliation", label: "Reconciliation", icon: "scale", children: [["weight", "Weight Discrepancies"], ["disputes", "Dispute Management"]] },
   { id: "tools-menu", label: "Tools", icon: "tools", children: [["rate", "Rate Calculator"], ["rate-terms", "Rate Calculator Terms"], ["tracking", "Order Tracking"], ["api", "API Integration"], ["about", "About Us Page"], ["support", "Support"]] },
@@ -50,6 +51,7 @@ const pageTitles = {
   providers: ["Service providers", "Control logistics providers available to the booking engine."],
   serviceability: ["Serviceability", "Check delivery and COD coverage for an Indian PIN code."],
   waybills: ["Waybill inventory", "Fetch Delhivery B2C waybills in advance and monitor the stored inventory."],
+  warehouses: ["Pickup warehouses", "Register exact case-sensitive Delhivery warehouse names and return addresses."],
   "pricing-b2b": ["B2B pricing", "Manage business shipment slabs and freight rates."],
   "pricing-b2c": ["B2C pricing", "Manage parcel pricing by zone and weight slab."],
   invoices: ["Invoices", "Review platform invoices, due dates and payment state."],
@@ -520,11 +522,13 @@ function AdminApp() {
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], pickupRequests: [], customers: [], activities: [] });
+  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], warehouses: [], pickupRequests: [], customers: [], activities: [] });
   const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [connection, setConnection] = useState("checking");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
+  const [warehouseSubmitting, setWarehouseSubmitting] = useState(false);
+  const [warehouseForm, setWarehouseForm] = useState({ name: "", phone: "", email: "", address: "", city: "", pin: "", country: "India", registered_name: "", return_address: "", return_city: "", return_pin: "", return_state: "", return_country: "India" });
 
   const loadDashboard = async () => {
     if (!authenticated) return;
@@ -539,7 +543,7 @@ function AdminApp() {
     setConnection("checking");
     try {
       const data = await getAdminDashboard();
-      setSnapshot({ shipments: data.shipments || [], pickupRequests: data.pickupRequests || [], customers: data.customers || [], activities: data.activities || [] });
+      setSnapshot({ shipments: data.shipments || [], warehouses: data.warehouses || [], pickupRequests: data.pickupRequests || [], customers: data.customers || [], activities: data.activities || [] });
       if (data.configuration) {
         setControlState(data.configuration);
         cacheControlState(data.configuration);
@@ -581,6 +585,7 @@ function AdminApp() {
   }, [authenticated, previewMode]);
 
   const shipments = snapshot.shipments || [];
+  const warehouses = snapshot.warehouses || [];
   const pickupRequests = snapshot.pickupRequests || [];
   const customers = snapshot.customers || [];
   const filteredShipments = useMemo(() => {
@@ -677,6 +682,25 @@ function AdminApp() {
       flash(`${pickupRequest.id} marked completed after collection.`);
     } catch (error) {
       flash(`Pickup was not completed: ${error.message}`);
+    }
+  };
+
+  const registerWarehouse = async (event) => {
+    event.preventDefault();
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to register a Delhivery warehouse.");
+      return;
+    }
+    setWarehouseSubmitting(true);
+    try {
+      const warehouse = await createAdminWarehouse(warehouseForm);
+      setSnapshot((current) => ({ ...current, warehouses: [warehouse, ...(current.warehouses || []).filter((item) => item.id !== warehouse.id)] }));
+      setWarehouseForm({ name: "", phone: "", email: "", address: "", city: "", pin: "", country: "India", registered_name: "", return_address: "", return_city: "", return_pin: "", return_state: "", return_country: "India" });
+      flash(`${warehouse.name} registered with Delhivery.`);
+    } catch (error) {
+      flash(`Warehouse was not registered: ${error.message}`);
+    } finally {
+      setWarehouseSubmitting(false);
     }
   };
 
@@ -781,6 +805,8 @@ function AdminApp() {
           {active === "shipments" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredShipments.length} shipments</strong><span>Updates are reflected in the customer panel.</span></div><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label></div><ShipmentTable shipments={filteredShipments} onStatusChange={changeStatus} /></section>}
 
           {active === "waybills" && <WaybillWorkspace flash={flash} />}
+
+          {active === "warehouses" && <section className="admin-health-grid"><form className="admin-card admin-settings-card" onSubmit={registerWarehouse}><div><p>DELHIVERY WAREHOUSE</p><h2>Register pickup location</h2><span>The name is case-sensitive and the return address is mandatory.</span></div><dl><div><dt>Warehouse name *</dt><dd><input value={warehouseForm.name} onChange={(event) => setWarehouseForm({ ...warehouseForm, name: event.target.value })} required /></dd></div><div><dt>POC phone *</dt><dd><input value={warehouseForm.phone} onChange={(event) => setWarehouseForm({ ...warehouseForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" required /></dd></div><div><dt>Email</dt><dd><input type="email" value={warehouseForm.email} onChange={(event) => setWarehouseForm({ ...warehouseForm, email: event.target.value })} /></dd></div><div><dt>Pickup address</dt><dd><input value={warehouseForm.address} onChange={(event) => setWarehouseForm({ ...warehouseForm, address: event.target.value })} /></dd></div><div><dt>City</dt><dd><input value={warehouseForm.city} onChange={(event) => setWarehouseForm({ ...warehouseForm, city: event.target.value })} /></dd></div><div><dt>Pickup PIN *</dt><dd><input value={warehouseForm.pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div><div><dt>Registered account</dt><dd><input value={warehouseForm.registered_name} onChange={(event) => setWarehouseForm({ ...warehouseForm, registered_name: event.target.value })} placeholder="Uses backend account name if blank" /></dd></div><div><dt>Return address *</dt><dd><input value={warehouseForm.return_address} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_address: event.target.value })} required /></dd></div><div><dt>Return city</dt><dd><input value={warehouseForm.return_city} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_city: event.target.value })} /></dd></div><div><dt>Return PIN</dt><dd><input value={warehouseForm.return_pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></dd></div><div><dt>Return state</dt><dd><input value={warehouseForm.return_state} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_state: event.target.value })} /></dd></div></dl><button className="admin-compact-primary" type="submit" disabled={warehouseSubmitting}>{warehouseSubmitting ? "Registering…" : "Register warehouse"}</button></form><article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>REGISTERED LOCATIONS</p><h2>{warehouses.length} API warehouses</h2></div></div><div className="admin-activity-list">{warehouses.length ? warehouses.map((warehouse) => <div key={warehouse.id}><i className="is-green"></i><span><strong>{warehouse.name}</strong><small>{warehouse.city || "—"} · {warehouse.pin || "—"} · {warehouse.status}</small></span></div>) : <div className="admin-empty">No warehouse has been registered through Pax yet.</div>}</div></article></section>}
 
           {active === "ndr" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>NDR action queue</strong><span>Contact the customer or reattempt delivery before RTO.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("NDR report exported.")}>Export report</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "Exception")} onStatusChange={changeStatus} /></section>}
 

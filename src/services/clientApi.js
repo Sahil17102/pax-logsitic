@@ -104,12 +104,13 @@ export async function getClientShippingLabel(shipmentId, { waybill = "", pdf = t
   return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
 }
 
-export async function createClientPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {
+export async function createClientPickupRequest({ pickupDate, pickupTime, pickupLocation = "", expectedPackageCount }) {
   const payload = await request("/api/client/pickup-requests", {
     method: "POST",
     body: JSON.stringify({
       pickup_date: pickupDate,
       pickup_time: pickupTime,
+      ...(pickupLocation ? { pickup_location: pickupLocation } : {}),
       expected_package_count: Number(expectedPackageCount),
     }),
   });

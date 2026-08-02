@@ -122,13 +122,33 @@ try {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: "admin", password: "StrongPass123" }),
   });
+  const adminAuthorization = { Authorization: `Bearer ${adminLogin.token}` };
+  const warehouse = await request("/api/admin/delhivery/warehouses", {
+    method: "POST",
+    headers: { ...adminAuthorization, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Kota Test Warehouse",
+      registeredName: "Pax Test Client",
+      phone: "9999999999",
+      email: "warehouse@example.com",
+      address: "Industrial Area, Kota",
+      city: "Kota",
+      pin: "324001",
+      country: "India",
+      returnAddress: "Industrial Area, Kota",
+      returnCity: "Kota",
+      returnPin: "324001",
+      returnState: "Rajasthan",
+      returnCountry: "India",
+    }),
+  });
+  const warehouses = await request("/api/admin/delhivery/warehouses", { headers: adminAuthorization });
   const dashboard = await request("/api/admin/dashboard", {
-    headers: { Authorization: `Bearer ${adminLogin.token}` },
+    headers: adminAuthorization,
   });
   const adminExpectedTat = await request("/api/admin/expected-tat?origin_pin=122003&destination_pin=136118&mot=E&pdt=B2C", {
     headers: { Authorization: `Bearer ${adminLogin.token}` },
   });
-  const adminAuthorization = { Authorization: `Bearer ${adminLogin.token}` };
   const fetchedWaybills = await request("/api/admin/delhivery/waybills/fetch", {
     method: "POST",
     headers: { ...adminAuthorization, "Content-Type": "application/json" },
@@ -161,6 +181,10 @@ try {
   assert.equal(shippingCost.data.estimatedAmount, 160.48);
   assert.equal(shippingCost.data.chargedWeightGrams, 1500);
   assert.equal(adminExpectedTat.data.tatDays, 2);
+  assert.equal(warehouse.data.name, "Kota Test Warehouse");
+  assert.equal(warehouse.data.status, "Registered");
+  assert.equal(warehouses.data.length, 1);
+  assert.equal(dashboard.data.warehouses.length, 1);
   assert.equal(fetchedWaybills.data.storedCount, 3);
   assert.equal(fetchedWaybills.data.duplicateCount, 0);
   assert.equal(waybillInventory.data.summary.stored, 3);
@@ -215,6 +239,7 @@ try {
     estimatedShippingCost: shippingCost.data.estimatedAmount,
     shippingLabelFormat: shippingLabel.data.format,
     pickupRequestStatus: pickupRequest.data.status,
+    registeredWarehouses: warehouses.data.length,
     storedWaybills: inventoryAfterSingle.data.summary.stored,
     duplicateWaybillsSkipped: duplicateWaybills.data.duplicateCount,
     singleWaybillStored: singleWaybill.data.storedCount,

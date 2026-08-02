@@ -23,6 +23,9 @@ const DEFAULT_LABEL_RATE_LIMIT_REQUESTS = 2700;
 const DEFAULT_LABEL_TIMEOUT_MS = 65000;
 const DEFAULT_PICKUP_RATE_LIMIT_REQUESTS = 3600;
 const DEFAULT_PICKUP_TIMEOUT_MS = 5000;
+const DEFAULT_WAREHOUSE_RATE_LIMIT_REQUESTS = 9;
+const DEFAULT_WAREHOUSE_TIMEOUT_MS = 5000;
+const WAREHOUSE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_TRACKING_CACHE_TTL_MS = 30 * 1000;
 const TRANSPORT_MODES = { S: "Surface", E: "Express", N: "Next Day Delivery" };
 const PAYMENT_MODES = new Map([
@@ -690,6 +693,78 @@ function providerMessage(value) {
   return value === undefined || value === null ? "" : String(value);
 }
 
+function warehouseText(value, field, { required = false, maxLength = 500 } = {}) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if ((required && !normalized) || normalized.length > maxLength || /[\u0000-\u001F\u007F]/.test(normalized)) {
+    throw new DelhiveryError(`${field} ${required ? "is required and " : ""}must be at most ${maxLength} characters.`, {
+      code: "INVALID_WAREHOUSE",
+      status: 400,
+    });
+  }
+  return normalized || undefined;
+}
+
+export function buildDelhiveryWarehousePayload(input = {}) {
+  const phone = String(input.phone || "").replace(/\D/g, "");
+  const pin = String(input.pin || "").trim();
+  const returnPinInput = firstDefined(input, ["return_pin", "returnPin"]);
+  const returnPin = String(returnPinInput || "").trim();
+  const email = warehouseText(input.email, "Warehouse email", { maxLength: 254 });
+  if (!/^\d{10}$/.test(phone)) {
+    throw new DelhiveryError("Warehouse phone must be a valid 10-digit number.", { code: "INVALID_WAREHOUSE_PHONE", status: 400 });
+  }
+  if (!/^[1-9]\d{5}$/.test(pin) || (returnPin && !/^[1-9]\d{5}$/.test(returnPin))) {
+    throw new DelhiveryError("Warehouse and return PIN codes must be valid 6-digit Indian PIN codes.", { code: "INVALID_WAREHOUSE_PINCODE", status: 400 });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new DelhiveryError("Warehouse email must be valid.", { code: "INVALID_WAREHOUSE_EMAIL", status: 400 });
+  }
+  const payload = {
+    phone,
+    city: warehouseText(input.city, "Warehouse city", { maxLength: 100 }),
+    name: warehouseText(input.name, "Warehouse name", { required: true, maxLength: 100 }),
+    pin,
+    address: warehouseText(input.address, "Warehouse address", { maxLength: 500 }),
+    country: warehouseText(input.country, "Warehouse country", { maxLength: 100 }),
+    email,
+    registered_name: warehouseText(firstDefined(input, ["registered_name", "registeredName"]), "Registered account name", { maxLength: 200 }),
+    return_address: warehouseText(firstDefined(input, ["return_address", "returnAddress"]), "Return address", { required: true, maxLength: 500 }),
+    return_pin: returnPin || undefined,
+    return_city: warehouseText(firstDefined(input, ["return_city", "returnCity"]), "Return city", { maxLength: 100 }),
+    return_state: warehouseText(firstDefined(input, ["return_state", "returnState"]), "Return state", { maxLength: 100 }),
+    return_country: warehouseText(firstDefined(input, ["return_country", "returnCountry"]), "Return country", { maxLength: 100 }),
+  };
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+}
+
+export function normalizeDelhiveryWarehouseCreation(payload, request) {
+  const record = payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data : payload;
+  const status = firstDefined(record, ["success", "status", "created"]);
+  const errorValue = firstDefined(record, ["error", "errors"])
+    ?? firstDefined(payload, ["error", "errors"]);
+  const error = errorValue === false || errorValue === 0 ? "" : providerMessage(errorValue);
+  const remark = providerMessage(firstDefined(record, ["message", "remark", "remarks", "detail"])
+    ?? firstDefined(payload, ["message", "remark", "remarks", "detail"]));
+  const rejected = Boolean(error)
+    || status === false
+    || status === 0
+    || /^(false|failure|failed|error|rejected)$/i.test(String(status ?? "").trim());
+  if (rejected) {
+    throw new DelhiveryError(error || remark || "Delhivery rejected the warehouse registration.", {
+      code: "DELHIVERY_WAREHOUSE_REJECTED",
+      status: 422,
+    });
+  }
+  return {
+    provider: "delhivery",
+    registered: true,
+    name: request.name,
+    warehouse: { ...request },
+    remark,
+    registeredAt: new Date().toISOString(),
+  };
+}
+
 export function normalizeDelhiveryPickupRequest(payload, request) {
   const record = payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data) ? payload.data : payload;
   const status = firstDefined(record, ["success", "status", "created", "request_success"]);
@@ -1054,6 +1129,15 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredPickupTimeout, 30000)
     : DEFAULT_PICKUP_TIMEOUT_MS;
   const pickupPath = validateProviderPath(process.env.DELHIVERY_PICKUP_PATH || "/fm/request/new/", "DELHIVERY_PICKUP_PATH");
+  const configuredWarehouseRateLimit = Number(process.env.DELHIVERY_WAREHOUSE_RATE_LIMIT_REQUESTS);
+  const warehouseRateLimitRequests = Number.isInteger(configuredWarehouseRateLimit) && configuredWarehouseRateLimit > 0
+    ? Math.min(configuredWarehouseRateLimit, 10)
+    : DEFAULT_WAREHOUSE_RATE_LIMIT_REQUESTS;
+  const configuredWarehouseTimeout = Number(process.env.DELHIVERY_WAREHOUSE_TIMEOUT_MS);
+  const warehouseTimeoutMs = Number.isInteger(configuredWarehouseTimeout) && configuredWarehouseTimeout > 0
+    ? Math.min(configuredWarehouseTimeout, 30000)
+    : DEFAULT_WAREHOUSE_TIMEOUT_MS;
+  const warehousePath = validateProviderPath(process.env.DELHIVERY_WAREHOUSE_PATH || "/api/backend/clientwarehouse/create/", "DELHIVERY_WAREHOUSE_PATH");
   const cache = new Map();
   const pending = new Map();
   const rateWindows = new Map();
@@ -1074,10 +1158,10 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     }
   }
 
-  function consumeRateLimit(key, limit) {
+  function consumeRateLimit(key, limit, windowMs = RATE_LIMIT_WINDOW_MS) {
     const now = Date.now();
     const rateWindow = rateWindows.get(key) || { startedAt: now, requests: 0 };
-    if (now - rateWindow.startedAt >= RATE_LIMIT_WINDOW_MS) {
+    if (now - rateWindow.startedAt >= windowMs) {
       rateWindow.startedAt = now;
       rateWindow.requests = 0;
     }
@@ -1106,8 +1190,8 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     waybillCountWindow.count += count;
   }
 
-  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true, method = "GET", headers = {}, body, requestTimeoutMs = timeoutMs } = {}) {
-    consumeRateLimit(rateLimitKey, limit);
+  async function requestJson(endpoint, rateLimitKey, limit, { includeAuthorization = true, method = "GET", headers = {}, body, requestTimeoutMs = timeoutMs, rateLimitWindowMs = RATE_LIMIT_WINDOW_MS } = {}) {
+    consumeRateLimit(rateLimitKey, limit, rateLimitWindowMs);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
 
@@ -1326,6 +1410,18 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryPickupRequest(payload, request);
   }
 
+  async function submitWarehouseCreation(request) {
+    const endpoint = new URL(warehousePath, `${baseUrl}/`);
+    const payload = await requestJson(endpoint, "warehouse-create", warehouseRateLimitRequests, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      requestTimeoutMs: warehouseTimeoutMs,
+      rateLimitWindowMs: WAREHOUSE_RATE_LIMIT_WINDOW_MS,
+    });
+    return normalizeDelhiveryWarehouseCreation(payload, request);
+  }
+
   async function trackShipments(input) {
     ensureConfigured();
     const normalized = normalizeTrackingRequest(input);
@@ -1370,6 +1466,12 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
   async function createPickupRequest(input) {
     ensureConfigured();
     return submitPickupRequest(normalizePickupRequest(input));
+  }
+
+  async function createWarehouse(input) {
+    ensureConfigured();
+    const request = buildDelhiveryWarehousePayload(input);
+    return submitWarehouseCreation(request);
   }
 
   async function checkServiceability(pincode) {
@@ -1458,5 +1560,6 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     calculateShippingCost,
     generateShippingLabel,
     createPickupRequest,
+    createWarehouse,
   };
 }

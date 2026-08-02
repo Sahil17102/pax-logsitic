@@ -72,6 +72,16 @@ export function normalizePickupRequest(record = {}) {
   };
 }
 
+export function normalizeWarehouse(record = {}) {
+  return {
+    ...record,
+    id: String(firstValue(record, ["id", "warehouseId", "warehouse_id", "name"])),
+    name: String(firstValue(record, ["name", "pickupLocation", "pickup_location"])),
+    status: String(firstValue(record, ["status"], "Registered")),
+    isDefault: Boolean(firstValue(record, ["isDefault", "is_default"], false)),
+  };
+}
+
 export function normalizeConfiguration(configuration) {
   const defaults = cloneDefaultControlState();
   if (!configuration || typeof configuration !== "object") return defaults;
@@ -95,6 +105,7 @@ export function normalizeAdminDashboard(payload) {
   const data = unwrapApiData(payload);
   return {
     shipments: Array.isArray(data.shipments) ? data.shipments.map(normalizeShipment).filter((item) => item.id) : [],
+    warehouses: Array.isArray(data.warehouses) ? data.warehouses.map(normalizeWarehouse).filter((item) => item.name) : [],
     pickupRequests: Array.isArray(data.pickupRequests) ? data.pickupRequests.map(normalizePickupRequest).filter((item) => item.id) : [],
     customers: Array.isArray(data.customers) ? data.customers.map(normalizeCustomer).filter((item) => item.id) : [],
     activities: Array.isArray(data.activities) ? data.activities.map(normalizeActivity) : [],
@@ -107,6 +118,7 @@ export function normalizeClientBootstrap(payload) {
   const data = unwrapApiData(payload);
   return {
     shipments: Array.isArray(data.shipments) ? data.shipments.map(normalizeShipment).filter((item) => item.id) : [],
+    warehouses: Array.isArray(data.warehouses) ? data.warehouses.map(normalizeWarehouse).filter((item) => item.name) : [],
     pickupRequests: Array.isArray(data.pickupRequests) ? data.pickupRequests.map(normalizePickupRequest).filter((item) => item.id) : [],
     configuration: normalizeConfiguration(data.configuration),
     user: data.user ? normalizeCustomer(data.user) : null,

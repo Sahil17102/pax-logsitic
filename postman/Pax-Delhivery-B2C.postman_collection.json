@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials and registered warehouse identifiers remain on the backend and are never stored in this collection.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, client warehouse registration, warehouse pickup requests, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only safe registered-warehouse names.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -348,6 +348,46 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
     },
     {
+      "name": "Create Delhivery client warehouse",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Kota Test Warehouse\",\n  \"registeredName\": \"Pax Test Client\",\n  \"phone\": \"9999999999\",\n  \"email\": \"warehouse@example.com\",\n  \"address\": \"Industrial Area, Kota\",\n  \"city\": \"Kota\",\n  \"pin\": \"324001\",\n  \"country\": \"India\",\n  \"returnAddress\": \"Industrial Area, Kota\",\n  \"returnCity\": \"Kota\",\n  \"returnPin\": \"324001\",\n  \"returnState\": \"Rajasthan\",\n  \"returnCountry\": \"India\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin registers the exact case-sensitive pickup location', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.name).to.eql('Kota Test Warehouse');", "  pm.expect(data.status).to.eql('Registered');", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.pin).to.eql('324001');", "  pm.collectionVariables.set('warehouseName', data.name);", "});"] } }]
+    },
+    {
+      "name": "List registered Delhivery warehouses",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/warehouses" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can inspect persisted warehouse details', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].name).to.eql(pm.collectionVariables.get('warehouseName'));", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate Delhivery warehouse name",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Kota Test Warehouse\",\n  \"phone\": \"9999999999\",\n  \"pin\": \"324001\",\n  \"returnAddress\": \"Industrial Area, Kota\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Exact duplicate names are rejected before calling Delhivery', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('WAREHOUSE_ALREADY_EXISTS');", "});"] } }]
+    },
+    {
+      "name": "Reject invalid Delhivery warehouse phone",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Invalid Phone Warehouse\",\n  \"phone\": \"123\",\n  \"pin\": \"324001\",\n  \"returnAddress\": \"Industrial Area, Kota\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid warehouse input is rejected locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_WAREHOUSE_PHONE');", "});"] } }]
+    },
+    {
+      "name": "Block customer warehouse registration",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Unauthorized Warehouse\",\n  \"phone\": \"9999999999\",\n  \"pin\": \"324001\",\n  \"returnAddress\": \"Industrial Area, Kota\"\n}" }, "url": "{{baseUrl}}/api/admin/delhivery/warehouses" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Warehouse registration is admin-only', () => pm.response.to.have.status(401));"] } }]
+    },
+    {
       "name": "List admin pickup requests",
       "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/pickup-requests" },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can inspect warehouse-level pickup requests', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].id).to.eql(pm.collectionVariables.get('pickupRequestId'));", "});"] } }]
@@ -500,10 +540,10 @@
       "request": {
         "method": "POST",
         "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"masterWaybill\": \"900000000002\",\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"pickupLocation\": \"{{warehouseName}}\",\n  \"masterWaybill\": \"900000000002\",\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
         "url": "{{baseUrl}}/api/client/shipments"
       },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box is manifested with master and child fields', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.masterWaybill).to.eql('900000000002');", "  pm.expect(data.mpsAmount).to.eql(0);", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "  pm.collectionVariables.set('mpsShipmentId', data.id);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box uses the newly registered warehouse', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.masterWaybill).to.eql('900000000002');", "  pm.expect(data.mpsAmount).to.eql(0);", "  pm.expect(data.pickupLocation).to.eql(pm.collectionVariables.get('warehouseName'));", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "  pm.collectionVariables.set('mpsShipmentId', data.id);", "});"] } }]
     },
     {
       "name": "Track MPS waybill batch",
@@ -513,6 +553,16 @@
         "url": "{{baseUrl}}/api/client/shipments/{{mpsShipmentId}}/tracking"
       },
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('All MPS boxes are tracked in one provider batch', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.requestedCount).to.eql(2);", "  pm.expect(data.foundCount).to.eql(2);", "  pm.expect(data.shipments.map((item) => item.waybill)).to.eql(['900000000001', '900000000002']);", "});"] } }]
+    },
+    {
+      "name": "Schedule pickup from newly registered warehouse",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"15:30:00\",\n  \"pickup_location\": \"{{warehouseName}}\",\n  \"expected_package_count\": 2\n}" },
+        "url": "{{baseUrl}}/api/client/pickup-requests"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Registered warehouse is selectable for warehouse-scoped pickup', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.pickupLocation).to.eql(pm.collectionVariables.get('warehouseName'));", "  pm.expect(data.readyPackageCount).to.eql(2);", "  pm.expect(data.expectedPackageCount).to.eql(2);", "});"] } }]
     },
     {
       "name": "Create COD MPS with aggregate amount",

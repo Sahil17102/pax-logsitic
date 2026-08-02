@@ -289,6 +289,7 @@ export default function DashboardPage() {
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
+  const [warehouses, setWarehouses] = useState([]);
   const [pickupRequests, setPickupRequests] = useState([]);
   const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [search, setSearch] = useState("");
@@ -309,10 +310,10 @@ export default function DashboardPage() {
   const [labelPdf, setLabelPdf] = useState(true);
   const [labelPdfSize, setLabelPdfSize] = useState("4R");
   const [generatedLabel, setGeneratedLabel] = useState(null);
-  const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", expectedPackageCount: "1" });
+  const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", pickupLocation: "", expectedPackageCount: "1" });
   const [pickupSubmitting, setPickupSubmitting] = useState(false);
   const [newShipment, setNewShipment] = useState({
-    customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "",
+    customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", pickupLocation: "", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "",
   });
   const notificationMenuRef = useRef(null);
   const walletMenuRef = useRef(null);
@@ -330,6 +331,7 @@ export default function DashboardPage() {
           localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(data.shipments));
         }
         if (Array.isArray(data.pickupRequests)) setPickupRequests(data.pickupRequests);
+        if (Array.isArray(data.warehouses)) setWarehouses(data.warehouses);
       } catch {
         // Keep the customer workspace usable with its last synchronized snapshot.
       }
@@ -495,7 +497,7 @@ export default function DashboardPage() {
       setShipments(next);
       localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
       setShipmentModal(false);
-      setNewShipment({ customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "" });
+      setNewShipment({ customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", pickupLocation: "", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "" });
       notify(`${shipment.id} manifested with Delhivery waybill ${shipment.waybill}.`);
     } catch (error) {
       notify(error.message || "Shipment could not be created.");
@@ -1196,6 +1198,7 @@ export default function DashboardPage() {
           <p>Reverse-pickup and replacement shipments are excluded because Delhivery schedules those collections automatically.</p>
           <label>Pickup date<input type="date" min={indiaDateAfter(0)} max={indiaDateAfter(7)} value={pickupForm.pickupDate} onChange={(event) => setPickupForm({ ...pickupForm, pickupDate: event.target.value })} required /></label>
           <label>Pickup time<input type="time" step="1" value={pickupForm.pickupTime} onChange={(event) => setPickupForm({ ...pickupForm, pickupTime: event.target.value })} required /></label>
+          <label>Registered warehouse<select value={pickupForm.pickupLocation} onChange={(event) => setPickupForm({ ...pickupForm, pickupLocation: event.target.value })}><option value="">Default registered warehouse</option>{warehouses.filter((warehouse) => !warehouse.isDefault).map((warehouse) => <option value={warehouse.name} key={warehouse.name}>{warehouse.name}</option>)}</select></label>
           <label>Expected package count<input type="number" min="1" max="10000" value={pickupForm.expectedPackageCount} onChange={(event) => setPickupForm({ ...pickupForm, expectedPackageCount: event.target.value })} required /></label>
           <button className="portal-primary" type="submit" disabled={pickupSubmitting || !readyPickupPackageCount}>{pickupSubmitting ? "Scheduling…" : "Create pickup request"}</button>
         </form>
@@ -1209,6 +1212,15 @@ export default function DashboardPage() {
             </div>
           )) : <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>No pickup requests yet</h2><p>Requests created through Pax will appear here.</p></div>}
         </article>
+      </section>
+    </>
+  );
+
+  const renderWarehouseAddresses = () => (
+    <>
+      <section className="section-title-row"><div><p>ORIGIN SETTINGS</p><h1>Pickup addresses</h1><span>Use the warehouse name exactly as registered with Delhivery when creating shipments and pickups.</span></div></section>
+      <section className="feature-function-grid">
+        {warehouses.length ? warehouses.map((warehouse, index) => <button type="button" key={warehouse.name} onClick={() => notify(`${warehouse.name} is registered with Delhivery.`)}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{warehouse.name}</strong><small>{warehouse.isDefault ? "Default pickup location" : "Available pickup location"}</small></div><b>✓</b></button>) : <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>No registered warehouse available</h2><p>Ask a Pax administrator to register a Delhivery pickup location.</p></div>}
       </section>
     </>
   );
@@ -1309,6 +1321,7 @@ export default function DashboardPage() {
     "insights-shipments": renderInsights,
     "channels-connected": renderChannels,
     "workspace-company": renderWorkspace,
+    "workspace-pickups": renderWarehouseAddresses,
     "support-raise": renderSupport,
   };
 
@@ -1478,6 +1491,7 @@ export default function DashboardPage() {
               <label>Weight (kg)<input value={newShipment.weight} onChange={(event) => setNewShipment({ ...newShipment, weight: event.target.value })} type="number" min=".1" step=".1" /></label>
               <label>Product type<select value={newShipment.productType} onChange={(event) => setNewShipment({ ...newShipment, productType: event.target.value })}><option>Parcel</option><option>Heavy</option></select></label>
               <label>Shipment flow<select value={newShipment.flow} onChange={(event) => setNewShipment({ ...newShipment, flow: event.target.value, productType: event.target.value === "Forward" ? newShipment.productType : "Parcel" })}><option>Forward</option><option>Reverse</option><option>Replacement</option></select></label>
+              <label>Pickup warehouse<select value={newShipment.pickupLocation} onChange={(event) => setNewShipment({ ...newShipment, pickupLocation: event.target.value })}><option value="">Default registered warehouse</option>{warehouses.filter((warehouse) => !warehouse.isDefault).map((warehouse) => <option value={warehouse.name} key={warehouse.name}>{warehouse.name}</option>)}</select></label>
               {newShipment.flow === "Forward" && <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>}
               <label>Shipping mode<select value={newShipment.shippingMode} onChange={(event) => setNewShipment({ ...newShipment, shippingMode: event.target.value })}><option>Surface</option><option>Express</option></select></label>
               <label>Transport speed<select value={newShipment.transportSpeed} onChange={(event) => setNewShipment({ ...newShipment, transportSpeed: event.target.value })}><option value="D">Standard</option><option value="F">Next Day Delivery</option></select></label>

@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../config.js";
-import { normalizeAdminDashboard, normalizeCustomer, normalizePickupRequest, normalizeShipment, unwrapApiData } from "./apiData.js";
+import { normalizeAdminDashboard, normalizeCustomer, normalizePickupRequest, normalizeShipment, normalizeWarehouse, unwrapApiData } from "./apiData.js";
 
 const ADMIN_TOKEN_KEY = "pax-admin-token";
 const REQUEST_TIMEOUT = 8000;
@@ -117,6 +117,19 @@ export async function completeAdminPickupRequest(pickupRequestId) {
     body: JSON.stringify({ status: "Completed" }),
   });
   return normalizePickupRequest(unwrapApiData(payload));
+}
+
+export async function createAdminWarehouse(warehouse) {
+  const payload = await request("/api/admin/delhivery/warehouses", {
+    method: "POST",
+    body: JSON.stringify(warehouse),
+  });
+  return normalizeWarehouse(unwrapApiData(payload));
+}
+
+export async function getAdminWarehouses() {
+  const data = unwrapApiData(await request("/api/admin/delhivery/warehouses"));
+  return Array.isArray(data) ? data.map(normalizeWarehouse).filter((item) => item.name) : [];
 }
 
 export async function fetchDelhiveryWaybills(count) {

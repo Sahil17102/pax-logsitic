@@ -560,7 +560,7 @@ app.post("/api/admin/auth/login", async (request, response) => {
 
 app.get("/api/admin/dashboard", requireRole("admin"), async (_request, response) => {
   const state = await readState();
-  response.json({ data: { shipments: state.shipments, pickupRequests: state.pickupRequests, customers: state.customers, activities: state.activities, configuration: state.configuration, updatedAt: state.updatedAt } });
+  response.json({ data: { shipments: state.shipments, warehouses: state.warehouses, pickupRequests: state.pickupRequests, customers: state.customers, activities: state.activities, configuration: state.configuration, updatedAt: state.updatedAt } });
 });
 
 app.put("/api/admin/configuration", requireRole("admin"), async (request, response) => {
@@ -863,6 +863,60 @@ async function handleShippingLabel(request, response) {
 app.get("/api/admin/shipments/:id/label", requireRole("admin"), handleShippingLabel);
 app.get("/api/client/shipments/:id/label", requireRole("customer"), handleShippingLabel);
 
+function registeredWarehouseNames(state) {
+  const configured = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
+  return new Set([
+    ...(configured ? [configured] : []),
+    ...state.warehouses
+      .filter((warehouse) => !["disabled", "rejected"].includes(String(warehouse.status || "").toLowerCase()))
+      .map((warehouse) => String(warehouse.name || "").trim())
+      .filter(Boolean),
+  ]);
+}
+
+function customerWarehouseViews(state) {
+  const configured = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
+  return [...registeredWarehouseNames(state)].map((name) => ({ name, status: "Registered", isDefault: name === configured }));
+}
+
+app.get("/api/admin/delhivery/warehouses", requireRole("admin"), async (_request, response) => {
+  const state = await readState();
+  response.json({ data: state.warehouses });
+});
+
+app.post("/api/admin/delhivery/warehouses", requireRole("admin"), async (request, response) => {
+  const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
+  const supported = new Set(["name", "registered_name", "registeredName", "phone", "email", "address", "city", "pin", "country", "return_address", "returnAddress", "return_city", "returnCity", "return_pin", "returnPin", "return_state", "returnState", "return_country", "returnCountry"]);
+  const unsupported = Object.keys(body).filter((key) => !supported.has(key));
+  if (unsupported.length) {
+    throw new DelhiveryError(`Unsupported warehouse field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_WAREHOUSE_FIELD", status: 400 });
+  }
+  const state = await readState();
+  const requestedName = String(body.name || "").trim();
+  if (registeredWarehouseNames(state).has(requestedName)) {
+    throw new DelhiveryError("A warehouse with this exact case-sensitive name is already registered.", { code: "WAREHOUSE_ALREADY_EXISTS", status: 409 });
+  }
+  const provider = await delhivery.createWarehouse({
+    ...body,
+    registered_name: body.registered_name ?? body.registeredName ?? process.env.DELHIVERY_CLIENT_NAME,
+  });
+  const warehouse = {
+    id: `WH-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    ...provider.warehouse,
+    provider: provider.provider,
+    status: "Registered",
+    remark: provider.remark,
+    registeredAt: provider.registeredAt,
+    createdBy: request.session.subject,
+    isDefault: provider.name === String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim(),
+  };
+  state.warehouses.unshift(warehouse);
+  state.activities.unshift({ title: `${warehouse.name} warehouse registered`, detail: `${warehouse.city || ""} ${warehouse.pin}`.trim(), tone: "green", createdAt: warehouse.registeredAt });
+  state.activities = state.activities.slice(0, 50);
+  await writeState(state, "warehouse.created");
+  response.status(201).json({ data: warehouse });
+});
+
 function customerPickupRequestView(pickupRequest) {
   const { ownerEmail, customerId, createdByRole, ...safePickupRequest } = pickupRequest;
   return safePickupRequest;
@@ -879,19 +933,11 @@ function pickupEligibleShipment(shipment, pickupLocation, ownerEmail, customerId
 }
 
 async function handlePickupRequestCreation(request, response) {
-  const pickupLocation = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
-  if (!pickupLocation) {
-    throw new DelhiveryError("Delhivery pickup location is not configured.", { code: "DELHIVERY_PICKUP_NOT_CONFIGURED", status: 503 });
-  }
   const body = request.body && typeof request.body === "object" && !Array.isArray(request.body) ? request.body : {};
   const supportedFields = new Set(["pickup_time", "pickupTime", "pickup_date", "pickupDate", "pickup_location", "pickupLocation", "expected_package_count", "expectedPackageCount"]);
   const unsupported = Object.keys(body).filter((key) => !supportedFields.has(key));
   if (unsupported.length) {
     throw new DelhiveryError(`Unsupported pickup request field: ${unsupported.join(", ")}.`, { code: "UNSUPPORTED_PICKUP_FIELD", status: 400 });
-  }
-  const suppliedLocation = String(body.pickup_location ?? body.pickupLocation ?? "").trim();
-  if (suppliedLocation && suppliedLocation !== pickupLocation) {
-    throw new DelhiveryError("Pickup requests can only use the registered Delhivery warehouse configured for this service.", { code: "INVALID_PICKUP_LOCATION", status: 400 });
   }
   const state = await readState();
   const currentUser = request.session.role === "customer"
@@ -899,6 +945,14 @@ async function handlePickupRequestCreation(request, response) {
     : null;
   if (request.session.role === "customer" && (!currentUser || currentUser.disabled)) {
     return response.status(403).json({ message: "This customer account is not available." });
+  }
+  const suppliedLocation = String(body.pickup_location ?? body.pickupLocation ?? "").trim();
+  const pickupLocation = suppliedLocation || String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
+  if (!pickupLocation) {
+    throw new DelhiveryError("Select a registered Delhivery pickup location.", { code: "DELHIVERY_PICKUP_NOT_CONFIGURED", status: 503 });
+  }
+  if (!registeredWarehouseNames(state).has(pickupLocation)) {
+    throw new DelhiveryError("Pickup requests can only use an exact registered Delhivery warehouse name.", { code: "INVALID_PICKUP_LOCATION", status: 400 });
   }
   const pickupDate = String(body.pickup_date ?? body.pickupDate ?? "").trim();
   const duplicate = state.pickupRequests.some((item) => item.pickupLocation === pickupLocation
@@ -1001,7 +1055,7 @@ app.get("/api/client/bootstrap", requireRole("customer"), async (request, respon
   const { passwordHash, salt, ...safeUser } = user;
   const shipments = state.shipments.filter((item) => item.ownerEmail === request.session.subject || item.customerId === user.id);
   const pickupRequests = state.pickupRequests.filter((item) => item.ownerEmail === request.session.subject || item.customerId === user.id);
-  response.json({ data: { configuration: state.configuration, shipments, pickupRequests: pickupRequests.map(customerPickupRequestView), user: safeUser, updatedAt: state.updatedAt } });
+  response.json({ data: { configuration: state.configuration, shipments, warehouses: customerWarehouseViews(state), pickupRequests: pickupRequests.map(customerPickupRequestView), user: safeUser, updatedAt: state.updatedAt } });
 });
 
 app.post("/api/client/users", async (request, response) => {
@@ -1138,10 +1192,13 @@ app.post("/api/client/shipments", requireRole("customer"), async (request, respo
   if (["Pickup", "REPL"].includes(payment) && !serviceability.pickup) {
     return response.status(422).json({ code: "PICKUP_NOT_SERVICEABLE", message: `Reverse pickup is unavailable for PIN code ${pincode}.`, data: serviceability });
   }
-  const pickupLocation = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
+  const pickupLocation = String(body.pickupLocation || body.pickup_location || process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
   const clientName = String(process.env.DELHIVERY_CLIENT_NAME || "").trim();
   if (!pickupLocation || !clientName) {
     throw new DelhiveryError("Delhivery pickup location and client name are not configured.", { code: "DELHIVERY_MANIFEST_NOT_CONFIGURED", status: 503 });
+  }
+  if (!registeredWarehouseNames(state).has(pickupLocation)) {
+    throw new DelhiveryError("Shipment pickup location must exactly match a registered Delhivery warehouse.", { code: "INVALID_PICKUP_LOCATION", status: 400 });
   }
   const id = `PAX-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
   const inputPieces = Array.isArray(body.pieces) && body.pieces.length ? body.pieces : [body];

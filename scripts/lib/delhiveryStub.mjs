@@ -14,6 +14,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
   const cancelledWaybills = new Set();
   const trackingByWaybill = new Map();
   const pickupRequests = new Set();
+  const registeredWarehouses = new Set(["Pax Test Warehouse"]);
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     response.setHeader("Content-Type", "application/json");
@@ -32,6 +33,39 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
       response.end(JSON.stringify({ detail: "Invalid token" }));
       return;
     }
+    if (request.method === "POST" && url.pathname === "/api/backend/clientwarehouse/create/") {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      let warehouse;
+      try {
+        if (!String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")) throw new Error("JSON required");
+        warehouse = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ success: false, error: "Invalid warehouse JSON" }));
+        return;
+      }
+      const allowedKeys = new Set([
+        "name", "registered_name", "phone", "email", "address", "city", "pin", "country",
+        "return_address", "return_city", "return_pin", "return_state", "return_country",
+      ]);
+      if (Object.keys(warehouse).some((key) => !allowedKeys.has(key))
+        || !String(warehouse.name || "").trim()
+        || !/^\d{10}$/.test(String(warehouse.phone || ""))
+        || !/^[1-9]\d{5}$/.test(String(warehouse.pin || ""))
+        || !String(warehouse.return_address || "").trim()) {
+        response.end(JSON.stringify({ success: false, error: "Invalid warehouse request" }));
+        return;
+      }
+      if (registeredWarehouses.has(warehouse.name)) {
+        response.end(JSON.stringify({ success: false, error: "Warehouse name already exists" }));
+        return;
+      }
+      registeredWarehouses.add(warehouse.name);
+      response.statusCode = 201;
+      response.end(JSON.stringify({ success: true, message: "Warehouse created successfully", name: warehouse.name }));
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/fm/request/new/") {
       let pickup;
       try {
@@ -47,7 +81,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         return;
       }
       const requestKey = `${pickup.pickup_location}:${pickup.pickup_date}`;
-      if (pickup.pickup_location !== "Pax Test Warehouse"
+      if (!registeredWarehouses.has(pickup.pickup_location)
         || !/^\d{4}-\d{2}-\d{2}$/.test(String(pickup.pickup_date || ""))
         || !/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(String(pickup.pickup_time || ""))
         || !Number.isInteger(pickup.expected_package_count)
@@ -217,7 +251,7 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         response.end(JSON.stringify({ message: "invalid manifest JSON" }));
         return;
       }
-      if (manifest?.pickup_location?.name !== "Pax Test Warehouse" || !Array.isArray(manifest?.shipments) || !manifest.shipments.length) {
+      if (!registeredWarehouses.has(manifest?.pickup_location?.name) || !Array.isArray(manifest?.shipments) || !manifest.shipments.length) {
         response.end(JSON.stringify({ packages: [], rmk: "shipment list contains no data" }));
         return;
       }

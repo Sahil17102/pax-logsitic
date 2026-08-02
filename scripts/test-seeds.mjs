@@ -55,6 +55,7 @@ assert.equal(migratedLegacyState.schemaVersion, APP_STATE_SCHEMA_VERSION);
 assert.equal(migratedLegacyState.customers[0].id, "CUS-REAL");
 assert.deepEqual(migratedLegacyState.admins, []);
 assert.deepEqual(migratedLegacyState.pickupRequests, []);
+assert.deepEqual(migratedLegacyState.warehouses, []);
 assert.deepEqual(migratedLegacyState.configuration.locations, { countries: [], states: [], cities: [] });
 
 console.log(JSON.stringify({
