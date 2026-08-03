@@ -8394,6 +8394,23 @@
   font-size: 12px;
 }
 
+.ndr-status-button {
+  justify-self: start;
+  margin-top: 5px;
+  border: 0;
+  background: transparent;
+  color: #3454d1;
+  cursor: pointer;
+  padding: 0;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.ndr-status-button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
 .ndr-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

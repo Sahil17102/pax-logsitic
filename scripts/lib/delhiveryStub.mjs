@@ -26,6 +26,7 @@ function isValidRvpQcShipment(shipment) {
 export async function startDelhiveryStub(port, token = "postman-delhivery-token") {
   let manifestSequence = 0;
   let ndrSequence = 0;
+  const ndrUploads = new Map();
   const manifestedOrders = new Set();
   const manifestedWaybills = new Set();
   const cancelledWaybills = new Set();
@@ -278,7 +279,31 @@ export async function startDelhiveryStub(port, token = "postman-delhivery-token"
         return;
       }
       ndrSequence += 1;
-      response.end(JSON.stringify({ success: true, upl_id: `UPL-NDR-${ndrSequence}`, message: "NDR action accepted" }));
+      const uplId = `UPL-NDR-${ndrSequence}`;
+      ndrUploads.set(uplId, { waybill: String(record.waybill), action: record.act });
+      response.end(JSON.stringify({ success: true, upl_id: uplId, message: "NDR action accepted" }));
+      return;
+    }
+    const ndrStatusMatch = url.pathname.match(/^\/api\/cmu\/get_bulk_upl\/(UPL[A-Z0-9_-]+)$/i);
+    if (request.method === "GET" && ndrStatusMatch) {
+      const uplId = ndrStatusMatch[1];
+      const upload = ndrUploads.get(uplId);
+      if (url.searchParams.get("verbose") !== "true") {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: "verbose=true is required" }));
+        return;
+      }
+      if (!upload) {
+        response.statusCode = 404;
+        response.end(JSON.stringify({ error: "UPL ID not found" }));
+        return;
+      }
+      response.end(JSON.stringify({
+        upl_id: uplId,
+        upload_status: "Completed",
+        message: "NDR request processed",
+        results: [{ waybill: upload.waybill, action: upload.action, status: "Success", remarks: "NDR action applied" }],
+      }));
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/p/edit") {

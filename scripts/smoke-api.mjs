@@ -152,6 +152,9 @@ try {
     headers: { ...authorization, "Content-Type": "application/json" },
     body: JSON.stringify({ waybill: ndrShipment.data.waybill, act: "RE-ATTEMPT" }),
   });
+  const ndrStatus = await request(`/api/client/shipments/${ndrShipment.data.id}/ndr/${encodeURIComponent(ndrAction.provider.uplId)}/status`, {
+    headers: authorization,
+  });
   const publicNdrTracking = await request(`/api/tracking/${ndrShipment.data.id}`);
   const tracked = await request(`/api/tracking/${created.data.id}`);
   const publicRvpQcTracking = await request(`/api/tracking/${rvpQcShipment.data.id}`);
@@ -287,7 +290,13 @@ try {
   assert.equal(ndrAction.provider.status, "Pending");
   assert.match(ndrAction.provider.uplId, /^UPL-NDR-/);
   assert.equal(ndrAction.data.ndrActions.length, 1);
+  assert.equal(ndrStatus.provider.status, "Completed");
+  assert.equal(ndrStatus.provider.terminal, true);
+  assert.equal(ndrStatus.data.ndrActions[0].status, "Completed");
+  assert.equal(ndrStatus.data.ndrActions[0].statusHistory.length, 1);
   assert.equal(Object.hasOwn(publicNdrTracking.data, "ndrActions"), false);
+  assert.equal(Object.hasOwn(publicNdrTracking.data, "lastNdrStatus"), false);
+  assert.equal(Object.hasOwn(publicNdrTracking.data, "lastNdrStatusAt"), false);
   assert.equal(Object.hasOwn(publicNdrTracking.data.tracking.shipments[0], "attemptCount"), false);
   assert.equal(Object.hasOwn(publicNdrTracking.data.tracking.shipments[0].currentStatus, "nslCode"), false);
   assert.equal(pickupRequest.data.status, "Scheduled");
@@ -327,6 +336,7 @@ try {
     estimatedShippingCost: shippingCost.data.estimatedAmount,
     shippingLabelFormat: shippingLabel.data.format,
     downloadedDocumentType: deliveryDocument.data.documentType,
+    ndrStatus: ndrStatus.provider.status,
     pickupRequestStatus: pickupRequest.data.status,
     registeredWarehouses: warehouses.data.length,
     updatedWarehousePin: updatedWarehouse.data.pin,

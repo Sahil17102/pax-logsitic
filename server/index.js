@@ -924,7 +924,7 @@ async function handleNdrAction(request, response) {
   const waybill = shipmentActionWaybill(shipment, body.waybill, "updated through NDR");
   const action = String(body.act || "").trim().toUpperCase();
   const pendingDuplicate = (Array.isArray(shipment.ndrActions) ? shipment.ndrActions : [])
-    .some((item) => item.waybill === waybill && item.action === action && item.status === "Pending");
+    .some((item) => item.waybill === waybill && item.action === action && !["Completed", "Failed", "Rejected"].includes(item.status));
   if (pendingDuplicate) {
     throw new DelhiveryError("This NDR action is already pending for the selected waybill.", { code: "NDR_ACTION_ALREADY_PENDING", status: 409 });
   }
@@ -946,6 +946,57 @@ async function handleNdrAction(request, response) {
 
 app.post("/api/admin/shipments/:id/ndr", requireRole("admin"), handleNdrAction);
 app.post("/api/client/shipments/:id/ndr", requireRole("customer"), handleNdrAction);
+
+async function handleNdrStatus(request, response) {
+  const state = await readState();
+  const shipment = state.shipments.find((item) => item.id === request.params.id);
+  const currentUser = request.session.role === "customer"
+    ? state.users.find((item) => item.email === request.session.subject)
+    : null;
+  const customerOwnsShipment = shipment
+    && (shipment.ownerEmail === request.session.subject || shipment.customerId === currentUser?.id);
+  if (!shipment || (request.session.role === "customer" && !customerOwnsShipment)) {
+    return response.status(404).json({ message: "Shipment not found." });
+  }
+  const uplId = String(request.params.uplId || "").trim();
+  const actions = Array.isArray(shipment.ndrActions) ? shipment.ndrActions : [];
+  const actionIndex = actions.findIndex((item) => item.uplId === uplId);
+  if (actionIndex < 0) {
+    throw new DelhiveryError("NDR UPL ID was not found on this shipment.", { code: "NDR_UPL_NOT_FOUND", status: 404 });
+  }
+  const previousAction = actions[actionIndex];
+  const providerResult = await delhivery.getNdrStatus({ uplId });
+  const statusHistory = [...(Array.isArray(previousAction.statusHistory) ? previousAction.statusHistory : []), {
+    status: providerResult.status,
+    ...(providerResult.message ? { message: providerResult.message } : {}),
+    checkedAt: providerResult.checkedAt,
+  }].slice(-25);
+  const updatedAction = {
+    ...previousAction,
+    status: providerResult.status,
+    statusCheckedAt: providerResult.checkedAt,
+    ...(providerResult.message ? { statusMessage: providerResult.message } : {}),
+    statusDetails: providerResult.details,
+    statusHistory,
+  };
+  shipment.ndrActions = actions.map((item, index) => index === actionIndex ? updatedAction : item);
+  shipment.lastNdrStatusAt = providerResult.checkedAt;
+  if (shipment.lastNdrUplId === uplId) shipment.lastNdrStatus = providerResult.status;
+  if (previousAction.status !== providerResult.status) {
+    state.activities.unshift({
+      title: `${shipment.id} NDR status updated`,
+      detail: `${providerResult.status} · ${uplId}`,
+      tone: providerResult.terminal ? "green" : "blue",
+      createdAt: providerResult.checkedAt,
+    });
+    state.activities = state.activities.slice(0, 50);
+  }
+  await writeState(state, "shipment.ndr.status.checked");
+  response.json({ data: shipment, provider: providerResult });
+}
+
+app.get("/api/admin/shipments/:id/ndr/:uplId/status", requireRole("admin"), handleNdrStatus);
+app.get("/api/client/shipments/:id/ndr/:uplId/status", requireRole("customer"), handleNdrStatus);
 
 function registeredWarehouseNames(state) {
   const configured = String(process.env.DELHIVERY_PICKUP_LOCATION || "").trim();
@@ -1414,6 +1465,8 @@ app.get("/api/tracking/:id", async (request, response) => {
     ndrActions: _ndrActions,
     lastNdrUplId: _lastNdrUplId,
     lastNdrActionAt: _lastNdrActionAt,
+    lastNdrStatus: _lastNdrStatus,
+    lastNdrStatusAt: _lastNdrStatusAt,
     ...publicShipment
   } = shipment;
   response.json({ data: { ...publicShipment, tracking: publicTrackingView(tracking) } });

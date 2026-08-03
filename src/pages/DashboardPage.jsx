@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientServiceability, getClientShipmentDocument, getClientShippingCost, getClientShippingLabel, logoutClient, submitClientNdrAction } from "../services/clientApi.js";
+import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientNdrStatus, getClientServiceability, getClientShipmentDocument, getClientShippingCost, getClientShippingLabel, logoutClient, submitClientNdrAction } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -665,6 +665,22 @@ export default function DashboardPage() {
     }
   };
 
+  const refreshNdrStatus = async (shipment, ndrAction) => {
+    const requestKey = `${shipment.id}:status:${ndrAction.uplId}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await getClientNdrStatus(shipment.id, ndrAction.uplId);
+      const next = shipments.map((item) => item.id === shipment.id ? result.shipment : item);
+      setShipments(next);
+      localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
+      notify(`UPL ${ndrAction.uplId} is ${result.provider.status}.`);
+    } catch (error) {
+      notify(error.message || "The NDR status could not be refreshed.");
+    } finally {
+      setNdrSubmitting("");
+    }
+  };
+
   const downloadShippingLabel = () => {
     if (!generatedLabel || generatedLabel.error || generatedLabel.loading) return;
     const link = document.createElement("a");
@@ -968,7 +984,7 @@ export default function DashboardPage() {
             <div><span className="priority-dot priority-high"></span><small>attention required</small><b>{shipment.id}</b></div>
             <h2>{shipment.status}</h2><p>{shipment.customer} · {shipment.destination}</p>
             <div className="exception-meta"><span>Last update</span><strong>{shipment.date ? new Date(shipment.date).toLocaleString("en-IN") : "Not provided"}</strong></div>
-            {shipment.ndrActions?.length ? <div className="ndr-history"><small>Latest UPL</small><strong>{shipment.ndrActions.at(-1).uplId}</strong><span>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</span></div> : null}
+            {shipment.ndrActions?.length ? <div className="ndr-history"><small>Latest UPL</small><strong>{shipment.ndrActions.at(-1).uplId}</strong><span>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</span>{shipment.ndrActions.at(-1).statusMessage ? <span>{shipment.ndrActions.at(-1).statusMessage}</span> : null}<button className="ndr-status-button" type="button" disabled={Boolean(ndrSubmitting)} onClick={() => refreshNdrStatus(shipment, shipment.ndrActions.at(-1))}>{ndrSubmitting === `${shipment.id}:status:${shipment.ndrActions.at(-1).uplId}` ? "Checking..." : "Check UPL status"}</button></div> : null}
             <div className="ndr-actions"><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "RE-ATTEMPT")}>{ndrSubmitting === `${shipment.id}:RE-ATTEMPT` ? "Submitting..." : "Re-attempt"}</button><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "PICKUP_RESCHEDULE")}>{ndrSubmitting === `${shipment.id}:PICKUP_RESCHEDULE` ? "Submitting..." : "Reschedule pickup"}</button></div>
           </article>
         )) : <article className="portal-card portal-tool-empty"><h2>No NDR shipments</h2><p>Eligible live Delhivery exceptions will appear here.</p></article>}

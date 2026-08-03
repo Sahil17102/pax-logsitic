@@ -109,6 +109,11 @@ export async function submitAdminNdrAction(shipmentId, { waybill = "", action })
   return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
 }
 
+export async function getAdminNdrStatus(shipmentId, uplId) {
+  const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/ndr/${encodeURIComponent(uplId)}/status`, {}, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
+}
+
 export async function createAdminPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {
   const payload = await request("/api/admin/pickup-requests", {
     method: "POST",

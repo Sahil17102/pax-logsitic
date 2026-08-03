@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryNdrPayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, buildDelhiveryWarehousePayload, buildDelhiveryWarehouseUpdatePayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryCustomQc, normalizeDelhiveryDocument, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryNdrAction, normalizeDelhiveryPickupRequest, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryShippingCost, normalizeDelhiveryShippingLabel, normalizeDelhiveryTracking, normalizeDelhiveryWarehouseCreation, normalizeDelhiveryWarehouseUpdate, normalizeDelhiveryWaybills, normalizeDocumentRequest, normalizeNdrActionRequest, normalizePickupRequest, normalizeShippingCostRequest, normalizeShippingLabelRequest, validateNdrEligibility } from "../server/integrations/delhivery.js";
+import { buildDelhiveryEwaybillUpdatePayload, buildDelhiveryNdrPayload, buildDelhiveryShipmentCancellationPayload, buildDelhiveryShipmentEditPayload, buildDelhiveryShipmentPayload, buildDelhiveryWarehousePayload, buildDelhiveryWarehouseUpdatePayload, createDelhiveryClient, DelhiveryError, normalizeDelhiveryCustomQc, normalizeDelhiveryDocument, normalizeDelhiveryEwaybillUpdate, normalizeDelhiveryExpectedTat, normalizeDelhiveryHeavyServiceability, normalizeDelhiveryNdrAction, normalizeDelhiveryNdrStatus, normalizeDelhiveryPickupRequest, normalizeDelhiveryServiceability, normalizeDelhiveryShipmentCancellation, normalizeDelhiveryShipmentCreation, normalizeDelhiveryShipmentEdit, normalizeDelhiveryShippingCost, normalizeDelhiveryShippingLabel, normalizeDelhiveryTracking, normalizeDelhiveryWarehouseCreation, normalizeDelhiveryWarehouseUpdate, normalizeDelhiveryWaybills, normalizeDocumentRequest, normalizeNdrActionRequest, normalizeNdrStatusRequest, normalizePickupRequest, normalizeShippingCostRequest, normalizeShippingLabelRequest, validateNdrEligibility } from "../server/integrations/delhivery.js";
 
 assert.deepEqual(normalizeDelhiveryWaybills({ waybills: ["900000000001", "900000000002", "900000000001"] }), ["900000000001", "900000000002"]);
 assert.deepEqual(normalizeDelhiveryWaybills({ data: { awb_numbers: "900000000003, 900000000004" } }), ["900000000003", "900000000004"]);
@@ -114,9 +114,15 @@ const ndrRequest = normalizeNdrActionRequest({ waybill: "920000000001", act: "re
 const eligibleNdrRequest = validateNdrEligibility(ndrRequest, normalizedTracking.shipments[0]);
 assert.deepEqual(buildDelhiveryNdrPayload(eligibleNdrRequest), { data: [{ waybill: "920000000001", act: "RE-ATTEMPT" }] });
 assert.equal(normalizeDelhiveryNdrAction({ success: true, data: { upl_id: "UPL-NDR-1" } }, eligibleNdrRequest).uplId, "UPL-NDR-1");
+const ndrStatusRequest = normalizeNdrStatusRequest({ request_id: "UPL-NDR-1" });
+const normalizedNdrStatus = normalizeDelhiveryNdrStatus({ upload_status: "Completed", message: "NDR request processed", results: [{ waybill: "920000000001", status: "Success", remarks: "NDR action applied" }] }, ndrStatusRequest);
+assert.equal(normalizedNdrStatus.status, "Completed");
+assert.equal(normalizedNdrStatus.terminal, true);
+assert.deepEqual(normalizedNdrStatus.details, [{ waybill: "920000000001", status: "Completed", message: "NDR action applied" }]);
 const pickupNdrRequest = normalizeNdrActionRequest({ waybill: "920000000002", act: "PICKUP_RESCHEDULE" });
 assert.equal(validateNdrEligibility(pickupNdrRequest, { waybill: "920000000002", attemptCount: 2, otpCancelled: false, currentStatus: { status: "Cancelled", nslCode: "EOD-777" } }).nslCode, "EOD-777");
 assert.throws(() => normalizeNdrActionRequest({ waybill: "920000000001", act: "CANCEL" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_NDR_ACTION");
+assert.throws(() => normalizeNdrStatusRequest({ uplId: "../../bad" }), (error) => error instanceof DelhiveryError && error.code === "INVALID_NDR_UPL_ID");
 assert.throws(() => validateNdrEligibility(ndrRequest, { waybill: "920000000001", attemptCount: 3, currentStatus: { nslCode: "EOD-74" } }), (error) => error instanceof DelhiveryError && error.code === "NDR_ATTEMPT_NOT_ELIGIBLE");
 assert.throws(() => validateNdrEligibility(ndrRequest, { waybill: "920000000001", attemptCount: 1, currentStatus: { nslCode: "EOD-999" } }), (error) => error instanceof DelhiveryError && error.code === "NDR_NSL_NOT_ELIGIBLE");
 assert.throws(() => validateNdrEligibility(pickupNdrRequest, { waybill: "920000000002", attemptCount: 2, otpCancelled: true, currentStatus: { status: "Cancelled", nslCode: "EOD-777" } }), (error) => error instanceof DelhiveryError && error.code === "NDR_PICKUP_NOT_ELIGIBLE");
@@ -365,6 +371,16 @@ try {
           headers: { "Content-Type": "application/json" },
         });
       }
+      if (endpoint.pathname === "/api/cmu/get_bulk_upl/UPL-NDR-2") {
+        assert.equal(options.method, "GET");
+        assert.equal(endpoint.searchParams.get("verbose"), "true");
+        assert.equal(options.headers.Accept, "application/json");
+        assert.equal(options.headers["Content-Type"], "application/json");
+        return new Response(JSON.stringify({ upload_status: "Completed", message: "NDR request processed", results: [{ waybill: "920000000001", status: "Success", remarks: "NDR action applied" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (endpoint.pathname === "/api/p/edit") {
         assert.equal(options.method, "POST");
         assert.equal(options.headers["Content-Type"], "application/json");
@@ -471,6 +487,9 @@ try {
   const submittedNdr = await client.applyNdrAction({ waybill: "920000000001", act: "RE-ATTEMPT", refIds: "PAX-ORDER-1" });
   assert.equal(submittedNdr.uplId, "UPL-NDR-2");
   assert.equal(submittedNdr.status, "Pending");
+  const checkedNdr = await client.getNdrStatus({ uplId: submittedNdr.uplId });
+  assert.equal(checkedNdr.status, "Completed");
+  assert.equal(checkedNdr.details[0].waybill, "920000000001");
   const tomorrowInIndia = new Date(Date.now() + (330 * 60 * 1000) + (24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
   const pickupCreated = await client.createPickupRequest({ pickupDate: tomorrowInIndia, pickupTime: "11:00:00", pickupLocation: "Pax Test Warehouse", expectedPackageCount: 2 });
   assert.equal(pickupCreated.providerPickupId, "PUR-TEST-2");
@@ -491,7 +510,7 @@ try {
   const tracked = await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
   assert.equal(tracked.shipments[0].currentStatus.status, "NDR");
   await client.trackShipments({ waybills: ["920000000001"], refIds: "PAX-ORDER-1" });
-  assert.equal(requestCount, 21, "each Delhivery contract uses its independent provider request path and cache");
+  assert.equal(requestCount, 22, "each Delhivery contract uses its independent provider request path and cache");
   await assert.rejects(() => client.checkServiceability("123"), (error) => error instanceof DelhiveryError && error.status === 400);
   await assert.rejects(() => client.fetchWaybills(0), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
   await assert.rejects(() => client.fetchWaybills(10001), (error) => error instanceof DelhiveryError && error.code === "INVALID_WAYBILL_COUNT");
@@ -509,4 +528,4 @@ try {
   if (originalRvpQcQuestionIds === undefined) delete process.env.DELHIVERY_RVP_QC_QUESTION_IDS; else process.env.DELHIVERY_RVP_QC_QUESTION_IDS = originalRvpQcQuestionIds;
 }
 
-console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, shippingCost: normalizedShippingCost.estimatedAmount, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, rvpQcVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, shippingCostVerified: true, shippingLabelVerified: true, documentDownloadVerified: true, ndrActionVerified: true, pickupRequestVerified: true, warehouseCreationVerified: true, warehouseUpdateVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));
+console.log(JSON.stringify({ serviceable: serviceable.pincode, embargoed: embargo.pincode, nsz: nsz.pincode, heavy: heavy.pincode, heavyNsz: heavyNsz.pincode, tatDays: tat.tatDays, tatNsz: tatNsz.status, shippingCost: normalizedShippingCost.estimatedAmount, bulkWaybillVerified: true, singleWaybillVerified: true, manifestationVerified: true, mpsManifestationVerified: true, rvpQcVerified: true, shipmentEditVerified: true, shipmentCancellationVerified: true, ewaybillUpdateVerified: true, shipmentTrackingVerified: true, shippingCostVerified: true, shippingLabelVerified: true, documentDownloadVerified: true, ndrActionVerified: true, ndrStatusVerified: true, pickupRequestVerified: true, warehouseCreationVerified: true, warehouseUpdateVerified: true, paymentConversionVerified: true, mpsJsonVerified: true, urlEncodingVerified: true, waybillParser: true, cacheVerified: true }));

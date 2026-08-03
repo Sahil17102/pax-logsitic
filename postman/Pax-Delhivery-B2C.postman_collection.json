@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
     "name": "Pax Logistics - Delhivery B2C",
-    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, authenticated order-document downloads, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, NDR actions with UPL persistence, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only privacy-safe provider data.",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, authenticated order-document downloads, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, NDR actions with UPL persistence and status refresh, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only privacy-safe provider data.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -252,7 +252,7 @@
     {
       "name": "Submit NDR re-attempt",
       "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Eligible NDR action returns and persists a pending UPL ID', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.accepted).to.eql(true);", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.provider.nslCode).to.eql('EOD-74');", "  pm.expect(body.provider.attemptCount).to.eql(1);", "  pm.expect(body.provider.uplId).to.match(/^UPL-NDR-/);", "  pm.expect(body.data.ndrActions).to.have.lengthOf(1);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Eligible NDR action returns and persists a pending UPL ID', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.accepted).to.eql(true);", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.provider.nslCode).to.eql('EOD-74');", "  pm.expect(body.provider.attemptCount).to.eql(1);", "  pm.expect(body.provider.uplId).to.match(/^UPL-NDR-/);", "  pm.expect(body.data.ndrActions).to.have.lengthOf(1);", "  pm.collectionVariables.set('ndrUplId', body.provider.uplId);", "});"] } }]
     },
     {
       "name": "Reject duplicate pending NDR action",
@@ -260,9 +260,19 @@
       "event": [{ "listen": "test", "script": { "exec": ["pm.test('A pending asynchronous action is not submitted twice', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('NDR_ACTION_ALREADY_PENDING');", "});"] } }]
     },
     {
+      "name": "Get customer NDR UPL status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr/{{ndrUplId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stored UPL is fetched with verbose status and persisted', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.uplId).to.eql(pm.collectionVariables.get('ndrUplId'));", "  pm.expect(body.provider.status).to.eql('Completed');", "  pm.expect(body.provider.terminal).to.eql(true);", "  pm.expect(body.provider.details[0].waybill).to.eql(pm.collectionVariables.get('ndrWaybill'));", "  pm.expect(body.data.ndrActions[0].status).to.eql('Completed');", "  pm.expect(body.data.ndrActions[0].statusHistory).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Reject unrelated NDR UPL status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{rvpQcShipmentId}}/ndr/{{ndrUplId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('A UPL cannot be queried through another owned shipment', () => {", "  pm.response.to.have.status(404);", "  pm.expect(pm.response.json().code).to.eql('NDR_UPL_NOT_FOUND');", "});"] } }]
+    },
+    {
       "name": "Public NDR tracking privacy",
       "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/tracking/{{ndrShipmentId}}" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking excludes UPL and NDR eligibility metadata', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).not.to.have.property('ndrActions');", "  pm.expect(data).not.to.have.property('lastNdrUplId');", "  pm.expect(data.tracking.shipments[0]).not.to.have.property('attemptCount');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('nslCode');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('otpCancelled');", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking excludes UPL and NDR eligibility metadata', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).not.to.have.property('ndrActions');", "  pm.expect(data).not.to.have.property('lastNdrUplId');", "  pm.expect(data).not.to.have.property('lastNdrStatus');", "  pm.expect(data).not.to.have.property('lastNdrStatusAt');", "  pm.expect(data.tracking.shipments[0]).not.to.have.property('attemptCount');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('nslCode');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('otpCancelled');", "});"] } }]
     },
     {
       "name": "Create eligible pickup reschedule shipment",
@@ -460,7 +470,12 @@
     {
       "name": "Submit admin NDR re-attempt",
       "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{adminNdrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/admin/shipments/{{adminNdrShipmentId}}/ndr" },
-      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can submit an eligible customer shipment NDR action', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.data.lastNdrUplId).to.eql(body.provider.uplId);", "});"] } }]
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can submit an eligible customer shipment NDR action', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.data.lastNdrUplId).to.eql(body.provider.uplId);", "  pm.collectionVariables.set('adminNdrUplId', body.provider.uplId);", "});"] } }]
+    },
+    {
+      "name": "Get admin NDR UPL status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{adminNdrShipmentId}}/ndr/{{adminNdrUplId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can refresh a persisted NDR UPL', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.status).to.eql('Completed');", "  pm.expect(body.data.lastNdrStatus).to.eql('Completed');", "  pm.expect(body.data.ndrActions[0].statusCheckedAt).to.be.a('string');", "});"] } }]
     },
     {
       "name": "Create Delhivery client warehouse",

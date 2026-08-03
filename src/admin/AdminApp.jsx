@@ -7,6 +7,7 @@ import {
   fetchDelhiveryWaybills,
   getAdminExpectedTat,
   getAdminHeavyServiceability,
+  getAdminNdrStatus,
   getAdminServiceability,
   getAdminShippingCost,
   getAdminDashboard,
@@ -709,6 +710,24 @@ function AdminApp() {
     }
   };
 
+  const refreshNdrStatus = async (shipment, ndrAction) => {
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to check an NDR status.");
+      return;
+    }
+    const requestKey = `${shipment.id}:status:${ndrAction.uplId}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await getAdminNdrStatus(shipment.id, ndrAction.uplId);
+      setSnapshot((current) => ({ ...current, shipments: (current.shipments || []).map((item) => item.id === shipment.id ? result.shipment : item) }));
+      flash(`UPL ${ndrAction.uplId} is ${result.provider.status}.`);
+    } catch (error) {
+      flash(`NDR status was not refreshed: ${error.message}`);
+    } finally {
+      setNdrSubmitting("");
+    }
+  };
+
   const registerWarehouse = async (event) => {
     event.preventDefault();
     if (previewMode || connection !== "live") {
@@ -863,7 +882,7 @@ function AdminApp() {
             {warehouseEditForm.id && <form className="admin-card admin-settings-card" onSubmit={updateWarehouse}><div><p>UPDATE WAREHOUSE</p><h2>{warehouseEditForm.name}</h2><span>The registered name is immutable. Only address, PIN and phone can be changed.</span></div><dl><div><dt>Warehouse name</dt><dd><input value={warehouseEditForm.name} disabled /></dd></div><div><dt>Phone</dt><dd><input value={warehouseEditForm.phone} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" /></dd></div><div><dt>Address</dt><dd><input value={warehouseEditForm.address} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, address: event.target.value })} /></dd></div><div><dt>PIN *</dt><dd><input value={warehouseEditForm.pin} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div></dl><div className="admin-row-actions"><button className="admin-compact-primary" type="submit" disabled={warehouseUpdating}>{warehouseUpdating ? "Updating…" : "Update warehouse"}</button><button type="button" onClick={() => setWarehouseEditForm({ id: "", name: "", phone: "", address: "", pin: "" })}>Cancel</button></div></form>}
           </section>}
 
-          {active === "ndr" && <section className="admin-ndr-workspace"><div className="admin-card admin-ndr-guidance"><strong>NDR action queue</strong><span>Delhivery recommends submitting after 9 PM. Pax refreshes the AWB and verifies its current NSL code, attempt count, and pickup cancellation eligibility before sending an action.</span></div><div className="admin-ndr-grid">{shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length ? shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).map((shipment) => <article className="admin-card admin-ndr-card" key={shipment.id}><div><StatusBadge status={shipment.status} /><small>{shipment.id}</small></div><h2>{shipment.customer}</h2><p>{shipment.destination} · {shipment.waybill}</p>{shipment.ndrActions?.length ? <dl><dt>Latest UPL</dt><dd>{shipment.ndrActions.at(-1).uplId}</dd><dt>Action</dt><dd>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</dd></dl> : null}<div><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "RE-ATTEMPT")}>{ndrSubmitting === `${shipment.id}:RE-ATTEMPT` ? "Submitting..." : "Re-attempt"}</button><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "PICKUP_RESCHEDULE")}>{ndrSubmitting === `${shipment.id}:PICKUP_RESCHEDULE` ? "Submitting..." : "Reschedule pickup"}</button></div></article>) : <div className="admin-empty admin-card">No NDR shipments are currently available.</div>}</div></section>}
+          {active === "ndr" && <section className="admin-ndr-workspace"><div className="admin-card admin-ndr-guidance"><strong>NDR action queue</strong><span>Delhivery recommends submitting after 9 PM. Pax refreshes the AWB and verifies its current NSL code, attempt count, and pickup cancellation eligibility before sending an action. Stored UPL requests can be refreshed from Delhivery below.</span></div><div className="admin-ndr-grid">{shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length ? shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).map((shipment) => <article className="admin-card admin-ndr-card" key={shipment.id}><div><StatusBadge status={shipment.status} /><small>{shipment.id}</small></div><h2>{shipment.customer}</h2><p>{shipment.destination} · {shipment.waybill}</p>{shipment.ndrActions?.length ? <dl><dt>Latest UPL</dt><dd>{shipment.ndrActions.at(-1).uplId}</dd><dt>Action</dt><dd>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</dd>{shipment.ndrActions.at(-1).statusMessage ? <><dt>Provider</dt><dd>{shipment.ndrActions.at(-1).statusMessage}</dd></> : null}</dl> : null}<div>{shipment.ndrActions?.length ? <button className="admin-ndr-status-button" type="button" disabled={Boolean(ndrSubmitting)} onClick={() => refreshNdrStatus(shipment, shipment.ndrActions.at(-1))}>{ndrSubmitting === `${shipment.id}:status:${shipment.ndrActions.at(-1).uplId}` ? "Checking..." : "Check UPL status"}</button> : null}<button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "RE-ATTEMPT")}>{ndrSubmitting === `${shipment.id}:RE-ATTEMPT` ? "Submitting..." : "Re-attempt"}</button><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "PICKUP_RESCHEDULE")}>{ndrSubmitting === `${shipment.id}:PICKUP_RESCHEDULE` ? "Submitting..." : "Reschedule pickup"}</button></div></article>) : <div className="admin-empty admin-card">No NDR shipments are currently available.</div>}</div></section>}
 
           {active === "rto" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>Return-to-origin orders</strong><span>Monitor reverse transit and seller communication.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("RTO manifest generated.")}>Generate manifest</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "RTO")} onStatusChange={changeStatus} /></section>}
 

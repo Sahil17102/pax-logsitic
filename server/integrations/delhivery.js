@@ -25,6 +25,8 @@ const DEFAULT_DOCUMENT_RATE_LIMIT_REQUESTS = 300;
 const DEFAULT_DOCUMENT_TIMEOUT_MS = 30000;
 const DEFAULT_NDR_RATE_LIMIT_REQUESTS = 300;
 const DEFAULT_NDR_TIMEOUT_MS = 130000;
+const DEFAULT_NDR_STATUS_RATE_LIMIT_REQUESTS = 300;
+const DEFAULT_NDR_STATUS_TIMEOUT_MS = 95000;
 const DEFAULT_PICKUP_RATE_LIMIT_REQUESTS = 3600;
 const DEFAULT_PICKUP_TIMEOUT_MS = 5000;
 const DEFAULT_WAREHOUSE_RATE_LIMIT_REQUESTS = 9;
@@ -644,6 +646,72 @@ export function normalizeDelhiveryNdrAction(payload, request) {
     attemptCount: request.attemptCount,
     currentStatus: request.currentStatus,
     requestedAt: new Date().toISOString(),
+  };
+}
+
+export function normalizeNdrStatusRequest(input = {}) {
+  const uplId = String(firstDefined(input, ["uplId", "upl_id", "requestId", "request_id"]) || "").trim();
+  if (!/^UPL[A-Z0-9_-]{3,196}$/i.test(uplId)) {
+    throw new DelhiveryError("A valid Delhivery NDR UPL ID is required.", { code: "INVALID_NDR_UPL_ID", status: 400 });
+  }
+  return { uplId };
+}
+
+function normalizeNdrStatusLabel(value) {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  if (["complete", "completed", "success", "successful", "processed", "done"].includes(normalized)) return "Completed";
+  if (["failed", "failure", "error"].includes(normalized)) return "Failed";
+  if (["rejected", "reject"].includes(normalized)) return "Rejected";
+  if (["processing", "in progress", "inprogress", "running"].includes(normalized)) return "Processing";
+  return "Pending";
+}
+
+function ndrStatusDetailRecords(payload) {
+  const direct = firstDefined(payload, ["results", "packages", "records", "shipments", "data"]);
+  const source = Array.isArray(direct)
+    ? direct
+    : firstDefined(direct, ["results", "packages", "records", "shipments"]);
+  if (!Array.isArray(source)) return [];
+  return source.slice(0, 50).map((record) => {
+    const rawStatus = firstDefined(record, ["status", "Status", "result", "action_status", "actionStatus"]);
+    const message = String(firstDefined(record, ["message", "Message", "remark", "remarks", "error", "Error"]) || "").trim().slice(0, 500);
+    const waybill = String(firstDefined(record, ["waybill", "Waybill", "awb", "AWB", "wbn"]) || "").trim();
+    return {
+      ...(waybill ? { waybill } : {}),
+      status: normalizeNdrStatusLabel(rawStatus),
+      ...(message ? { message } : {}),
+    };
+  });
+}
+
+export function normalizeDelhiveryNdrStatus(payload, request) {
+  if (!payload || typeof payload !== "object") {
+    throw new DelhiveryError("Delhivery returned an invalid NDR status response.", { code: "DELHIVERY_INVALID_RESPONSE", status: 502 });
+  }
+  const rawError = firstDefined(payload, ["error", "Error"]);
+  const providerError = rawError === false || rawError === 0 ? "" : String(rawError || "").trim();
+  if (providerError || payload.success === false) {
+    throw new DelhiveryError(providerError || "Delhivery rejected the NDR status request.", { code: "DELHIVERY_NDR_STATUS_REJECTED", status: 422 });
+  }
+  const details = ndrStatusDetailRecords(payload);
+  const rawStatus = nestedProviderValue(payload, ["upl_status", "upload_status", "request_status", "processing_status", "status", "Status"]);
+  let status = typeof rawStatus === "string" || typeof rawStatus === "number"
+    ? normalizeNdrStatusLabel(rawStatus)
+    : "Pending";
+  if (status === "Pending" && details.length) {
+    if (details.some((detail) => ["Pending", "Processing"].includes(detail.status))) status = "Processing";
+    else if (details.every((detail) => detail.status === "Completed")) status = "Completed";
+    else if (details.some((detail) => ["Failed", "Rejected"].includes(detail.status))) status = "Failed";
+  }
+  const message = String(nestedProviderValue(payload, ["message", "Message", "remark", "remarks", "detail"]) || "").trim().slice(0, 500);
+  return {
+    provider: "delhivery",
+    uplId: request.uplId,
+    status,
+    terminal: ["Completed", "Failed", "Rejected"].includes(status),
+    ...(message ? { message } : {}),
+    details,
+    checkedAt: new Date().toISOString(),
   };
 }
 
@@ -1445,6 +1513,24 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     ? Math.min(configuredNdrTimeout, 180000)
     : DEFAULT_NDR_TIMEOUT_MS;
   const ndrPath = validateProviderPath(process.env.DELHIVERY_NDR_PATH || "/api/p/update", "DELHIVERY_NDR_PATH");
+  const configuredNdrStatusRateLimit = Number(process.env.DELHIVERY_NDR_STATUS_RATE_LIMIT_REQUESTS);
+  const ndrStatusRateLimitRequests = Number.isInteger(configuredNdrStatusRateLimit) && configuredNdrStatusRateLimit > 0
+    ? Math.min(configuredNdrStatusRateLimit, DEFAULT_NDR_STATUS_RATE_LIMIT_REQUESTS)
+    : DEFAULT_NDR_STATUS_RATE_LIMIT_REQUESTS;
+  const configuredNdrStatusTimeout = Number(process.env.DELHIVERY_NDR_STATUS_TIMEOUT_MS);
+  const ndrStatusTimeoutMs = Number.isInteger(configuredNdrStatusTimeout) && configuredNdrStatusTimeout > 0
+    ? Math.min(configuredNdrStatusTimeout, 120000)
+    : DEFAULT_NDR_STATUS_TIMEOUT_MS;
+  const ndrStatusPathTemplate = validateProviderPath(
+    process.env.DELHIVERY_NDR_STATUS_PATH_TEMPLATE || "/api/cmu/get_bulk_upl/{uplId}",
+    "DELHIVERY_NDR_STATUS_PATH_TEMPLATE",
+  );
+  if ((ndrStatusPathTemplate.match(/\{uplId\}/g) || []).length !== 1) {
+    throw new DelhiveryError("DELHIVERY_NDR_STATUS_PATH_TEMPLATE must contain one {uplId} placeholder.", {
+      code: "DELHIVERY_INVALID_CONFIGURATION",
+      status: 503,
+    });
+  }
   const configuredPickupRateLimit = Number(process.env.DELHIVERY_PICKUP_RATE_LIMIT_REQUESTS);
   const pickupRateLimitRequests = Number.isInteger(configuredPickupRateLimit) && configuredPickupRateLimit > 0
     ? Math.min(configuredPickupRateLimit, 4000)
@@ -1760,6 +1846,17 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     return normalizeDelhiveryNdrAction(payload, request);
   }
 
+  async function fetchNdrStatus(request) {
+    const path = ndrStatusPathTemplate.replace("{uplId}", encodeURIComponent(request.uplId));
+    const endpoint = new URL(path, `${baseUrl}/`);
+    endpoint.searchParams.set("verbose", "true");
+    const payload = await requestJson(endpoint, "ndr-status", ndrStatusRateLimitRequests, {
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      requestTimeoutMs: ndrStatusTimeoutMs,
+    });
+    return normalizeDelhiveryNdrStatus(payload, request);
+  }
+
   async function submitPickupRequest(request) {
     const endpoint = new URL(pickupPath, `${baseUrl}/`);
     const payload = await requestJson(endpoint, "pickup-request", pickupRateLimitRequests, {
@@ -1848,6 +1945,11 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     const tracking = await fetchTracking(trackingRequest);
     const eligible = validateNdrEligibility(request, tracking.shipments.find((shipment) => shipment.waybill === request.waybill));
     return submitNdrAction(eligible);
+  }
+
+  async function getNdrStatus(input) {
+    ensureConfigured();
+    return fetchNdrStatus(normalizeNdrStatusRequest(input));
   }
 
   async function createPickupRequest(input) {
@@ -1954,6 +2056,7 @@ export function createDelhiveryClient({ fetchImpl = globalThis.fetch } = {}) {
     generateShippingLabel,
     downloadDocument,
     applyNdrAction,
+    getNdrStatus,
     createPickupRequest,
     createWarehouse,
     updateWarehouse,

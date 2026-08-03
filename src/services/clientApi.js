@@ -119,6 +119,11 @@ export async function submitClientNdrAction(shipmentId, { waybill = "", action }
   return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
 }
 
+export async function getClientNdrStatus(shipmentId, uplId) {
+  const payload = await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/ndr/${encodeURIComponent(uplId)}/status`, {}, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
+}
+
 export async function createClientPickupRequest({ pickupDate, pickupTime, pickupLocation = "", expectedPackageCount }) {
   const payload = await request("/api/client/pickup-requests", {
     method: "POST",
