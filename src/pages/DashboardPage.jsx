@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates } from "../services/sharedControl.js";
-import { createClientShipment, getClientBootstrap, logoutClient } from "../services/clientApi.js";
+import { createClientPickupRequest, createClientShipment, getClientBootstrap, getClientExpectedTat, getClientHeavyServiceability, getClientNdrStatus, getClientServiceability, getClientShipmentDocument, getClientShippingCost, getClientShippingLabel, logoutClient, submitClientNdrAction } from "../services/clientApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 
 const SESSION_KEY = "pax-user-session";
@@ -200,6 +200,40 @@ function StatusBadge({ status }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
 }
 
+function indiaDateAfter(days = 0) {
+  return new Date(Date.now() + (330 * 60 * 1000) + (days * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+}
+
+function createEmptyQcQuestion() {
+  return { questionId: "", type: "multi", options: "", value: "", required: true, questionImages: "" };
+}
+
+function createEmptyQcItem() {
+  return { item: "", description: "", images: "", returnReason: "", quantity: "1", brand: "", productCategory: "", questions: [createEmptyQcQuestion()] };
+}
+
+function createEmptyShipmentForm() {
+  return {
+    customer: "", phone: "", address: "", city: "", state: "", pincode: "", weight: "1", payment: "Prepaid", flow: "Forward", productType: "Parcel", pickupLocation: "", amount: "", productsDescription: "", quantity: "1", shippingMode: "Surface", transportSpeed: "D", ewbn: "", returnAddress: "", returnCity: "", returnState: "", returnPincode: "", qcEnabled: false, customQc: [],
+  };
+}
+
+function RvpQcEditor({ items, onChange }) {
+  const updateItem = (itemIndex, changes) => onChange(items.map((item, index) => index === itemIndex ? { ...item, ...changes } : item));
+  const updateQuestion = (itemIndex, questionIndex, changes) => updateItem(itemIndex, {
+    questions: items[itemIndex].questions.map((question, index) => index === questionIndex ? { ...question, ...changes } : question),
+  });
+  return <section className="rvp-qc-editor span-two">
+    <div className="rvp-qc-heading"><div><strong>RVP QC 3.0 items</strong><small>Maximum 2 items and 6 mapped questions per item.</small></div><button type="button" disabled={items.length >= 2} onClick={() => onChange([...items, createEmptyQcItem()])}>Add QC item</button></div>
+    {items.map((item, itemIndex) => <article className="rvp-qc-item" key={`qc-item-${itemIndex}`}>
+      <div className="rvp-qc-heading"><strong>Item {itemIndex + 1}</strong>{items.length > 1 && <button type="button" onClick={() => onChange(items.filter((_, index) => index !== itemIndex))}>Remove</button>}</div>
+      <div className="rvp-qc-grid"><label>Item name<input value={item.item} onChange={(event) => updateItem(itemIndex, { item: event.target.value })} /></label><label>Description *<input value={item.description} onChange={(event) => updateItem(itemIndex, { description: event.target.value })} required /></label><label className="span-two">Item image URLs *<input value={item.images} onChange={(event) => updateItem(itemIndex, { images: event.target.value })} placeholder="Comma-separated HTTPS URLs" required /></label><label>Return reason<input value={item.returnReason} onChange={(event) => updateItem(itemIndex, { returnReason: event.target.value })} /></label><label>Quantity<input type="number" min="1" value={item.quantity} onChange={(event) => updateItem(itemIndex, { quantity: event.target.value })} /></label><label>Brand<input value={item.brand} onChange={(event) => updateItem(itemIndex, { brand: event.target.value })} /></label><label>Product category<input value={item.productCategory} onChange={(event) => updateItem(itemIndex, { productCategory: event.target.value })} /></label></div>
+      {item.questions.map((question, questionIndex) => <div className="rvp-qc-question" key={`qc-question-${questionIndex}`}><div className="rvp-qc-heading"><strong>Question {questionIndex + 1}</strong>{item.questions.length > 1 && <button type="button" onClick={() => updateItem(itemIndex, { questions: item.questions.filter((_, index) => index !== questionIndex) })}>Remove</button>}</div><div className="rvp-qc-grid"><label>Mapped client question ID *<input value={question.questionId} onChange={(event) => updateQuestion(itemIndex, questionIndex, { questionId: event.target.value })} required /></label><label>Answer type<select value={question.type} onChange={(event) => updateQuestion(itemIndex, questionIndex, { type: event.target.value })}><option value="multi">Select options</option><option value="varchar">Typed answer</option></select></label><label>Options *<input value={question.options} onChange={(event) => updateQuestion(itemIndex, questionIndex, { options: event.target.value })} placeholder={question.type === "multi" ? "Black, Other" : "Leave blank for typed answer"} /></label><label>Correct value *<input value={question.value} onChange={(event) => updateQuestion(itemIndex, questionIndex, { value: event.target.value })} required /></label><label className="span-two">Question image URLs<input value={question.questionImages} onChange={(event) => updateQuestion(itemIndex, questionIndex, { questionImages: event.target.value })} placeholder="Optional comma-separated URLs" /></label><label className="rvp-qc-required"><input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(itemIndex, questionIndex, { required: event.target.checked })} /> Answer affects the QC result</label></div></div>)}
+      <button className="rvp-qc-add-question" type="button" disabled={item.questions.length >= 6} onClick={() => updateItem(itemIndex, { questions: [...item.questions, createEmptyQcQuestion()] })}>Add question</button>
+    </article>)}
+  </section>;
+}
+
 function buildOverviewAnalytics(shipments, days, label) {
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
   const records = shipments.filter((shipment) => {
@@ -285,6 +319,8 @@ export default function DashboardPage() {
   const [overviewRange, setOverviewRange] = useState("7D");
   const [mobileNav, setMobileNav] = useState(false);
   const [shipments, setShipments] = useState(readShipments);
+  const [warehouses, setWarehouses] = useState([]);
+  const [pickupRequests, setPickupRequests] = useState([]);
   const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [search, setSearch] = useState("");
   const [shipmentModal, setShipmentModal] = useState(false);
@@ -297,12 +333,19 @@ export default function DashboardPage() {
   const [weightForm, setWeightForm] = useState({ actual: "2.5", length: "40", width: "30", height: "25", divisor: "5000" });
   const [weightResult, setWeightResult] = useState(null);
   const [servicePin, setServicePin] = useState("560001");
+  const [serviceProductType, setServiceProductType] = useState("Parcel");
   const [serviceResult, setServiceResult] = useState(null);
   const [labelShipmentId, setLabelShipmentId] = useState(() => shipments[0]?.id || "");
+  const [labelWaybill, setLabelWaybill] = useState(() => shipments[0]?.waybill || "");
+  const [labelPdf, setLabelPdf] = useState(true);
+  const [labelPdfSize, setLabelPdfSize] = useState("4R");
   const [generatedLabel, setGeneratedLabel] = useState(null);
-  const [newShipment, setNewShipment] = useState({
-    customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "",
-  });
+  const [documentType, setDocumentType] = useState("EPOD");
+  const [downloadedDocument, setDownloadedDocument] = useState(null);
+  const [ndrSubmitting, setNdrSubmitting] = useState("");
+  const [pickupForm, setPickupForm] = useState({ pickupDate: indiaDateAfter(1), pickupTime: "11:00:00", pickupLocation: "", expectedPackageCount: "1" });
+  const [pickupSubmitting, setPickupSubmitting] = useState(false);
+  const [newShipment, setNewShipment] = useState(createEmptyShipmentForm);
   const notificationMenuRef = useRef(null);
   const walletMenuRef = useRef(null);
   const accountMenuRef = useRef(null);
@@ -318,6 +361,8 @@ export default function DashboardPage() {
           setShipments(data.shipments);
           localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(data.shipments));
         }
+        if (Array.isArray(data.pickupRequests)) setPickupRequests(data.pickupRequests);
+        if (Array.isArray(data.warehouses)) setWarehouses(data.warehouses);
       } catch {
         // Keep the customer workspace usable with its last synchronized snapshot.
       }
@@ -382,6 +427,13 @@ export default function DashboardPage() {
     controlState.settings.paymentOptions.cod && "COD",
   ].filter(Boolean);
   const enabledCouriers = (controlState.resources.couriers || []).filter((courier) => courier.enabled);
+  const labelShipment = shipments.find((shipment) => shipment.id === labelShipmentId);
+  const labelWaybills = labelShipment
+    ? (Array.isArray(labelShipment.waybills) && labelShipment.waybills.length ? labelShipment.waybills : [labelShipment.waybill]).filter(Boolean).map(String)
+    : [];
+  const readyPickupShipments = shipments.filter((shipment) => String(shipment.status).toLowerCase() === "manifested"
+    && !["pickup", "repl"].includes(String(shipment.payment).toLowerCase()));
+  const readyPickupPackageCount = readyPickupShipments.reduce((total, shipment) => total + Math.max(1, Number(shipment.packageCount) || 1), 0);
   useEffect(() => {
     if (!availablePaymentOptions.length) return;
     const fallback = availablePaymentOptions[0];
@@ -461,13 +513,16 @@ export default function DashboardPage() {
       notify("Complete the receiver details and enter a valid PIN code.");
       return;
     }
-    if (!availablePaymentOptions.length) {
+    if (newShipment.flow === "Forward" && !availablePaymentOptions.length) {
       notify("Shipment booking is temporarily disabled by the Pax administrator.");
       return;
     }
     try {
+      const { qcEnabled, customQc, ...shipmentInput } = newShipment;
       const shipment = await createClientShipment({
-        ...newShipment,
+        ...shipmentInput,
+        ...(qcEnabled ? { customQc } : {}),
+        paymentMode: newShipment.flow === "Reverse" ? "Pickup" : newShipment.flow === "Replacement" ? "REPL" : newShipment.payment,
         weight: Number(newShipment.weight),
         amount: Number(newShipment.amount) || 0,
       });
@@ -475,8 +530,8 @@ export default function DashboardPage() {
       setShipments(next);
       localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
       setShipmentModal(false);
-      setNewShipment({ customer: "", phone: "", address: "", city: "", pincode: "", weight: "1", payment: "Prepaid", amount: "" });
-      notify(`${shipment.id} created. Pickup is scheduled.`);
+      setNewShipment(createEmptyShipmentForm());
+      notify(`${shipment.id} manifested with Delhivery waybill ${shipment.waybill}.`);
     } catch (error) {
       notify(error.message || "Shipment could not be created.");
     }
@@ -493,7 +548,7 @@ export default function DashboardPage() {
     setTrackResult(shipment || { error: "Shipment not found in your account." });
   };
 
-  const calculateRate = (event) => {
+  const calculateRate = async (event) => {
     event.preventDefault();
     const pickup = rateForm.pickup.trim();
     const delivery = rateForm.delivery.trim();
@@ -503,25 +558,38 @@ export default function DashboardPage() {
       setRateQuote({ error: "Enter two valid 6-digit PIN codes and a valid parcel weight." });
       return;
     }
-    if (!enabledCouriers.length) {
-      setRateQuote({ error: "Rate calculation is unavailable because all courier services are disabled." });
-      return;
+    try {
+      const mot = rateForm.speed === "express" ? "E" : "S";
+      const [tat, shippingCost] = await Promise.all([
+        getClientExpectedTat({ originPin: pickup, destinationPin: delivery, mot, pdt: "B2C" }),
+        getClientShippingCost({
+          md: mot,
+          cgm: Math.ceil(weight * 1000),
+          originPin: pickup,
+          destinationPin: delivery,
+          status: "Delivered",
+          paymentType: rateForm.payment === "COD" ? "COD" : "Pre-paid",
+        }),
+      ]);
+      if (!tat.serviceable || tat.tatDays === null) {
+        setRateQuote({ error: tat.remark || "Delhivery could not provide an expected TAT for this lane." });
+        return;
+      }
+      if (!Number.isFinite(shippingCost.estimatedAmount)) {
+        setRateQuote({ error: "Delhivery did not return an estimated charge for this lane." });
+        return;
+      }
+      const eta = `${tat.tatDays} ${tat.tatDays === 1 ? "day" : "days"}`;
+      const services = [{
+        name: `Delhivery ${shippingCost.modeOfTransport}`,
+        eta,
+        amount: shippingCost.estimatedAmount,
+        tone: mot === "E" ? "express" : "standard",
+      }];
+      setRateQuote({ pickup, delivery, weight, payment: rateForm.payment, services, modeOfTransport: tat.modeOfTransport, expectedDeliveryDate: tat.expectedDeliveryDate });
+    } catch (error) {
+      setRateQuote({ error: error.message || "Delhivery shipping cost could not be loaded." });
     }
-
-    const sameZone = pickup.slice(0, 2) === delivery.slice(0, 2);
-    const sameRegion = pickup[0] === delivery[0];
-    const routeBase = sameZone ? 74 : sameRegion ? 112 : 148;
-    const weightCharge = Math.ceil(weight * (sameZone ? 20 : 31));
-    const codCharge = rateForm.payment === "COD" ? 45 : 0;
-    const base = routeBase + weightCharge + codCharge;
-    const services = enabledCouriers.slice(0, 2).map((courier, index) => ({
-      name: courier.cells[0],
-      eta: index === 0 ? (sameZone ? "1–2 days" : "3–5 days") : (sameZone ? "Next day" : "1–2 days"),
-      amount: index === 0 ? Math.max(79, Math.round(base / 10) * 10) : Math.round((base * 1.48) / 10) * 10,
-      tone: index === 0 ? "standard" : "express",
-    }));
-    if (rateForm.speed === "express") services.reverse();
-    setRateQuote({ pickup, delivery, weight, payment: rateForm.payment, services });
   };
 
   const calculateWeight = (event) => {
@@ -535,48 +603,116 @@ export default function DashboardPage() {
     setWeightResult({ actual: values.actual, volumetric, chargeable: Math.max(values.actual, volumetric) });
   };
 
-  const checkServiceability = (event) => {
+  const checkServiceability = async (event) => {
     event.preventDefault();
     const pin = servicePin.trim();
     if (!/^[1-9]\d{5}$/.test(pin)) {
       setServiceResult({ error: "Enter a valid 6-digit Indian PIN code." });
       return;
     }
-    const regions = { 1: "North", 2: "North", 3: "West", 4: "West", 5: "South", 6: "South", 7: "East", 8: "East", 9: "Central" };
-    const lastDigit = Number(pin.at(-1));
-    setServiceResult({
-      pin,
-      region: regions[pin[0]] || "Domestic",
-      standard: controlState.settings.serviceability.standard,
-      express: controlState.settings.serviceability.express && lastDigit !== 9,
-      cod: controlState.settings.serviceability.cod && controlState.settings.paymentOptions.cod && lastDigit % 2 === 0,
-      eta: lastDigit < 4 ? "2–3 business days" : "3–5 business days",
-    });
+    try {
+      const result = serviceProductType === "Heavy"
+        ? await getClientHeavyServiceability(pin)
+        : await getClientServiceability(pin);
+      setServiceResult({
+        ...result,
+        pin,
+        region: result.stateCode || result.district || "Delhivery",
+        standard: result.serviceable && controlState.settings.serviceability.standard,
+        prepaid: result.prepaid && controlState.settings.paymentOptions.prepaid,
+        cod: result.cod && controlState.settings.serviceability.cod && controlState.settings.paymentOptions.cod,
+      });
+    } catch (error) {
+      setServiceResult({ error: error.message || "Delhivery serviceability could not be checked." });
+    }
   };
 
-  const generateShippingLabel = (event) => {
+  const generateShippingLabel = async (event) => {
     event.preventDefault();
     const shipment = shipments.find((item) => item.id === labelShipmentId);
-    setGeneratedLabel(shipment ? { ...shipment, barcode: shipment.id.replace(/\D/g, "").padEnd(12, "0") } : { error: "Select a valid shipment." });
+    if (!shipment) {
+      setGeneratedLabel({ error: "Select a valid shipment." });
+      return;
+    }
+    const waybill = labelWaybill || (Array.isArray(shipment.waybills) ? shipment.waybills[0] : shipment.waybill);
+    if (!waybill) {
+      setGeneratedLabel({ error: "This shipment does not have a manifested Delhivery waybill." });
+      return;
+    }
+    try {
+      setGeneratedLabel({ loading: true });
+      const label = await getClientShippingLabel(shipment.id, { waybill: String(waybill), pdf: labelPdf, pdfSize: labelPdfSize });
+      setGeneratedLabel({ ...shipment, ...label, barcode: label.waybill });
+    } catch (error) {
+      setGeneratedLabel({ error: error.message || "Delhivery could not generate the shipping label." });
+    }
+  };
+
+  const submitNdrAction = async (shipment, action) => {
+    const waybill = String(shipment.waybills?.[0] || shipment.waybill || "");
+    const requestKey = `${shipment.id}:${action}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await submitClientNdrAction(shipment.id, { waybill, action });
+      const next = shipments.map((item) => item.id === shipment.id ? result.shipment : item);
+      setShipments(next);
+      localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
+      notify(`${action} submitted · UPL ${result.provider.uplId}.`);
+    } catch (error) {
+      notify(error.message || "The NDR action could not be submitted.");
+    } finally {
+      setNdrSubmitting("");
+    }
+  };
+
+  const refreshNdrStatus = async (shipment, ndrAction) => {
+    const requestKey = `${shipment.id}:status:${ndrAction.uplId}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await getClientNdrStatus(shipment.id, ndrAction.uplId);
+      const next = shipments.map((item) => item.id === shipment.id ? result.shipment : item);
+      setShipments(next);
+      localStorage.setItem(userCacheKey(SHIPMENTS_KEY, user?.email), JSON.stringify(next));
+      notify(`UPL ${ndrAction.uplId} is ${result.provider.status}.`);
+    } catch (error) {
+      notify(error.message || "The NDR status could not be refreshed.");
+    } finally {
+      setNdrSubmitting("");
+    }
   };
 
   const downloadShippingLabel = () => {
-    if (!generatedLabel || generatedLabel.error) return;
-    const content = [
-      "PAX LOGISTICS — SHIPPING LABEL",
-      `Shipment: ${generatedLabel.id}`,
-      `Customer: ${generatedLabel.customer}`,
-      `Destination: ${generatedLabel.destination}`,
-      `Payment: ${generatedLabel.payment}`,
-      `Barcode: ${generatedLabel.barcode}`,
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    if (!generatedLabel || generatedLabel.error || generatedLabel.loading) return;
     const link = document.createElement("a");
-    link.href = url;
-    link.download = `${generatedLabel.id}-shipping-label.txt`;
+    if (generatedLabel.format === "pdf") {
+      link.href = generatedLabel.downloadUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    } else {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(generatedLabel.labelData, null, 2)], { type: "application/json;charset=utf-8" }));
+      link.href = url;
+      link.download = `${generatedLabel.id}-${generatedLabel.waybill}-shipping-label.json`;
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
     link.click();
-    URL.revokeObjectURL(url);
-    notify(`${generatedLabel.id} label downloaded.`);
+    notify(`${generatedLabel.id} ${generatedLabel.format === "pdf" ? "PDF label opened" : "label JSON downloaded"}.`);
+  };
+
+  const fetchShipmentDocument = async (event) => {
+    event.preventDefault();
+    const shipment = shipments.find((item) => item.id === labelShipmentId);
+    const waybill = labelWaybill || (Array.isArray(shipment?.waybills) ? shipment.waybills[0] : shipment?.waybill);
+    if (!shipment || !waybill) {
+      setDownloadedDocument({ error: "Select a manifested shipment and waybill." });
+      return;
+    }
+    try {
+      setDownloadedDocument({ loading: true });
+      const result = await getClientShipmentDocument(shipment.id, { waybill: String(waybill), documentType });
+      setDownloadedDocument({ ...result, shipmentId: shipment.id });
+    } catch (error) {
+      setDownloadedDocument({ error: error.message || "Delhivery could not fetch this document." });
+    }
   };
 
   const saveProfile = (event) => {
@@ -840,16 +976,18 @@ export default function DashboardPage() {
 
   const renderExceptions = () => (
     <>
-      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>Exceptions</h1><span>Resolve failed attempts, address issues and delayed movement.</span></div><span className="section-count-pill">{shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length} open cases</span></section>
+      <section className="section-title-row"><div><p>EXCEPTION DESK</p><h1>NDR management</h1><span>Submit an eligible re-attempt or pickup reschedule after reviewing the latest Delhivery scan.</span></div><span className="section-count-pill">{shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length} open cases</span></section>
+      <p className="ndr-guidance">Delhivery recommends applying NDR actions after 9 PM. Pax refreshes the AWB first and verifies the current NSL code and attempt count before submission.</p>
       <section className="exception-grid">
-        {shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).length ? shipments.filter((item) => ["Exception", "RTO"].includes(item.status)).map((shipment) => (
+        {shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length ? shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).map((shipment) => (
           <article className="portal-card exception-card" key={shipment.id}>
             <div><span className="priority-dot priority-high"></span><small>attention required</small><b>{shipment.id}</b></div>
             <h2>{shipment.status}</h2><p>{shipment.customer} · {shipment.destination}</p>
             <div className="exception-meta"><span>Last update</span><strong>{shipment.date ? new Date(shipment.date).toLocaleString("en-IN") : "Not provided"}</strong></div>
-            <button type="button" onClick={() => notify(`${shipment.id} opened for review.`)}>Review shipment <span>→</span></button>
+            {shipment.ndrActions?.length ? <div className="ndr-history"><small>Latest UPL</small><strong>{shipment.ndrActions.at(-1).uplId}</strong><span>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</span>{shipment.ndrActions.at(-1).statusMessage ? <span>{shipment.ndrActions.at(-1).statusMessage}</span> : null}<button className="ndr-status-button" type="button" disabled={Boolean(ndrSubmitting)} onClick={() => refreshNdrStatus(shipment, shipment.ndrActions.at(-1))}>{ndrSubmitting === `${shipment.id}:status:${shipment.ndrActions.at(-1).uplId}` ? "Checking..." : "Check UPL status"}</button></div> : null}
+            <div className="ndr-actions"><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "RE-ATTEMPT")}>{ndrSubmitting === `${shipment.id}:RE-ATTEMPT` ? "Submitting..." : "Re-attempt"}</button><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "PICKUP_RESCHEDULE")}>{ndrSubmitting === `${shipment.id}:PICKUP_RESCHEDULE` ? "Submitting..." : "Reschedule pickup"}</button></div>
           </article>
-        )) : <article className="portal-card portal-tool-empty"><h2>No shipment exceptions</h2><p>Live API records needing attention will appear here.</p></article>}
+        )) : <article className="portal-card portal-tool-empty"><h2>No NDR shipments</h2><p>Eligible live Delhivery exceptions will appear here.</p></article>}
       </section>
     </>
   );
@@ -943,7 +1081,7 @@ export default function DashboardPage() {
             <label>Pickup PIN<input value={rateForm.pickup} onChange={(event) => setRateForm({ ...rateForm, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="500029" /></label>
             <label>Delivery PIN<input value={rateForm.delivery} onChange={(event) => setRateForm({ ...rateForm, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="400001" /></label>
             <label>Chargeable weight (kg)<input value={rateForm.weight} onChange={(event) => setRateForm({ ...rateForm, weight: event.target.value })} type="number" min="0.1" step="0.1" /></label>
-            <label>Preferred speed<select value={rateForm.speed} onChange={(event) => setRateForm({ ...rateForm, speed: event.target.value })}><option value="standard">Standard</option><option value="express">Express</option></select></label>
+            <label>Preferred speed<select value={rateForm.speed} onChange={(event) => setRateForm({ ...rateForm, speed: event.target.value })}><option value="standard">Surface</option><option value="express">Express</option></select></label>
             <label className="span-two">Payment mode<select value={rateForm.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setRateForm({ ...rateForm, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
           </div>
           <button className="portal-primary portal-tool-submit" type="submit"><Icon name="wallet" /> Calculate available rates</button>
@@ -954,9 +1092,9 @@ export default function DashboardPage() {
           {rateQuote?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Check the shipment details</h2><p>{rateQuote.error}</p></div>}
           {rateQuote && !rateQuote.error && <>
             <div className="tool-result-route"><span><small>PICKUP</small><strong>{rateQuote.pickup}</strong></span><i>→</i><span><small>DELIVERY</small><strong>{rateQuote.delivery}</strong></span></div>
-            <div className="tool-result-meta"><span>{rateQuote.weight} kg</span><span>{rateQuote.payment}</span><span>Indicative</span></div>
+            <div className="tool-result-meta"><span>{rateQuote.weight} kg</span><span>{rateQuote.payment}</span><span>{rateQuote.modeOfTransport}</span>{rateQuote.expectedDeliveryDate && <span>EDD {rateQuote.expectedDeliveryDate}</span>}</div>
             <div className="rate-option-list">
-              {rateQuote.services.map((service) => <div className={`rate-option-row is-${service.tone}`} key={service.name}><span><Icon name={service.tone === "express" ? "route" : "box"} /></span><div><strong>{service.name}</strong><small>{service.eta} estimated delivery</small></div><b>₹{service.amount}–₹{Math.round((service.amount * 1.18) / 10) * 10}</b><button type="button" onClick={openShipment}>Book</button></div>)}
+              {rateQuote.services.map((service) => <div className={`rate-option-row is-${service.tone}`} key={service.name}><span><Icon name={service.tone === "express" ? "route" : "box"} /></span><div><strong>{service.name}</strong><small>{service.eta} estimated delivery</small></div><b>₹{service.amount.toFixed(2)}</b><button type="button" onClick={openShipment}>Book</button></div>)}
             </div>
           </>}
         </article>
@@ -999,16 +1137,16 @@ export default function DashboardPage() {
       <section className="portal-tool-layout">
         <form className="portal-card portal-tool-form pincode-tool-form" onSubmit={checkServiceability}>
           <div className="portal-card-head"><div><small>DESTINATION CHECK</small><h2>Where are you shipping?</h2></div><span className="tool-live-badge">India</span></div>
-          <div className="portal-tool-fields"><label>Delivery PIN code<input value={servicePin} onChange={(event) => setServicePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="560001" /></label></div>
+          <div className="portal-tool-fields"><label>Product type<select value={serviceProductType} onChange={(event) => { setServiceProductType(event.target.value); setServiceResult(null); }}><option>Parcel</option><option>Heavy</option></select></label><label>Delivery PIN code<input value={servicePin} onChange={(event) => setServicePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="560001" /></label></div>
           <button className="portal-primary portal-tool-submit" type="submit"><Icon name="search" /> Check serviceability</button>
         </form>
         <article className="portal-card portal-tool-result" aria-live="polite">
-          {!serviceResult && <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>Coverage details appear here</h2><p>Check Standard, Express and COD availability for any valid PIN.</p></div>}
-          {serviceResult?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>PIN code required</h2><p>{serviceResult.error}</p></div>}
+          {!serviceResult && <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>Coverage details appear here</h2><p>Check delivery, prepaid and COD availability for any valid PIN.</p></div>}
+          {serviceResult?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Coverage unavailable</h2><p>{serviceResult.error}</p></div>}
           {serviceResult && !serviceResult.error && <div className="serviceability-result">
-            <div className="serviceability-head"><span>✓</span><div><small>{serviceResult.region.toUpperCase()} REGION</small><h2>{serviceResult.pin} is serviceable</h2><p>Estimated delivery: {serviceResult.eta}</p></div></div>
-            {[['Standard delivery', serviceResult.standard], ['Express delivery', serviceResult.express], ['Cash on delivery', serviceResult.cod]].map(([label, available]) => <div className="serviceability-row" key={label}><span>{label}</span><b className={available ? "is-available" : "is-unavailable"}>{available ? "Available" : "Unavailable"}</b></div>)}
-            <button className="portal-primary" type="button" onClick={openShipment}>Create shipment <Icon name="arrow" /></button>
+            <div className="serviceability-head"><span>{serviceResult.serviceable ? "✓" : "!"}</span><div><small>{serviceResult.region.toUpperCase()}</small><h2>{serviceResult.pin} is {serviceResult.serviceable ? "serviceable" : serviceResult.embargoed ? "temporarily embargoed" : "not serviceable"}</h2><p>{serviceResult.serviceable ? "Live coverage confirmed by Delhivery." : serviceResult.remark || "No Delhivery delivery code was returned."}</p></div></div>
+            {[["Standard delivery", serviceResult.standard], ["Prepaid delivery", serviceResult.prepaid], ["Cash on delivery", serviceResult.cod]].map(([label, available]) => <div className="serviceability-row" key={label}><span>{label}</span><b className={available ? "is-available" : "is-unavailable"}>{available ? "Available" : "Unavailable"}</b></div>)}
+            {serviceResult.serviceable && <button className="portal-primary" type="button" onClick={openShipment}>Create shipment <Icon name="arrow" /></button>}
           </div>}
         </article>
       </section>
@@ -1020,19 +1158,47 @@ export default function DashboardPage() {
       <section className="section-title-row"><div><p>SHIPPING DOCUMENT</p><h1>Label generator</h1><span>Select a booked shipment and generate its dispatch label.</span></div></section>
       <section className="portal-tool-layout">
         <form className="portal-card portal-tool-form" onSubmit={generateShippingLabel}>
-          <div className="portal-card-head"><div><small>SELECT ORDER</small><h2>Prepare shipping label</h2></div><span className="tool-live-badge">A6 format</span></div>
-          <div className="portal-tool-fields"><label>Shipment<select value={labelShipmentId} onChange={(event) => { setLabelShipmentId(event.target.value); setGeneratedLabel(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label></div>
-          <button className="portal-primary portal-tool-submit" type="submit"><Icon name="audit" /> Generate label</button>
+          <div className="portal-card-head"><div><small>SELECT ORDER</small><h2>Prepare shipping label</h2></div><span className="tool-live-badge">Delhivery</span></div>
+          <div className="portal-tool-fields">
+            <label>Shipment<select value={labelShipmentId} onChange={(event) => { const nextId = event.target.value; const nextShipment = shipments.find((shipment) => shipment.id === nextId); setLabelShipmentId(nextId); setLabelWaybill(String(nextShipment?.waybills?.[0] || nextShipment?.waybill || "")); setGeneratedLabel(null); setDownloadedDocument(null); }}>{shipments.map((shipment) => <option value={shipment.id} key={shipment.id}>{shipment.id} — {shipment.customer}</option>)}</select></label>
+            <label>Waybill<select value={labelWaybill} onChange={(event) => { setLabelWaybill(event.target.value); setGeneratedLabel(null); setDownloadedDocument(null); }}>{labelWaybills.map((waybill) => <option value={waybill} key={waybill}>{waybill}</option>)}</select></label>
+            <label>Output<select value={labelPdf ? "pdf" : "json"} onChange={(event) => { setLabelPdf(event.target.value === "pdf"); setGeneratedLabel(null); }}><option value="pdf">PDF download</option><option value="json">Custom label JSON</option></select></label>
+            <label>PDF size<select value={labelPdfSize} disabled={!labelPdf} onChange={(event) => { setLabelPdfSize(event.target.value); setGeneratedLabel(null); }}><option value="A4">A4 (8 × 11)</option><option value="4R">4R (4 × 6)</option></select></label>
+          </div>
+          <button className="portal-primary portal-tool-submit" type="submit" disabled={generatedLabel?.loading}><Icon name="audit" /> {generatedLabel?.loading ? "Generating..." : "Generate label"}</button>
         </form>
         <article className="portal-card portal-tool-result label-result-card" aria-live="polite">
-          {!generatedLabel && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Your A6 label preview</h2><p>Choose an order to create a printable dispatch label.</p></div>}
+          {!generatedLabel && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Your shipping label</h2><p>Choose a manifested order, PDF size and output format.</p></div>}
+          {generatedLabel?.loading && <div className="portal-tool-empty"><span><Icon name="refresh" /></span><h2>Generating label</h2><p>Waiting for Delhivery to prepare the document.</p></div>}
           {generatedLabel?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Label unavailable</h2><p>{generatedLabel.error}</p></div>}
-          {generatedLabel && !generatedLabel.error && <div className="shipping-label-preview">
-            <div className="shipping-label-head"><strong>PAX</strong><span>PREPAID / COD</span></div>
+          {generatedLabel && !generatedLabel.error && !generatedLabel.loading && <div className="shipping-label-preview">
+            <div className="shipping-label-head"><strong>PAX</strong><span>{generatedLabel.format.toUpperCase()} · {generatedLabel.pdfSize}</span></div>
             <small>SHIP TO</small><h2>{generatedLabel.customer}</h2><p>{generatedLabel.destination}</p>
             <div className="shipping-label-meta"><span><small>SHIPMENT</small><b>{generatedLabel.id}</b></span><span><small>PAYMENT</small><b>{generatedLabel.payment}</b></span></div>
             <div className="shipping-label-bars" aria-label={`Barcode ${generatedLabel.barcode}`}></div><b>{generatedLabel.barcode}</b>
-            <button className="portal-primary" type="button" onClick={downloadShippingLabel}>Download label <Icon name="arrow" /></button>
+            <button className="portal-primary" type="button" onClick={downloadShippingLabel}>{generatedLabel.format === "pdf" ? "Open PDF label" : "Download label JSON"} <Icon name="arrow" /></button>
+          </div>}
+        </article>
+      </section>
+      <section className="portal-tool-layout document-download-tool">
+        <form className="portal-card portal-tool-form" onSubmit={fetchShipmentDocument}>
+          <div className="portal-card-head"><div><small>DELIVERY EVIDENCE</small><h2>Download order document</h2></div><span className="tool-live-badge">Secure</span></div>
+          <p className="document-tool-copy">Fetch documents for the selected shipment and waybill. Availability depends on the shipment lifecycle and Delhivery retention.</p>
+          <div className="portal-tool-fields">
+            <label>Document type<select value={documentType} onChange={(event) => { setDocumentType(event.target.value); setDownloadedDocument(null); }}><option value="EPOD">Electronic proof of delivery (EPOD)</option><option value="SIGNATURE_URL">Consignee signature</option><option value="RVP_QC_IMAGE">Reverse pickup QC image</option><option value="SELLER_RETURN_IMAGE">Seller return image</option></select></label>
+            <label>Selected waybill<input value={labelWaybill} readOnly /></label>
+          </div>
+          <button className="portal-primary portal-tool-submit" type="submit" disabled={downloadedDocument?.loading}><Icon name="audit" /> {downloadedDocument?.loading ? "Fetching..." : "Fetch document"}</button>
+        </form>
+        <article className="portal-card portal-tool-result" aria-live="polite">
+          {!downloadedDocument && <div className="portal-tool-empty"><span><Icon name="audit" /></span><h2>Order documents</h2><p>Choose a document type to retrieve its secure Delhivery link.</p></div>}
+          {downloadedDocument?.loading && <div className="portal-tool-empty"><span><Icon name="refresh" /></span><h2>Fetching document</h2><p>Waiting for Delhivery to locate the requested file.</p></div>}
+          {downloadedDocument?.error && <div className="portal-tool-empty is-error"><span>!</span><h2>Document unavailable</h2><p>{downloadedDocument.error}</p></div>}
+          {downloadedDocument && !downloadedDocument.error && !downloadedDocument.loading && <div className="shipment-document-result">
+            <small>{downloadedDocument.documentType.replaceAll("_", " ")}</small>
+            <h2>{downloadedDocument.documentCount} {downloadedDocument.documentCount === 1 ? "document" : "documents"} available</h2>
+            <p>{downloadedDocument.shipmentId} · {downloadedDocument.waybill}</p>
+            <div>{downloadedDocument.documents.map((item) => <a className="portal-primary" href={item.downloadUrl} target="_blank" rel="noopener noreferrer" key={item.downloadUrl}>Open document {item.index} <Icon name="arrow" /></a>)}</div>
           </div>}
         </article>
       </section>
@@ -1105,6 +1271,64 @@ export default function DashboardPage() {
         </div>
         <div className="profile-actions"><button className="portal-primary" type="submit">Save changes</button><button className="portal-secondary danger" type="button" onClick={logout}>Sign out</button></div>
       </form>
+    </>
+  );
+
+  const submitPickupRequest = async (event) => {
+    event.preventDefault();
+    if (!readyPickupPackageCount) {
+      notify("Manifest and pack at least one forward shipment before requesting pickup.");
+      return;
+    }
+    setPickupSubmitting(true);
+    try {
+      const created = await createClientPickupRequest(pickupForm);
+      setPickupRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setShipments((current) => current.map((shipment) => String(shipment.status).toLowerCase() === "manifested"
+        && !["pickup", "repl"].includes(String(shipment.payment).toLowerCase())
+        ? { ...shipment, status: "Pickup scheduled", pickupRequestId: created.id }
+        : shipment));
+      notify(`Pickup ${created.id} scheduled with Delhivery.`);
+    } catch (error) {
+      notify(`Pickup was not scheduled: ${error.message}`);
+    } finally {
+      setPickupSubmitting(false);
+    }
+  };
+
+  const renderPickupRequests = () => (
+    <>
+      <section className="section-title-row"><div><p>PICKUP REQUESTS</p><h1>Schedule warehouse pickup</h1><span>Raise one request for all packed forward shipments at the registered Delhivery warehouse.</span></div></section>
+      <section className="feature-workspace-grid">
+        <form className="portal-card portal-tool-form" onSubmit={submitPickupRequest}>
+          <div className="portal-card-head"><div><small>READY FOR HANDOVER</small><h2>{readyPickupPackageCount} packages</h2></div><StatusBadge status={readyPickupPackageCount ? "Manifested" : "Pending manifestation"} /></div>
+          <p>Reverse-pickup and replacement shipments are excluded because Delhivery schedules those collections automatically.</p>
+          <label>Pickup date<input type="date" min={indiaDateAfter(0)} max={indiaDateAfter(7)} value={pickupForm.pickupDate} onChange={(event) => setPickupForm({ ...pickupForm, pickupDate: event.target.value })} required /></label>
+          <label>Pickup time<input type="time" step="1" value={pickupForm.pickupTime} onChange={(event) => setPickupForm({ ...pickupForm, pickupTime: event.target.value })} required /></label>
+          <label>Registered warehouse<select value={pickupForm.pickupLocation} onChange={(event) => setPickupForm({ ...pickupForm, pickupLocation: event.target.value })}><option value="">Default registered warehouse</option>{warehouses.filter((warehouse) => !warehouse.isDefault).map((warehouse) => <option value={warehouse.name} key={warehouse.name}>{warehouse.name}</option>)}</select></label>
+          <label>Expected package count<input type="number" min="1" max="10000" value={pickupForm.expectedPackageCount} onChange={(event) => setPickupForm({ ...pickupForm, expectedPackageCount: event.target.value })} required /></label>
+          <button className="portal-primary" type="submit" disabled={pickupSubmitting || !readyPickupPackageCount}>{pickupSubmitting ? "Scheduling…" : "Create pickup request"}</button>
+        </form>
+        <article className="portal-card feature-activity-card">
+          <div className="portal-card-head"><div><small>WAREHOUSE REQUESTS</small><h2>Pickup history</h2></div><span className="trend-pill">Delhivery</span></div>
+          {pickupRequests.length ? pickupRequests.map((pickup) => (
+            <div className="feature-activity-row" key={pickup.id}>
+              <span className="is-complete">✓</span>
+              <div><strong>{pickup.pickupDate} · {pickup.pickupTime}</strong><small>{pickup.expectedPackageCount} expected · {pickup.status}</small></div>
+              <StatusBadge status={pickup.status} />
+            </div>
+          )) : <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>No pickup requests yet</h2><p>Requests created through Pax will appear here.</p></div>}
+        </article>
+      </section>
+    </>
+  );
+
+  const renderWarehouseAddresses = () => (
+    <>
+      <section className="section-title-row"><div><p>ORIGIN SETTINGS</p><h1>Pickup addresses</h1><span>Use the warehouse name exactly as registered with Delhivery when creating shipments and pickups.</span></div></section>
+      <section className="feature-function-grid">
+        {warehouses.length ? warehouses.map((warehouse, index) => <button type="button" key={warehouse.name} onClick={() => notify(`${warehouse.name} is registered with Delhivery.`)}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{warehouse.name}</strong><small>{warehouse.isDefault ? "Default pickup location" : "Available pickup location"}</small></div><b>✓</b></button>) : <div className="portal-tool-empty"><span><Icon name="home" /></span><h2>No registered warehouse available</h2><p>Ask a Pax administrator to register a Delhivery pickup location.</p></div>}
+      </section>
     </>
   );
 
@@ -1190,8 +1414,10 @@ export default function DashboardPage() {
   const toolRenderers = {
     "overview-home": renderOverview,
     "dashboard-operations": renderDashboard,
+    "dashboard-pickups": renderPickupRequests,
     "shipments-all": renderShipments,
     "shipments-track": renderTracking,
+    "shipments-pickups": renderPickupRequests,
     "exceptions-ndr": renderExceptions,
     "finance-cod": renderFinance,
     "audits-weight": renderAudits,
@@ -1202,6 +1428,7 @@ export default function DashboardPage() {
     "insights-shipments": renderInsights,
     "channels-connected": renderChannels,
     "workspace-company": renderWorkspace,
+    "workspace-pickups": renderWarehouseAddresses,
     "support-raise": renderSupport,
   };
 
@@ -1366,12 +1593,24 @@ export default function DashboardPage() {
               <label>Mobile number *<input value={newShipment.phone} onChange={(event) => setNewShipment({ ...newShipment, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" placeholder="10-digit number" /></label>
               <label className="span-two">Delivery address *<textarea value={newShipment.address} onChange={(event) => setNewShipment({ ...newShipment, address: event.target.value })} rows="2" placeholder="House/building, street, area" /></label>
               <label>City *<input value={newShipment.city} onChange={(event) => setNewShipment({ ...newShipment, city: event.target.value })} placeholder="Destination city" /></label>
+              <label>State<input value={newShipment.state} onChange={(event) => setNewShipment({ ...newShipment, state: event.target.value })} placeholder="Destination state" /></label>
               <label>PIN code *<input value={newShipment.pincode} onChange={(event) => setNewShipment({ ...newShipment, pincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" placeholder="6-digit PIN" /></label>
               <label>Weight (kg)<input value={newShipment.weight} onChange={(event) => setNewShipment({ ...newShipment, weight: event.target.value })} type="number" min=".1" step=".1" /></label>
-              <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>
+              <label>Product type<select value={newShipment.productType} onChange={(event) => setNewShipment({ ...newShipment, productType: event.target.value })}><option>Parcel</option><option>Heavy</option></select></label>
+              <label>Shipment flow<select value={newShipment.flow} onChange={(event) => setNewShipment({ ...newShipment, flow: event.target.value, productType: event.target.value === "Forward" ? newShipment.productType : "Parcel", ...(event.target.value === "Reverse" ? {} : { qcEnabled: false, customQc: [] }) })}><option>Forward</option><option>Reverse</option><option>Replacement</option></select></label>
+              <label>Pickup warehouse<select value={newShipment.pickupLocation} onChange={(event) => setNewShipment({ ...newShipment, pickupLocation: event.target.value })}><option value="">Default registered warehouse</option>{warehouses.filter((warehouse) => !warehouse.isDefault).map((warehouse) => <option value={warehouse.name} key={warehouse.name}>{warehouse.name}</option>)}</select></label>
+              {newShipment.flow === "Forward" && <label>Payment<select value={newShipment.payment} disabled={!availablePaymentOptions.length} onChange={(event) => setNewShipment({ ...newShipment, payment: event.target.value })}>{availablePaymentOptions.length ? availablePaymentOptions.map((option) => <option key={option}>{option}</option>) : <option>Disabled by administrator</option>}</select></label>}
+              <label>Shipping mode<select value={newShipment.shippingMode} onChange={(event) => setNewShipment({ ...newShipment, shippingMode: event.target.value })}><option>Surface</option><option>Express</option></select></label>
+              <label>Transport speed<select value={newShipment.transportSpeed} onChange={(event) => setNewShipment({ ...newShipment, transportSpeed: event.target.value })}><option value="D">Standard</option><option value="F">Next Day Delivery</option></select></label>
+              <label className="span-two">Product description<input value={newShipment.productsDescription} onChange={(event) => setNewShipment({ ...newShipment, productsDescription: event.target.value })} placeholder="Items packed in this shipment" /></label>
+              <label>Quantity<input value={newShipment.quantity} onChange={(event) => setNewShipment({ ...newShipment, quantity: event.target.value.replace(/\D/g, "") })} inputMode="numeric" /></label>
               <label className="span-two">Order value (₹)<input value={newShipment.amount} onChange={(event) => setNewShipment({ ...newShipment, amount: event.target.value })} type="number" min="0" placeholder="Optional" /></label>
+              {Number(newShipment.amount) >= 50000 && <label className="span-two">E-waybill number *<input value={newShipment.ewbn} onChange={(event) => setNewShipment({ ...newShipment, ewbn: event.target.value })} required /></label>}
+              {newShipment.flow !== "Forward" && <><label className="span-two">Return address<textarea value={newShipment.returnAddress} onChange={(event) => setNewShipment({ ...newShipment, returnAddress: event.target.value })} rows="2" placeholder="Optional; registered warehouse is used if blank" /></label><label>Return city<input value={newShipment.returnCity} onChange={(event) => setNewShipment({ ...newShipment, returnCity: event.target.value })} /></label><label>Return state<input value={newShipment.returnState} onChange={(event) => setNewShipment({ ...newShipment, returnState: event.target.value })} /></label><label>Return PIN<input value={newShipment.returnPincode} onChange={(event) => setNewShipment({ ...newShipment, returnPincode: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></label></>}
+              {newShipment.flow === "Reverse" && <label className="rvp-qc-toggle span-two"><input type="checkbox" checked={newShipment.qcEnabled} onChange={(event) => setNewShipment({ ...newShipment, qcEnabled: event.target.checked, customQc: event.target.checked && !newShipment.customQc.length ? [createEmptyQcItem()] : newShipment.customQc })} /> Perform RVP QC 3.0 at the consignee's doorstep</label>}
+              {newShipment.flow === "Reverse" && newShipment.qcEnabled && <RvpQcEditor items={newShipment.customQc} onChange={(customQc) => setNewShipment({ ...newShipment, customQc })} />}
             </div>
-            <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Create & schedule pickup <Icon name="arrow" /></button></div>
+            <div className="modal-actions"><button className="portal-secondary" type="button" onClick={() => setShipmentModal(false)}>Cancel</button><button className="portal-primary" type="submit">Validate & create order <Icon name="arrow" /></button></div>
           </form>
         </div>
       )}

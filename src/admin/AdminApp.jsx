@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   API_BASE_URL,
+  completeAdminPickupRequest,
+  createAdminWarehouse,
+  fetchDelhiverySingleWaybill,
+  fetchDelhiveryWaybills,
+  getAdminExpectedTat,
+  getAdminHeavyServiceability,
+  getAdminNdrStatus,
+  getAdminServiceability,
+  getAdminShippingCost,
   getAdminDashboard,
+  getDelhiveryWaybills,
   hasAdminToken,
   loginAdmin,
   logoutAdmin,
   saveAdminConfiguration,
   setCustomerAccess,
   setShipmentStatus,
+  submitAdminNdrAction,
+  updateAdminWarehouse,
 } from "../services/adminApi.js";
 import { ENABLE_PREVIEW_MODE } from "../config.js";
 import { cacheControlState, DEFAULT_CONTROL_STATE, readControlState, subscribeToLocalControl, subscribeToRemoteUpdates, writeControlState } from "../services/sharedControl.js";
@@ -21,14 +33,14 @@ const navigation = [
   { id: "shipments", label: "Orders", icon: "box", badge: true },
   { id: "operations", label: "Operations", icon: "support", children: [["ndr", "NDR"], ["rto", "RTO"]] },
   { id: "accounts", label: "Accounts", icon: "users", children: [["customers", "Users Management"], ["plans", "Plan Management"]] },
-  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
+  { id: "shipping", label: "Shipping Management", icon: "truck", children: [["couriers", "Couriers"], ["credentials", "Courier Credentials"], ["providers", "Service Providers"], ["serviceability", "Serviceability"], ["warehouses", "Pickup Warehouses"], ["waybills", "Waybill Inventory"], ["pricing-b2b", "B2B Pricing"], ["pricing-b2c", "B2C Pricing"]] },
   { id: "billing", label: "Billing", icon: "wallet", children: [["invoices", "Invoices"], ["billing-preferences", "Billing Preferences"], ["cod", "COD Remittance"], ["wallet", "Wallet"]] },
   { id: "reconciliation", label: "Reconciliation", icon: "scale", children: [["weight", "Weight Discrepancies"], ["disputes", "Dispute Management"]] },
   { id: "tools-menu", label: "Tools", icon: "tools", children: [["rate", "Rate Calculator"], ["rate-terms", "Rate Calculator Terms"], ["tracking", "Order Tracking"], ["api", "API Integration"], ["about", "About Us Page"], ["support", "Support"]] },
   { id: "settings-menu", label: "Settings", icon: "settings", children: [["payment-options", "Payment Options"], ["password", "Change Password"], ["developer", "Developer"]] },
 ];
 
-const statusOptions = ["Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
+const statusOptions = ["Pending manifestation", "Manifested", "Pickup scheduled", "In transit", "Out for delivery", "Delivered", "Exception", "RTO"];
 
 const pageTitles = {
   overview: ["Admin dashboard", "Monitor orders, sellers, revenue and delivery health across the Pax network."],
@@ -41,6 +53,8 @@ const pageTitles = {
   credentials: ["Courier credentials", "Review configured courier connections without exposing secrets."],
   providers: ["Service providers", "Control logistics providers available to the booking engine."],
   serviceability: ["Serviceability", "Check delivery and COD coverage for an Indian PIN code."],
+  waybills: ["Waybill inventory", "Fetch Delhivery B2C waybills in advance and monitor the stored inventory."],
+  warehouses: ["Pickup warehouses", "Register and update exact case-sensitive Delhivery warehouse details."],
   "pricing-b2b": ["B2B pricing", "Manage business shipment slabs and freight rates."],
   "pricing-b2c": ["B2C pricing", "Manage parcel pricing by zone and weight slab."],
   invoices: ["Invoices", "Review platform invoices, due dates and payment state."],
@@ -320,10 +334,96 @@ function ManagementWorkspace({ page, flash, search, records, onRecordsChange }) 
   </section>;
 }
 
+function WaybillWorkspace({ flash }) {
+  const [count, setCount] = useState("25");
+  const [status, setStatus] = useState("");
+  const [inventory, setInventory] = useState({ items: [], summary: { total: 0, stored: 0, reserved: 0, used: 0 } });
+  const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
+  const [fetchingSingle, setFetchingSingle] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadInventory = async (nextStatus = status) => {
+    setLoading(true);
+    setError("");
+    try {
+      setInventory(await getDelhiveryWaybills({ status: nextStatus, limit: 100 }));
+    } catch (requestError) {
+      setError(requestError.message || "Waybill inventory could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInventory(status);
+  }, [status]);
+
+  const fetchBatch = async (event) => {
+    event.preventDefault();
+    const requestedCount = Number(count);
+    if (!Number.isInteger(requestedCount) || requestedCount < 1 || requestedCount > 10000) {
+      setError("Enter a whole number between 1 and 10,000.");
+      return;
+    }
+    setFetching(true);
+    setError("");
+    try {
+      const result = await fetchDelhiveryWaybills(requestedCount);
+      flash(`${result.storedCount} Delhivery waybills stored${result.duplicateCount ? `; ${result.duplicateCount} duplicates skipped` : ""}.`);
+      await loadInventory(status);
+    } catch (requestError) {
+      setError(requestError.message || "Delhivery waybills could not be fetched.");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const fetchSingle = async () => {
+    setFetchingSingle(true);
+    setError("");
+    try {
+      const result = await fetchDelhiverySingleWaybill();
+      flash(`${result.storedCount} single Delhivery waybill stored${result.duplicateCount ? "; duplicate skipped" : ""}.`);
+      await loadInventory(status);
+    } catch (requestError) {
+      setError(requestError.message || "A single Delhivery waybill could not be fetched.");
+    } finally {
+      setFetchingSingle(false);
+    }
+  };
+
+  const summary = inventory.summary || { total: 0, stored: 0, reserved: 0, used: 0 };
+  return <>
+    <section className="admin-metrics">
+      <MetricCard label="Total waybills" value={summary.total} note="Unique Delhivery AWBs" tone="blue" icon="box" />
+      <MetricCard label="Ready to assign" value={summary.stored} note="Stored inventory" tone="green" icon="grid" />
+      <MetricCard label="Reserved" value={summary.reserved} note="Held for manifestation" tone="purple" icon="truck" />
+      <MetricCard label="Used" value={summary.used} note="Assigned to shipments" tone="amber" icon="support" />
+    </section>
+    <section className="admin-tool-layout">
+      <form className="admin-card admin-tool-form" onSubmit={fetchBatch}>
+        <p>DELHIVERY WAYBILL INVENTORY</p><h2>Fetch and store waybills</h2>
+        <label>Waybill count<input type="number" min="1" max="10000" step="1" value={count} onChange={(event) => setCount(event.target.value)} /></label>
+        <button type="submit" disabled={fetching}>{fetching ? "Fetching..." : "Fetch and store"}</button>
+        <button type="button" disabled={fetchingSingle} onClick={fetchSingle}>{fetchingSingle ? "Fetching one..." : "Fetch single waybill"}</button>
+        <span>Bulk: maximum 10,000 per request and 50,000 per five minutes. Single: one AWB per call. Newly fetched waybills remain stored for later manifestation.</span>
+        {error && <p className="is-error">{error}</p>}
+      </form>
+      <div className="admin-card admin-tool-result"><span>INVENTORY SAFETY</span><h2>Stored before use</h2><p>Duplicate waybills are ignored. A waybill is not assigned to an order until the Delhivery manifestation contract is integrated.</p></div>
+    </section>
+    <section className="admin-card admin-table-card admin-full-card">
+      <div className="admin-table-toolbar"><div><strong>{inventory.items.length} waybills shown</strong><span>Oldest inventory appears first.</span></div><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="stored">Stored</option><option value="reserved">Reserved</option><option value="used">Used</option></select></label></div>
+      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Waybill</th><th>Status</th><th>Batch</th><th>Fetched</th><th>Shipment</th></tr></thead><tbody>{loading ? <tr><td colSpan="5">Loading inventory...</td></tr> : inventory.items.length ? inventory.items.map((item) => <tr key={item.waybill}><td><strong>{item.waybill}</strong></td><td><StatusBadge status={item.status === "stored" ? "Active" : item.status} /></td><td>{item.batchId}</td><td>{item.fetchedAt ? new Date(item.fetchedAt).toLocaleString() : "—"}</td><td>{item.shipmentId || "—"}</td></tr>) : <tr><td colSpan="5">No waybills have been fetched yet.</td></tr>}</tbody></table></div>
+    </section>
+  </>;
+}
+
 function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, controlState, onControlChange }) {
   const [pin, setPin] = useState("500029");
+  const [serviceProductType, setServiceProductType] = useState("Parcel");
   const [pinResult, setPinResult] = useState(null);
-  const [rate, setRate] = useState({ pickup: "500029", delivery: "560001", weight: "1", payment: "Prepaid" });
+  const [rate, setRate] = useState({ pickup: "500029", delivery: "560001", weight: "1", payment: "Prepaid", mot: "S" });
   const [rateResult, setRateResult] = useState(null);
   const [trackingId, setTrackingId] = useState(shipments[0]?.id || "");
   const [trackingResult, setTrackingResult] = useState(null);
@@ -348,9 +448,57 @@ function ToolWorkspace({ page, shipments, connection, sourceLabel, flash, contro
     flash(`${key} service ${controlState.settings.serviceability[key] ? "disabled" : "enabled"}.`);
   };
 
-  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); if (!/^[1-9]\d{5}$/.test(pin)) { setPinResult({ error: "Enter a valid 6-digit PIN code." }); return; } const digit = Number(pin.at(-1)); setPinResult({ region: pin[0] === "5" ? "South" : "Domestic", express: digit !== 9, cod: digit % 2 === 0 }); }}><p>PIN CODE CHECK</p><h2>Check and control serviceability</h2><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check coverage</button><div className="admin-service-toggles">{[["standard", "Standard"], ["express", "Express"], ["cod", "COD"]].map(([key, label]) => <button className={controlState.settings.serviceability[key] ? "is-on" : ""} type="button" key={key} onClick={() => toggleService(key)}><i></i><span>{label}</span></button>)}</div></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view Standard, Express and COD availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>PIN {pin} · {pinResult.region} zone</span><h2>Service control</h2><ul><li><b>Standard delivery</b><StatusBadge status={controlState.settings.serviceability.standard ? "Active" : "Disabled"} /></li><li><b>Express delivery</b><StatusBadge status={controlState.settings.serviceability.express && pinResult.express ? "Active" : "Disabled"} /></li><li><b>Cash on delivery</b><StatusBadge status={controlState.settings.serviceability.cod && pinResult.cod ? "Active" : "Disabled"} /></li></ul></>}</div></section>;
+  const checkPinServiceability = async (event) => {
+    event.preventDefault();
+    if (!/^[1-9]\d{5}$/.test(pin)) {
+      setPinResult({ error: "Enter a valid 6-digit PIN code." });
+      return;
+    }
+    try {
+      setPinResult(serviceProductType === "Heavy"
+        ? await getAdminHeavyServiceability(pin)
+        : await getAdminServiceability(pin));
+    } catch (error) {
+      setPinResult({ error: error.message || "Delhivery serviceability could not be checked." });
+    }
+  };
 
-  if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const weight = Number(rate.weight); if (!/^[1-9]\d{5}$/.test(rate.pickup) || !/^[1-9]\d{5}$/.test(rate.delivery) || weight <= 0) { setRateResult({ error: "Enter two valid PIN codes and parcel weight." }); return; } const sameRegion = rate.pickup[0] === rate.delivery[0]; const base = (sameRegion ? 78 : 128) + Math.ceil(weight * 31) + (rate.payment === "COD" ? 45 : 0); setRateResult({ standard: base, express: Math.round(base * 1.48) }); }}><p>SHIPPING RATE TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer and courier charges.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>ESTIMATED CUSTOMER RATE</span><h2>{formatMoney(rateResult.standard)}</h2><ul><li><b>Pax Standard</b><strong>{formatMoney(rateResult.standard)}</strong></li><li><b>Pax Express</b><strong>{formatMoney(rateResult.express)}</strong></li><li><b>GST</b><span>Calculated at checkout</span></li></ul></>}</div></section>;
+  const calculateAdminRate = async (event) => {
+    event.preventDefault();
+    const weight = Number(rate.weight);
+    if (!/^[1-9]\d{5}$/.test(rate.pickup) || !/^[1-9]\d{5}$/.test(rate.delivery) || weight <= 0) {
+      setRateResult({ error: "Enter two valid PIN codes and parcel weight." });
+      return;
+    }
+    try {
+      const [tat, shippingCost] = await Promise.all([
+        getAdminExpectedTat({ originPin: rate.pickup, destinationPin: rate.delivery, mot: rate.mot, pdt: "B2C" }),
+        getAdminShippingCost({
+          md: rate.mot,
+          cgm: Math.ceil(weight * 1000),
+          originPin: rate.pickup,
+          destinationPin: rate.delivery,
+          status: "Delivered",
+          paymentType: rate.payment === "COD" ? "COD" : "Pre-paid",
+        }),
+      ]);
+      if (!tat.serviceable || tat.tatDays === null) {
+        setRateResult({ error: tat.remark || "Delhivery could not provide an expected TAT for this lane." });
+        return;
+      }
+      if (!Number.isFinite(shippingCost.estimatedAmount)) {
+        setRateResult({ error: "Delhivery did not return an estimated charge for this lane." });
+        return;
+      }
+      setRateResult({ amount: shippingCost.estimatedAmount, shippingCost, tat });
+    } catch (error) {
+      setRateResult({ error: error.message || "Delhivery shipping cost could not be loaded." });
+    }
+  };
+
+  if (page === "serviceability") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={checkPinServiceability}><p>DELHIVERY PIN CODE CHECK</p><h2>Check and control serviceability</h2><label>Product type<select value={serviceProductType} onChange={(event) => { setServiceProductType(event.target.value); setPinResult(null); }}><option>Parcel</option><option>Heavy</option></select></label><label>Delivery PIN code<input value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" /></label><button type="submit">Check live coverage</button><div className="admin-service-toggles">{[["standard", "Standard"], ["express", "Express"], ["cod", "COD"]].map(([key, label]) => <button className={controlState.settings.serviceability[key] ? "is-on" : ""} type="button" key={key} onClick={() => toggleService(key)}><i></i><span>{label}</span></button>)}</div></form><div className="admin-card admin-tool-result">{!pinResult ? <p>Enter a PIN code to view live Delhivery parcel or Heavy delivery availability.</p> : pinResult.error ? <p className="is-error">{pinResult.error}</p> : <><span>{pinResult.productType || "Parcel"} · PIN {pin} · {pinResult.stateCode || pinResult.district || "Delhivery"}</span><h2>{pinResult.serviceable ? "Serviceable" : pinResult.embargoed ? "Temporary embargo" : "Not serviceable"}</h2><ul><li><b>Standard delivery</b><StatusBadge status={controlState.settings.serviceability.standard && pinResult.serviceable ? "Active" : "Disabled"} /></li><li><b>Prepaid delivery</b><StatusBadge status={pinResult.prepaid ? "Active" : "Disabled"} /></li><li><b>Cash on delivery</b><StatusBadge status={controlState.settings.serviceability.cod && pinResult.cod ? "Active" : "Disabled"} /></li></ul></>}</div></section>;
+
+  if (page === "rate") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={calculateAdminRate}><p>SHIPPING RATE &amp; TAT TOOL</p><h2>Calculate a rate</h2><div className="admin-form-grid"><label>Pickup PIN<input value={rate.pickup} onChange={(event) => setRate({ ...rate, pickup: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Delivery PIN<input value={rate.delivery} onChange={(event) => setRate({ ...rate, delivery: event.target.value.replace(/\D/g, "").slice(0, 6) })} /></label><label>Weight (kg)<input type="number" min="0.1" step="0.1" value={rate.weight} onChange={(event) => setRate({ ...rate, weight: event.target.value })} /></label><label>Transport<select value={rate.mot} onChange={(event) => setRate({ ...rate, mot: event.target.value })}><option value="S">Surface</option><option value="E">Express</option></select></label><label>Payment<select value={rate.payment} onChange={(event) => setRate({ ...rate, payment: event.target.value })}><option>Prepaid</option><option>COD</option></select></label></div><button type="submit">Calculate rate &amp; TAT</button></form><div className="admin-card admin-tool-result">{!rateResult ? <p>Enter shipment details to calculate customer charges and live Delhivery TAT.</p> : rateResult.error ? <p className="is-error">{rateResult.error}</p> : <><span>DELHIVERY ESTIMATED RATE</span><h2>{formatMoney(rateResult.amount)}</h2><ul><li><b>Expected TAT</b><strong>{rateResult.tat.tatDays} {rateResult.tat.tatDays === 1 ? "day" : "days"}</strong></li>{rateResult.tat.expectedDeliveryDate && <li><b>Expected delivery</b><span>{rateResult.tat.expectedDeliveryDate}</span></li>}<li><b>Mode</b><strong>{rateResult.shippingCost.modeOfTransport}</strong></li><li><b>Charged weight</b><span>{rateResult.shippingCost.chargedWeightGrams ?? rateResult.shippingCost.requestedWeightGrams} g</span></li><li><b>GST</b><span>Provider estimate; final invoice may vary</span></li></ul></>}</div></section>;
 
   if (page === "tracking") return <section className="admin-tool-layout"><form className="admin-card admin-tool-form" onSubmit={(event) => { event.preventDefault(); const found = shipments.find((item) => item.id.toLowerCase() === trackingId.trim().toLowerCase()); setTrackingResult(found || { error: "No matching order found." }); }}><p>LIVE ORDER LOOKUP</p><h2>Track an order</h2><label>Pax reference<input value={trackingId} onChange={(event) => setTrackingId(event.target.value.toUpperCase())} placeholder="PAX shipment reference" /></label><button type="submit">Track order</button></form><div className="admin-card admin-tool-result">{!trackingResult ? <p>Search a Pax reference to inspect its current milestone.</p> : trackingResult.error ? <p className="is-error">{trackingResult.error}</p> : <><span>{trackingResult.id}</span><h2>{trackingResult.customer}</h2><ul><li><b>Destination</b><span>{trackingResult.destination}</span></li><li><b>Payment</b><span>{trackingResult.payment}</span></li><li><b>Latest status</b><StatusBadge status={trackingResult.status} /></li></ul></>}</div></section>;
 
@@ -377,11 +525,16 @@ function AdminApp() {
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], customers: [], activities: [] });
+  const [snapshot, setSnapshot] = useState(() => ENABLE_PREVIEW_MODE ? buildPreviewDashboard() : { shipments: [], warehouses: [], pickupRequests: [], customers: [], activities: [] });
   const [controlState, setControlState] = useState(() => ENABLE_PREVIEW_MODE ? readControlState() : JSON.parse(JSON.stringify(DEFAULT_CONTROL_STATE)));
   const [connection, setConnection] = useState("checking");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
+  const [warehouseSubmitting, setWarehouseSubmitting] = useState(false);
+  const [warehouseForm, setWarehouseForm] = useState({ name: "", phone: "", email: "", address: "", city: "", pin: "", country: "India", registered_name: "", return_address: "", return_city: "", return_pin: "", return_state: "", return_country: "India" });
+  const [warehouseUpdating, setWarehouseUpdating] = useState(false);
+  const [warehouseEditForm, setWarehouseEditForm] = useState({ id: "", name: "", phone: "", address: "", pin: "" });
+  const [ndrSubmitting, setNdrSubmitting] = useState("");
 
   const loadDashboard = async () => {
     if (!authenticated) return;
@@ -396,7 +549,7 @@ function AdminApp() {
     setConnection("checking");
     try {
       const data = await getAdminDashboard();
-      setSnapshot({ shipments: data.shipments || [], customers: data.customers || [], activities: data.activities || [] });
+      setSnapshot({ shipments: data.shipments || [], warehouses: data.warehouses || [], pickupRequests: data.pickupRequests || [], customers: data.customers || [], activities: data.activities || [] });
       if (data.configuration) {
         setControlState(data.configuration);
         cacheControlState(data.configuration);
@@ -438,6 +591,8 @@ function AdminApp() {
   }, [authenticated, previewMode]);
 
   const shipments = snapshot.shipments || [];
+  const warehouses = snapshot.warehouses || [];
+  const pickupRequests = snapshot.pickupRequests || [];
   const customers = snapshot.customers || [];
   const filteredShipments = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -519,6 +674,103 @@ function AdminApp() {
     } catch (error) {
       setSnapshot(previous);
       flash(error.message);
+    }
+  };
+
+  const completePickupRequest = async (pickupRequest) => {
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to confirm pickup collection.");
+      return;
+    }
+    try {
+      const completed = await completeAdminPickupRequest(pickupRequest.id);
+      setSnapshot((current) => ({ ...current, pickupRequests: (current.pickupRequests || []).map((item) => item.id === completed.id ? completed : item) }));
+      flash(`${pickupRequest.id} marked completed after collection.`);
+    } catch (error) {
+      flash(`Pickup was not completed: ${error.message}`);
+    }
+  };
+
+  const submitNdrAction = async (shipment, action) => {
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to submit an NDR action.");
+      return;
+    }
+    const waybill = String(shipment.waybills?.[0] || shipment.waybill || "");
+    const requestKey = `${shipment.id}:${action}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await submitAdminNdrAction(shipment.id, { waybill, action });
+      setSnapshot((current) => ({ ...current, shipments: (current.shipments || []).map((item) => item.id === shipment.id ? result.shipment : item) }));
+      flash(`${action} submitted · UPL ${result.provider.uplId}.`);
+    } catch (error) {
+      flash(`NDR action was not submitted: ${error.message}`);
+    } finally {
+      setNdrSubmitting("");
+    }
+  };
+
+  const refreshNdrStatus = async (shipment, ndrAction) => {
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to check an NDR status.");
+      return;
+    }
+    const requestKey = `${shipment.id}:status:${ndrAction.uplId}`;
+    setNdrSubmitting(requestKey);
+    try {
+      const result = await getAdminNdrStatus(shipment.id, ndrAction.uplId);
+      setSnapshot((current) => ({ ...current, shipments: (current.shipments || []).map((item) => item.id === shipment.id ? result.shipment : item) }));
+      flash(`UPL ${ndrAction.uplId} is ${result.provider.status}.`);
+    } catch (error) {
+      flash(`NDR status was not refreshed: ${error.message}`);
+    } finally {
+      setNdrSubmitting("");
+    }
+  };
+
+  const registerWarehouse = async (event) => {
+    event.preventDefault();
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to register a Delhivery warehouse.");
+      return;
+    }
+    setWarehouseSubmitting(true);
+    try {
+      const warehouse = await createAdminWarehouse(warehouseForm);
+      setSnapshot((current) => ({ ...current, warehouses: [warehouse, ...(current.warehouses || []).filter((item) => item.id !== warehouse.id)] }));
+      setWarehouseForm({ name: "", phone: "", email: "", address: "", city: "", pin: "", country: "India", registered_name: "", return_address: "", return_city: "", return_pin: "", return_state: "", return_country: "India" });
+      flash(`${warehouse.name} registered with Delhivery.`);
+    } catch (error) {
+      flash(`Warehouse was not registered: ${error.message}`);
+    } finally {
+      setWarehouseSubmitting(false);
+    }
+  };
+
+  const beginWarehouseEdit = (warehouse) => {
+    setWarehouseEditForm({ id: warehouse.id, name: warehouse.name, phone: warehouse.phone || "", address: warehouse.address || "", pin: warehouse.pin || "" });
+  };
+
+  const updateWarehouse = async (event) => {
+    event.preventDefault();
+    if (previewMode || connection !== "live") {
+      flash("A live API connection is required to update a Delhivery warehouse.");
+      return;
+    }
+    setWarehouseUpdating(true);
+    try {
+      const warehouse = await updateAdminWarehouse(warehouseEditForm.id, {
+        pin: warehouseEditForm.pin,
+        ...(warehouseEditForm.phone ? { phone: warehouseEditForm.phone } : {}),
+        ...(warehouseEditForm.address ? { address: warehouseEditForm.address } : {}),
+      });
+      setSnapshot((current) => ({ ...current, warehouses: (current.warehouses || []).map((item) => item.id === warehouse.id ? warehouse : item) }));
+      setWarehouseEditForm({ id: "", name: "", phone: "", address: "", pin: "" });
+      flash(`${warehouse.name} updated in Delhivery.`);
+    } catch (error) {
+      flash(`Warehouse was not updated: ${error.message}`);
+    } finally {
+      setWarehouseUpdating(false);
     }
   };
 
@@ -622,13 +874,21 @@ function AdminApp() {
 
           {active === "shipments" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredShipments.length} shipments</strong><span>Updates are reflected in the customer panel.</span></div><label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label></div><ShipmentTable shipments={filteredShipments} onStatusChange={changeStatus} /></section>}
 
-          {active === "ndr" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>NDR action queue</strong><span>Contact the customer or reattempt delivery before RTO.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("NDR report exported.")}>Export report</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "Exception")} onStatusChange={changeStatus} /></section>}
+          {active === "waybills" && <WaybillWorkspace flash={flash} />}
+
+          {active === "warehouses" && <section className="admin-health-grid">
+            <form className="admin-card admin-settings-card" onSubmit={registerWarehouse}><div><p>DELHIVERY WAREHOUSE</p><h2>Register pickup location</h2><span>The name is case-sensitive and the return address is mandatory.</span></div><dl><div><dt>Warehouse name *</dt><dd><input value={warehouseForm.name} onChange={(event) => setWarehouseForm({ ...warehouseForm, name: event.target.value })} required /></dd></div><div><dt>POC phone *</dt><dd><input value={warehouseForm.phone} onChange={(event) => setWarehouseForm({ ...warehouseForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" required /></dd></div><div><dt>Email</dt><dd><input type="email" value={warehouseForm.email} onChange={(event) => setWarehouseForm({ ...warehouseForm, email: event.target.value })} /></dd></div><div><dt>Pickup address</dt><dd><input value={warehouseForm.address} onChange={(event) => setWarehouseForm({ ...warehouseForm, address: event.target.value })} /></dd></div><div><dt>City</dt><dd><input value={warehouseForm.city} onChange={(event) => setWarehouseForm({ ...warehouseForm, city: event.target.value })} /></dd></div><div><dt>Pickup PIN *</dt><dd><input value={warehouseForm.pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div><div><dt>Registered account</dt><dd><input value={warehouseForm.registered_name} onChange={(event) => setWarehouseForm({ ...warehouseForm, registered_name: event.target.value })} placeholder="Uses backend account name if blank" /></dd></div><div><dt>Return address *</dt><dd><input value={warehouseForm.return_address} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_address: event.target.value })} required /></dd></div><div><dt>Return city</dt><dd><input value={warehouseForm.return_city} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_city: event.target.value })} /></dd></div><div><dt>Return PIN</dt><dd><input value={warehouseForm.return_pin} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" /></dd></div><div><dt>Return state</dt><dd><input value={warehouseForm.return_state} onChange={(event) => setWarehouseForm({ ...warehouseForm, return_state: event.target.value })} /></dd></div></dl><button className="admin-compact-primary" type="submit" disabled={warehouseSubmitting}>{warehouseSubmitting ? "Registering…" : "Register warehouse"}</button></form>
+            <article className="admin-card admin-activity-card"><div className="admin-card-head"><div><p>REGISTERED LOCATIONS</p><h2>{warehouses.length} API warehouses</h2></div></div><div className="admin-activity-list">{warehouses.length ? warehouses.map((warehouse) => <div key={warehouse.id}><i className="is-green"></i><span><strong>{warehouse.name}</strong><small>{warehouse.city || "—"} · {warehouse.pin || "—"} · {warehouse.status}</small></span><button className="admin-row-action" type="button" onClick={() => beginWarehouseEdit(warehouse)}>Edit</button></div>) : <div className="admin-empty">No warehouse has been registered through Pax yet.</div>}</div></article>
+            {warehouseEditForm.id && <form className="admin-card admin-settings-card" onSubmit={updateWarehouse}><div><p>UPDATE WAREHOUSE</p><h2>{warehouseEditForm.name}</h2><span>The registered name is immutable. Only address, PIN and phone can be changed.</span></div><dl><div><dt>Warehouse name</dt><dd><input value={warehouseEditForm.name} disabled /></dd></div><div><dt>Phone</dt><dd><input value={warehouseEditForm.phone} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, phone: event.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="numeric" /></dd></div><div><dt>Address</dt><dd><input value={warehouseEditForm.address} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, address: event.target.value })} /></dd></div><div><dt>PIN *</dt><dd><input value={warehouseEditForm.pin} onChange={(event) => setWarehouseEditForm({ ...warehouseEditForm, pin: event.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" required /></dd></div></dl><div className="admin-row-actions"><button className="admin-compact-primary" type="submit" disabled={warehouseUpdating}>{warehouseUpdating ? "Updating…" : "Update warehouse"}</button><button type="button" onClick={() => setWarehouseEditForm({ id: "", name: "", phone: "", address: "", pin: "" })}>Cancel</button></div></form>}
+          </section>}
+
+          {active === "ndr" && <section className="admin-ndr-workspace"><div className="admin-card admin-ndr-guidance"><strong>NDR action queue</strong><span>Delhivery recommends submitting after 9 PM. Pax refreshes the AWB and verifies its current NSL code, attempt count, and pickup cancellation eligibility before sending an action. Stored UPL requests can be refreshed from Delhivery below.</span></div><div className="admin-ndr-grid">{shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).length ? shipments.filter((item) => ["Exception", "NDR", "Cancelled"].includes(item.status) || item.ndrActions?.length).map((shipment) => <article className="admin-card admin-ndr-card" key={shipment.id}><div><StatusBadge status={shipment.status} /><small>{shipment.id}</small></div><h2>{shipment.customer}</h2><p>{shipment.destination} · {shipment.waybill}</p>{shipment.ndrActions?.length ? <dl><dt>Latest UPL</dt><dd>{shipment.ndrActions.at(-1).uplId}</dd><dt>Action</dt><dd>{shipment.ndrActions.at(-1).action} · {shipment.ndrActions.at(-1).status}</dd>{shipment.ndrActions.at(-1).statusMessage ? <><dt>Provider</dt><dd>{shipment.ndrActions.at(-1).statusMessage}</dd></> : null}</dl> : null}<div>{shipment.ndrActions?.length ? <button className="admin-ndr-status-button" type="button" disabled={Boolean(ndrSubmitting)} onClick={() => refreshNdrStatus(shipment, shipment.ndrActions.at(-1))}>{ndrSubmitting === `${shipment.id}:status:${shipment.ndrActions.at(-1).uplId}` ? "Checking..." : "Check UPL status"}</button> : null}<button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "RE-ATTEMPT")}>{ndrSubmitting === `${shipment.id}:RE-ATTEMPT` ? "Submitting..." : "Re-attempt"}</button><button type="button" disabled={Boolean(ndrSubmitting)} onClick={() => submitNdrAction(shipment, "PICKUP_RESCHEDULE")}>{ndrSubmitting === `${shipment.id}:PICKUP_RESCHEDULE` ? "Submitting..." : "Reschedule pickup"}</button></div></article>) : <div className="admin-empty admin-card">No NDR shipments are currently available.</div>}</div></section>}
 
           {active === "rto" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>Return-to-origin orders</strong><span>Monitor reverse transit and seller communication.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("RTO manifest generated.")}>Generate manifest</button></div><ShipmentTable shipments={shipments.filter((item) => item.status === "RTO")} onStatusChange={changeStatus} /></section>}
 
           {active === "customers" && <section className="admin-card admin-table-card admin-full-card"><div className="admin-table-toolbar"><div><strong>{filteredCustomers.length} customer accounts</strong><span>Enable or disable client-panel access without exposing authentication secrets.</span></div><button className="admin-compact-primary" type="button" onClick={() => flash("New users register from the client panel and appear here automatically.")}>Invite user</button></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Customer</th><th>Business</th><th>Contact</th><th>City</th><th>Shipments</th><th>Status</th><th>Access</th></tr></thead><tbody>{filteredCustomers.map((customer) => <tr className={customer.status === "Disabled" ? "is-disabled" : ""} key={customer.id}><td><strong>{customer.name}</strong><small>{customer.id}</small></td><td>{customer.business}</td><td><span>{customer.email}</span><small>{customer.phone}</small></td><td>{customer.city}</td><td>{customer.shipments || 0}</td><td><StatusBadge status={customer.status || "Active"} /></td><td><button className={`admin-switch${customer.status === "Disabled" ? "" : " is-on"}`} type="button" onClick={() => changeCustomerAccess(customer)}><i></i><span>{customer.status === "Disabled" ? "Off" : "On"}</span></button></td></tr>)}</tbody></table></div></section>}
 
-          {active === "pickups" && <section className="admin-list-grid">{shipments.filter((item) => item.status === "Pickup scheduled").length ? shipments.filter((item) => item.status === "Pickup scheduled").map((shipment, index) => <article className="admin-card admin-pickup-card" key={shipment.id}><div className="admin-pickup-time"><strong>{index ? "04:30" : "02:30"}</strong><span>PM</span></div><div><StatusBadge status="Pickup scheduled" /><h2>{shipment.customer}</h2><p>Pickup for {shipment.id} · {shipment.destination}</p></div><button type="button" onClick={() => changeStatus(shipment.id, "In transit")}>Mark collected</button></article>) : <div className="admin-empty admin-card">No pickups are currently scheduled.</div>}</section>}
+          {active === "pickups" && <section className="admin-list-grid">{pickupRequests.length ? pickupRequests.map((pickup) => <article className="admin-card admin-pickup-card" key={pickup.id}><div className="admin-pickup-time"><strong>{pickup.pickupTime?.slice(0, 5) || "—"}</strong><span>{pickup.pickupDate}</span></div><div><StatusBadge status={pickup.status} /><h2>{pickup.pickupLocation}</h2><p>{pickup.id} · {pickup.expectedPackageCount} expected packages</p></div><button type="button" onClick={() => pickup.status === "Completed" ? loadDashboard() : completePickupRequest(pickup)}>{pickup.status === "Completed" ? "Refresh" : "Confirm collected"}</button></article>) : <div className="admin-empty admin-card">No Delhivery pickup requests have been scheduled.</div>}</section>}
 
           {active === "finance" && <><section className="admin-metrics"><MetricCard label="COD exposure" value={formatMoney(codValue)} note={`${shipments.filter((item) => item.payment === "COD").length} shipments`} tone="green" icon="wallet" /><MetricCard label="Prepaid value" value={formatMoney(prepaidValue)} note={`${shipments.filter((item) => item.payment === "Prepaid").length} shipments`} tone="blue" icon="wallet" /><MetricCard label="Gross booked value" value={formatMoney(codValue + prepaidValue)} note="Current shipment set" tone="purple" icon="grid" /><MetricCard label="Settlement health" value="—" note="Connect billing API" tone="amber" icon="support" /></section><section className="admin-card admin-finance-card"><div className="admin-card-head"><div><p>COLLECTION MIX</p><h2>Payment distribution</h2></div></div><div className="admin-finance-bar"><i style={{ width: `${(codValue / Math.max(codValue + prepaidValue, 1)) * 100}%` }}></i></div><div className="admin-finance-legend"><span><i className="is-cod"></i>COD <strong>{formatMoney(codValue)}</strong></span><span><i className="is-prepaid"></i>Prepaid <strong>{formatMoney(prepaidValue)}</strong></span></div></section></>}
 

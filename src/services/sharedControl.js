@@ -19,6 +19,13 @@ export function readControlState() {
       ...saved,
       resources: { ...cloneDefaults().resources, ...(saved.resources || {}) },
       settings: { ...cloneDefaults().settings, ...(saved.settings || {}) },
+      locations: {
+        ...cloneDefaults().locations,
+        ...(saved.locations || {}),
+        countries: Array.isArray(saved.locations?.countries) ? saved.locations.countries : [],
+        states: Array.isArray(saved.locations?.states) ? saved.locations.states : [],
+        cities: Array.isArray(saved.locations?.cities) ? saved.locations.cities : [],
+      },
       content: { ...cloneDefaults().content, ...(saved.content || {}) },
     };
   } catch {

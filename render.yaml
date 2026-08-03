@@ -56,6 +56,16 @@ services:
         value: d3471dde926ef8d5d96a61f5fe9e43627b5fb1b433ddd39f4b03739f3a7485cd
       - key: JWT_SECRET
         generateValue: true
+      - key: DELHIVERY_ENV
+        value: production
+      - key: DELHIVERY_API_TOKEN
+        sync: false
+      - key: DELHIVERY_PICKUP_LOCATION
+        sync: false
+      - key: DELHIVERY_CLIENT_NAME
+        sync: false
+      - key: DELHIVERY_RVP_QC_QUESTION_IDS
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: pax-logistic-db

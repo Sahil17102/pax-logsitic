@@ -1,12 +1,14 @@
 import { API_BASE_URL } from "../config.js";
-import { normalizeClientBootstrap, normalizeShipment, unwrapApiData } from "./apiData.js";
+import { normalizeClientBootstrap, normalizePickupRequest, normalizeShipment, unwrapApiData } from "./apiData.js";
 
 const CLIENT_TOKEN_KEY = "pax-client-token";
 const REQUEST_TIMEOUT = 6000;
+const LONG_PROVIDER_REQUEST_TIMEOUT = 70000;
+const ASYNC_PROVIDER_REQUEST_TIMEOUT = 135000;
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = REQUEST_TIMEOUT) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   const token = localStorage.getItem(CLIENT_TOKEN_KEY) || sessionStorage.getItem(CLIENT_TOKEN_KEY);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -72,6 +74,72 @@ export async function verifyClientOtp(challengeId, otp, remember) {
 export async function createClientShipment(shipment) {
   const payload = await request("/api/client/shipments", { method: "POST", body: JSON.stringify(shipment) });
   return normalizeShipment(unwrapApiData(payload));
+}
+
+export async function getClientServiceability(pincode) {
+  return unwrapApiData(await request(`/api/client/serviceability/${encodeURIComponent(pincode)}`));
+}
+
+export async function getClientHeavyServiceability(pincode) {
+  return unwrapApiData(await request(`/api/client/heavy-serviceability/${encodeURIComponent(pincode)}`));
+}
+
+export async function getClientExpectedTat({ originPin, destinationPin, mot, pdt = "B2C", expectedPickupDate = "" }) {
+  const query = new URLSearchParams({ originPin, destinationPin, mot, pdt });
+  if (expectedPickupDate) query.set("expectedPickupDate", expectedPickupDate);
+  return unwrapApiData(await request(`/api/client/expected-tat?${query}`));
+}
+
+export async function getClientShippingCost({ md, cgm, originPin, destinationPin, status = "Delivered", paymentType, length, breadth, height, packageType }) {
+  const query = new URLSearchParams({ md, cgm: String(cgm), o_pin: originPin, d_pin: destinationPin, ss: status, pt: paymentType });
+  if (length !== undefined && length !== "") query.set("l", String(length));
+  if (breadth !== undefined && breadth !== "") query.set("b", String(breadth));
+  if (height !== undefined && height !== "") query.set("h", String(height));
+  if (packageType) query.set("ipkg_type", packageType);
+  return unwrapApiData(await request(`/api/client/shipping-cost?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function getClientShippingLabel(shipmentId, { waybill = "", pdf = true, pdfSize = "A4" } = {}) {
+  const query = new URLSearchParams({ pdf: String(pdf), pdf_size: pdfSize });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function getClientShipmentDocument(shipmentId, { waybill = "", documentType } = {}) {
+  const query = new URLSearchParams({ doc_type: documentType });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/document?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function submitClientNdrAction(shipmentId, { waybill = "", action }) {
+  const payload = await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/ndr`, {
+    method: "POST",
+    body: JSON.stringify({ ...(waybill ? { waybill } : {}), act: action }),
+  }, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
+}
+
+export async function getClientNdrStatus(shipmentId, uplId) {
+  const payload = await request(`/api/client/shipments/${encodeURIComponent(shipmentId)}/ndr/${encodeURIComponent(uplId)}/status`, {}, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
+}
+
+export async function createClientPickupRequest({ pickupDate, pickupTime, pickupLocation = "", expectedPackageCount }) {
+  const payload = await request("/api/client/pickup-requests", {
+    method: "POST",
+    body: JSON.stringify({
+      pickup_date: pickupDate,
+      pickup_time: pickupTime,
+      ...(pickupLocation ? { pickup_location: pickupLocation } : {}),
+      expected_package_count: Number(expectedPackageCount),
+    }),
+  });
+  return normalizePickupRequest(unwrapApiData(payload));
+}
+
+export async function getClientPickupRequests() {
+  const data = unwrapApiData(await request("/api/client/pickup-requests"));
+  return Array.isArray(data) ? data.map(normalizePickupRequest).filter((item) => item.id) : [];
 }
 
 export async function getClientBootstrap() {

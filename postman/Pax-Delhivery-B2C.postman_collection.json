@@ -1,0 +1,767 @@
+{
+  "info": {
+    "_postman_id": "4b3aaf47-8707-45f2-9d4c-4a752ec653a2",
+    "name": "Pax Logistics - Delhivery B2C",
+    "description": "End-to-end contract tests for Pax server-side Delhivery B2C serviceability, Expected TAT, shipping-cost estimation, shipping labels, authenticated order-document downloads, client warehouse registration/update, RVP QC 3.0, warehouse pickup requests, NDR actions with UPL persistence and status refresh, waybill inventory, SPS/MPS manifestation and shipment lifecycle operations. Delhivery credentials remain on the backend; customer workflows receive only privacy-safe provider data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('testEmail')) {",
+          "  const suffix = String(Date.now());",
+          "  pm.collectionVariables.set('testEmail', `postman-${suffix}@example.com`);",
+          "  pm.collectionVariables.set('testPhone', `9${suffix.slice(-9)}`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('API is healthy and Delhivery is configured', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.ok).to.eql(true);", "  pm.expect(body.delhiveryConfigured).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Register test customer",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Postman Test User\",\n  \"businessName\": \"Postman Contract\",\n  \"email\": \"{{testEmail}}\",\n  \"phone\": \"{{testPhone}}\",\n  \"password\": \"Secure123\",\n  \"address\": \"Test pickup address\",\n  \"city\": \"Hyderabad\",\n  \"state\": \"Telangana\",\n  \"pincode\": \"500029\"\n}" },
+        "url": "{{baseUrl}}/api/client/users"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer is registered', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.expect(body.token).to.be.a('string').and.not.empty;", "pm.collectionVariables.set('clientToken', body.token);"] } }]
+    },
+    {
+      "name": "Serviceable pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/serviceability/194103" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable response is normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('serviceable');", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Embargoed pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/serviceability/110001" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Embargo is temporary NSZ', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('embargoed');", "  pm.expect(data.serviceable).to.eql(false);", "  pm.expect(data.embargoed).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Non-serviceable pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/serviceability/999999" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Empty Delhivery list is NSZ', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Heavy serviceable pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/heavy-serviceability/400086" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Heavy payment modes are normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.status).to.eql('serviceable');", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Heavy NSZ pincode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/heavy-serviceability/999998" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Heavy NSZ is not serviceable', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Block Heavy order for NSZ pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Blocked Heavy Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Heavy NSZ address\",\n  \"city\": \"Unknown\",\n  \"pincode\": \"999998\",\n  \"weight\": 50,\n  \"productType\": \"Heavy\",\n  \"payment\": \"Prepaid\",\n  \"amount\": 1000\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Heavy NSZ order is rejected before creation', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('PINCODE_NOT_SERVICEABLE');", "});"] } }]
+    },
+    {
+      "name": "Create Heavy order for serviceable pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Heavy Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Heavy serviceable address\",\n  \"city\": \"Mumbai\",\n  \"pincode\": \"400086\",\n  \"weight\": 50,\n  \"productType\": \"Heavy\",\n  \"payment\": \"COD\",\n  \"amount\": 1000\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable Heavy order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.pincode).to.eql('400086');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "});"] } }]
+    },
+    {
+      "name": "Block order for NSZ pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Blocked Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Non-serviceable address\",\n  \"city\": \"Unknown\",\n  \"pincode\": \"999999\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('NSZ order is rejected before creation', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('PINCODE_NOT_SERVICEABLE');", "});"] } }]
+    },
+    {
+      "name": "Create order for serviceable pincode",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Allowed Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"COD\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Serviceable order is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.courier).to.eql('Delhivery');", "  pm.expect(data.pincode).to.eql('194103');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybill).to.match(/^\\d{8,20}$/);", "  pm.collectionVariables.set('editableShipmentId', data.id);", "  pm.collectionVariables.set('editableWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Generate customer PDF shipping label - 4R",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=true&pdf_size=4R" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives a secure Delhivery PDF label link', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.waybill).to.eql(pm.collectionVariables.get('editableWaybill'));", "  pm.expect(data.format).to.eql('pdf');", "  pm.expect(data.pdfSize).to.eql('4R');", "  pm.expect(data.downloadUrl).to.match(/^https:\\/\\//);", "  pm.expect(data.labelData).to.eql(null);", "});"] } }]
+    },
+    {
+      "name": "Generate customer custom shipping label JSON",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=false" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives customizable label data', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.format).to.eql('json');", "  pm.expect(data.pdfSize).to.eql('A4');", "  pm.expect(data.downloadUrl).to.eql('');", "  pm.expect(data.labelData.packages[0].barcode).to.eql(pm.collectionVariables.get('editableWaybill'));", "});"] } }]
+    },
+    {
+      "name": "Reject shipping label waybill mismatch",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/label?waybill=999999999999&pdf=true&pdf_size=A4" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer cannot request a label for an unrelated waybill', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_WAYBILL_MISMATCH');", "});"] } }]
+    },
+    {
+      "name": "Download customer EPOD",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=EPOD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives normalized secure EPOD links', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.waybill).to.eql(pm.collectionVariables.get('editableWaybill'));", "  pm.expect(data.documentType).to.eql('EPOD');", "  pm.expect(data.documentCount).to.eql(1);", "  pm.expect(data.downloadUrl).to.match(/^https:/);", "  pm.expect(data.documents[0].downloadUrl).to.eql(data.downloadUrl);", "});"] } }]
+    },
+    {
+      "name": "Download customer consignee signature",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=SIGNATURE_URL" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('SIGNATURE_URL is accepted', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.documentType).to.eql('SIGNATURE_URL');", "});"] } }]
+    },
+    {
+      "name": "Download customer seller return image",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=SELLER_RETURN_IMAGE" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('SELLER_RETURN_IMAGE is accepted', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.documentType).to.eql('SELLER_RETURN_IMAGE');", "});"] } }]
+    },
+    {
+      "name": "Reject unsupported document type",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=INVOICE" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only Delhivery document types are accepted', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_DOCUMENT_TYPE');", "});"] } }]
+    },
+    {
+      "name": "Reject document waybill mismatch",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/document?waybill=999999999999&doc_type=EPOD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer cannot fetch a document for an unrelated waybill', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_WAYBILL_MISMATCH');", "});"] } }]
+    },
+    {
+      "name": "Create warehouse pickup request",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"11:00:00\",\n  \"expected_package_count\": 1\n}" },
+        "url": "{{baseUrl}}/api/client/pickup-requests"
+      },
+      "event": [
+        { "listen": "prerequest", "script": { "exec": ["pm.collectionVariables.set('pickupDate', new Date(Date.now() + 86400000).toISOString().slice(0, 10));"] } },
+        { "listen": "test", "script": { "exec": ["pm.test('Warehouse pickup is accepted once for all ready packages', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.status).to.eql('Scheduled');", "  pm.expect(data.pickupDate).to.eql(pm.collectionVariables.get('pickupDate'));", "  pm.expect(data.expectedPackageCount).to.eql(1);", "  pm.expect(data.providerPickupId).to.match(/^PUR-STUB-/);", "  pm.collectionVariables.set('pickupRequestId', data.id);", "});"] } }
+      ]
+    },
+    {
+      "name": "Reject duplicate warehouse pickup request",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"14:00:00\",\n  \"expected_package_count\": 1\n}" }, "url": "{{baseUrl}}/api/client/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('A second open request for the warehouse and date is blocked', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('PICKUP_REQUEST_ALREADY_EXISTS');", "});"] } }]
+    },
+    {
+      "name": "Reject pickup warehouse override",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"14:00:00\",\n  \"pickup_location\": \"Unregistered Warehouse\",\n  \"expected_package_count\": 1\n}" }, "url": "{{baseUrl}}/api/client/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customers cannot send pickup requests to an arbitrary warehouse', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_PICKUP_LOCATION');", "});"] } }]
+    },
+    {
+      "name": "List customer pickup requests",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer sees only the persisted warehouse pickup', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].id).to.eql(pm.collectionVariables.get('pickupRequestId'));", "});"] } }]
+    },
+    {
+      "name": "Edit manifested COD shipment",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{editableWaybill}}\",\n  \"name\": \"Edited Receiver\",\n  \"phone\": [\"9234567890\"],\n  \"add\": \"Edited delivery address\",\n  \"products_desc\": \"Edited products\",\n  \"gm\": 1500,\n  \"shipment_height\": 40.2,\n  \"shipment_width\": 20,\n  \"shipment_length\": 30,\n  \"pt\": \"Pre-paid\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Editable fields are accepted only after Delhivery success', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.provider.waybill).to.eql(pm.collectionVariables.get('editableWaybill'));", "  pm.expect(body.data.customer).to.eql('Edited Receiver');", "  pm.expect(body.data.phone).to.eql('9234567890');", "  pm.expect(body.data.address).to.eql('Edited delivery address');", "  pm.expect(body.data.payment).to.eql('Prepaid');", "  pm.expect(body.data.weightGrams).to.eql(1500);", "  pm.expect(body.data.lastEditedAt).to.be.a('string');", "});"] } }]
+    },
+    {
+      "name": "Convert Prepaid shipment back to COD",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pt\": \"COD\",\n  \"cod\": 250\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Prepaid to COD requires and saves the COD amount', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('COD');", "  pm.expect(data.codAmount).to.eql(250);", "});"] } }]
+    },
+    {
+      "name": "Reject unchanged payment mode",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pt\": \"COD\",\n  \"cod\": 250\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('COD to COD conversion is blocked locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_PAYMENT_MODE_CONVERSION');", "});"] } }]
+    },
+    {
+      "name": "Create reverse pickup shipment",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Reverse Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Pickup address & market #2\",\n  \"city\": \"Leh\",\n  \"state\": \"Ladakh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1.2,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"productsDescription\": \"Returned shoes\",\n  \"quantity\": \"1\",\n  \"amount\": 800\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Reverse Pickup flow is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.packageCount).to.eql(1);", "  pm.collectionVariables.set('reverseShipmentId', data.id);", "  pm.collectionVariables.set('reverseWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Create RVP QC 3.0 reverse pickup",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"QC Return Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Consignee pickup address\",\n  \"city\": \"Leh\",\n  \"state\": \"Ladakh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"productsDescription\": \"Returned mobile and retail box\",\n  \"quantity\": 1,\n  \"amount\": 800,\n  \"customQc\": [\n    {\n      \"item\": \"Mobile\",\n      \"description\": \"Mi Note Pro\",\n      \"images\": [\"https://images.example.com/mobile.jpg\"],\n      \"returnReason\": \"Damaged\",\n      \"quantity\": 1,\n      \"brand\": \"Mi\",\n      \"productCategory\": \"mobile\",\n      \"questions\": [\n        { \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"SN12345\"], \"required\": true, \"type\": \"varchar\", \"questionImages\": [\"https://images.example.com/serial.jpg\"] },\n        { \"questionId\": \"color_check\", \"options\": [\"Black\", \"Other\"], \"value\": [\"Black\"], \"required\": false, \"type\": \"multi\" }\n      ]\n    },\n    {\n      \"description\": \"Retail box\",\n      \"images\": [\"https://images.example.com/box.jpg\"],\n      \"questions\": [\n        { \"questionId\": \"seal_check\", \"options\": [\"Intact\", \"Broken\"], \"value\": [\"Intact\"], \"required\": true, \"type\": \"multi\" }\n      ]\n    }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Parametric QC is manifested with both items and mapped questions', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('Pickup');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.qualityCheck).to.eql({ type: 'param', itemCount: 2, questionCount: 3, status: 'Pending doorstep QC' });", "  pm.collectionVariables.set('rvpQcShipmentId', data.id);", "  pm.collectionVariables.set('rvpQcWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Public RVP QC tracking privacy",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/tracking/{{rvpQcShipmentId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking does not expose doorstep QC configuration', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data).not.to.have.property('qualityCheck');", "});"] } }]
+    },
+    {
+      "name": "Download RVP QC image",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{rvpQcShipmentId}}/document?waybill={{rvpQcWaybill}}&doc_type=RVP_QC_IMAGE" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('RVP QC evidence is available only through the authenticated shipment route', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.documentType).to.eql('RVP_QC_IMAGE');", "  pm.expect(data.downloadUrl).to.match(/^https:/);", "});"] } }]
+    },
+    {
+      "name": "Reject RVP QC on forward shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Invalid QC Flow\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Forward address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Prepaid\",\n  \"customQc\": [{ \"description\": \"Mobile\", \"images\": [\"https://images.example.com/mobile.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"SN12345\"], \"required\": true, \"type\": \"varchar\" }] }]\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('QC is restricted to reverse Pickup shipments', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('RVP_QC_REQUIRES_PICKUP');", "});"] } }]
+    },
+    {
+      "name": "Reject RVP QC item limit",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Too Many QC Items\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Pickup address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"customQc\": [\n    { \"description\": \"One\", \"images\": [\"https://images.example.com/1.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"1\"], \"required\": true, \"type\": \"varchar\" }] },\n    { \"description\": \"Two\", \"images\": [\"https://images.example.com/2.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"2\"], \"required\": true, \"type\": \"varchar\" }] },\n    { \"description\": \"Three\", \"images\": [\"https://images.example.com/3.jpg\"], \"questions\": [{ \"questionId\": \"serial_check\", \"options\": [\"\"], \"value\": [\"3\"], \"required\": true, \"type\": \"varchar\" }] }\n  ]\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('More than two QC items are rejected instead of silently becoming non-QC', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_RVP_QC_ITEMS');", "});"] } }]
+    },
+    {
+      "name": "Reject unmapped RVP QC question",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Unmapped QC Question\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Pickup address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"customQc\": [{ \"description\": \"Mobile\", \"images\": [\"https://images.example.com/mobile.jpg\"], \"questions\": [{ \"questionId\": \"not_mapped_by_delhivery\", \"options\": [\"Yes\", \"No\"], \"value\": [\"Yes\"], \"required\": true, \"type\": \"multi\" }] }]\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only question IDs mapped by Delhivery can be manifested', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('UNMAPPED_RVP_QC_QUESTION');", "});"] } }]
+    },
+    {
+      "name": "Create eligible NDR re-attempt shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Reattempt Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"NDR delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 250\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('NDR re-attempt candidate is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('ndrShipmentId', data.id);", "  pm.collectionVariables.set('ndrWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Submit NDR re-attempt",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Eligible NDR action returns and persists a pending UPL ID', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.accepted).to.eql(true);", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.provider.nslCode).to.eql('EOD-74');", "  pm.expect(body.provider.attemptCount).to.eql(1);", "  pm.expect(body.provider.uplId).to.match(/^UPL-NDR-/);", "  pm.expect(body.data.ndrActions).to.have.lengthOf(1);", "  pm.collectionVariables.set('ndrUplId', body.provider.uplId);", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate pending NDR action",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('A pending asynchronous action is not submitted twice', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('NDR_ACTION_ALREADY_PENDING');", "});"] } }]
+    },
+    {
+      "name": "Get customer NDR UPL status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{ndrShipmentId}}/ndr/{{ndrUplId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stored UPL is fetched with verbose status and persisted', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.uplId).to.eql(pm.collectionVariables.get('ndrUplId'));", "  pm.expect(body.provider.status).to.eql('Completed');", "  pm.expect(body.provider.terminal).to.eql(true);", "  pm.expect(body.provider.details[0].waybill).to.eql(pm.collectionVariables.get('ndrWaybill'));", "  pm.expect(body.data.ndrActions[0].status).to.eql('Completed');", "  pm.expect(body.data.ndrActions[0].statusHistory).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Reject unrelated NDR UPL status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipments/{{rvpQcShipmentId}}/ndr/{{ndrUplId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('A UPL cannot be queried through another owned shipment', () => {", "  pm.response.to.have.status(404);", "  pm.expect(pm.response.json().code).to.eql('NDR_UPL_NOT_FOUND');", "});"] } }]
+    },
+    {
+      "name": "Public NDR tracking privacy",
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/tracking/{{ndrShipmentId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking excludes UPL and NDR eligibility metadata', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).not.to.have.property('ndrActions');", "  pm.expect(data).not.to.have.property('lastNdrUplId');", "  pm.expect(data).not.to.have.property('lastNdrStatus');", "  pm.expect(data).not.to.have.property('lastNdrStatusAt');", "  pm.expect(data.tracking.shipments[0]).not.to.have.property('attemptCount');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('nslCode');", "  pm.expect(data.tracking.shipments[0].currentStatus).not.to.have.property('otpCancelled');", "});"] } }]
+    },
+    {
+      "name": "Create eligible pickup reschedule shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Pickup Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Reverse pickup address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"Pickup\",\n  \"returnAddress\": \"Pax return centre\",\n  \"returnCity\": \"Hyderabad\",\n  \"returnState\": \"Telangana\",\n  \"returnPincode\": \"500029\",\n  \"amount\": 250\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Pickup reschedule candidate is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('ndrPickupShipmentId', data.id);", "  pm.collectionVariables.set('ndrPickupWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Submit pickup reschedule NDR",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrPickupWaybill}}\",\n  \"act\": \"PICKUP_RESCHEDULE\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrPickupShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Non-OTP Cancelled pickup with EOD-777 can be rescheduled', () => {", "  pm.response.to.have.status(202);", "  const provider = pm.response.json().provider;", "  pm.expect(provider.action).to.eql('PICKUP_RESCHEDULE');", "  pm.expect(provider.nslCode).to.eql('EOD-777');", "  pm.expect(provider.attemptCount).to.eql(2);", "});"] } }]
+    },
+    {
+      "name": "Create ineligible NDR shipment",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Invalid Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"NDR invalid address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 250\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Ineligible NDR fixture is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('ndrInvalidShipmentId', data.id);", "  pm.collectionVariables.set('ndrInvalidWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Reject unsupported NDR action",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrInvalidWaybill}}\",\n  \"act\": \"CANCEL\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrInvalidShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Only the two documented actions are accepted', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_NDR_ACTION');", "});"] } }]
+    },
+    {
+      "name": "Reject ineligible NDR NSL code",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ndrInvalidWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/client/shipments/{{ndrInvalidShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Fresh tracking NSL eligibility is enforced before provider submission', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('NDR_NSL_NOT_ELIGIBLE');", "});"] } }]
+    },
+    {
+      "name": "Create admin NDR candidate",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customer\": \"NDR Reattempt Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Admin NDR address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 300\n}" }, "url": "{{baseUrl}}/api/client/shipments" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin NDR candidate is manifested', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.collectionVariables.set('adminNdrShipmentId', data.id);", "  pm.collectionVariables.set('adminNdrWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Create replacement shipment",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Replacement Customer\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Exchange address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"paymentMode\": \"REPL\",\n  \"productsDescription\": \"Replacement item\",\n  \"quantity\": \"1\",\n  \"amount\": 1200\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Replacement flow is manifested with one waybill', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.payment).to.eql('REPL');", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.waybills).to.have.lengthOf(1);", "  pm.collectionVariables.set('replacementShipmentId', data.id);", "  pm.collectionVariables.set('replacementWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Cancel manifested replacement shipment",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{replacementWaybill}}\",\n  \"cancellation\": \"true\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{replacementShipmentId}}/cancel"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Manifested REPL cancellation is accepted as UD', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.cancelled).to.eql(true);", "  pm.expect(body.data.status).to.eql('Manifested');", "  pm.expect(body.data.statusType).to.eql('UD');", "  pm.expect(body.data.cancellationState).to.eql('Accepted');", "  pm.expect(body.data.canceledWaybills).to.eql([pm.collectionVariables.get('replacementWaybill')]);", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate shipment cancellation",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{replacementWaybill}}\",\n  \"cancellation\": true\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{replacementShipmentId}}/cancel"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Accepted cancellation is idempotently blocked', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_ALREADY_CANCELLED');", "});"] } }]
+    },
+    {
+      "name": "Reject high-value shipment without e-waybill",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"High Value Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 50000\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('E-waybill is mandatory at INR 50,000', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('EWAYBILL_REQUIRED');", "});"] } }]
+    },
+    {
+      "name": "Create high-value shipment with e-waybill",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Ewaybill Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"High value delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 2,\n  \"payment\": \"Prepaid\",\n  \"amount\": 60000,\n  \"sellerInvoice\": \"INV-2026/001\",\n  \"ewbn\": \"181000000001\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('High-value shipment is manifested with its initial e-waybill', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.amount).to.eql(60000);", "  pm.expect(data.ewbn).to.eql('181000000001');", "  pm.collectionVariables.set('ewaybillShipmentId', data.id);", "  pm.collectionVariables.set('ewaybillWaybill', data.waybill);", "});"] } }]
+    },
+    {
+      "name": "Update shipment e-waybill",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ewaybillWaybill}}\",\n  \"dcn\": \"INV-2026/001-REV1\",\n  \"ewbn\": \"181000000002\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{ewaybillShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Exact EWB update is accepted and persisted after provider success', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.provider.waybill).to.eql(pm.collectionVariables.get('ewaybillWaybill'));", "  pm.expect(body.data.ewbn).to.eql('181000000002');", "  pm.expect(body.data.invoiceNumber).to.eql('INV-2026/001-REV1');", "  pm.expect(body.data.ewaybillUpdates).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Track shipment with scan history",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+        "url": "{{baseUrl}}/api/client/shipments/{{ewaybillShipmentId}}/tracking"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customer receives normalized live status and scans', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.requestedCount).to.eql(1);", "  pm.expect(data.foundCount).to.eql(1);", "  pm.expect(data.shipments[0].waybill).to.eql(pm.collectionVariables.get('ewaybillWaybill'));", "  pm.expect(data.shipments[0].referenceId).to.eql(pm.collectionVariables.get('ewaybillShipmentId'));", "  pm.expect(data.shipments[0].currentStatus.status).to.eql('Manifested');", "  pm.expect(data.shipments[0].scans).to.have.lengthOf(1);", "});"] } }]
+    },
+    {
+      "name": "Public Pax reference tracking",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/tracking/{{ewaybillShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Public tracking includes live history without private shipment data', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.tracking.foundCount).to.eql(1);", "  pm.expect(data.tracking.shipments[0].scans[0].status).to.eql('Manifested');", "  pm.expect(data).to.not.have.property('phone');", "  pm.expect(data).to.not.have.property('address');", "  pm.expect(data).to.not.have.property('ownerEmail');", "  pm.expect(data).to.not.have.property('invoiceNumber');", "  pm.expect(data).to.not.have.property('ewbn');", "  pm.expect(data).to.not.have.property('ewaybillUpdates');", "});"] } }]
+    },
+    {
+      "name": "Reject e-waybill update without invoice",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ewaybillWaybill}}\",\n  \"ewbn\": \"181000000003\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{ewaybillShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invoice number is mandatory before provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_EWAYBILL_UPDATE');", "});"] } }]
+    },
+    {
+      "name": "Reject e-waybill update for low-value shipment",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{editableWaybill}}\",\n  \"dcn\": \"INV-LOW-VALUE\",\n  \"ewbn\": \"181000000005\"\n}" },
+        "url": "{{baseUrl}}/api/client/shipments/{{editableShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('EWB update is restricted to shipments above INR 50,000', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('EWAYBILL_UPDATE_NOT_REQUIRED');", "});"] } }]
+    },
+    {
+      "name": "Reject provider-declined manifestation",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Reject Manifest\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Serviceable address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 100\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200 provider rejection is not saved locally', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('DELHIVERY_MANIFEST_REJECTED');", "});"] } }]
+    },
+    {
+      "name": "Verify only manifested shipments were saved",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/bootstrap" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Rejected and validation-failed orders are absent', () => {", "  pm.response.to.have.status(200);", "  const shipments = pm.response.json().data.shipments;", "  pm.expect(shipments).to.have.lengthOf(10);", "  pm.expect(shipments.every((item) => ['Manifested', 'Pickup scheduled', 'NDR', 'Cancelled'].includes(item.status))).to.eql(true);", "  pm.expect(shipments.some((item) => item.customer === 'Reject Manifest')).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Reject MPS with unprefetched waybills",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Unprefetched MPS\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2000,\n  \"pieces\": [\n    { \"waybill\": \"930000000001\", \"weight\": 1 },\n    { \"waybill\": \"930000000002\", \"weight\": 1 }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('MPS requires stored prefetched waybills', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('MPS_WAYBILL_UNAVAILABLE');", "});"] } }]
+    },
+    {
+      "name": "Expected TAT - Surface",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=S&pdt=B2C&expectedPickupDate=2026-08-03%2010:30" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Expected TAT is normalized', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.originPin).to.eql('122003');", "  pm.expect(data.destinationPin).to.eql('136118');", "  pm.expect(data.modeOfTransport).to.eql('Surface');", "  pm.expect(data.productType).to.eql('B2C');", "  pm.expect(data.expectedPickupDate).to.eql('2026-08-03 10:30');", "  pm.expect(data.tatDays).to.eql(3);", "  pm.expect(data.expectedDeliveryDate).to.eql('2026-08-05');", "});"] } }]
+    },
+    {
+      "name": "Expected TAT - NSZ lane",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=999997&mot=S&pdt=B2C" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('NSZ TAT lane is unavailable', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('non_serviceable');", "  pm.expect(data.serviceable).to.eql(false);", "  pm.expect(data.tatDays).to.eql(null);", "});"] } }]
+    },
+    {
+      "name": "Expected TAT - Invalid transport mode",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/expected-tat?originPin=122003&destinationPin=136118&mot=X&pdt=B2C" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid transport mode is rejected locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_TRANSPORT_MODE');", "});"] } }]
+    },
+    {
+      "name": "Calculate shipping cost - Surface box",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipping-cost?md=S&cgm=1500&o_pin=122003&d_pin=136118&ss=Delivered&pt=Pre-paid&l=20&b=15&h=10&ipkg_type=box" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Shipping charge is normalized from the Delhivery invoice response', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.modeOfTransport).to.eql('Surface');", "  pm.expect(data.requestedWeightGrams).to.eql(1500);", "  pm.expect(data.chargedWeightGrams).to.eql(1500);", "  pm.expect(data.dimensions).to.eql({ length: 20, breadth: 15, height: 10 });", "  pm.expect(data.packageType).to.eql('box');", "  pm.expect(data.estimatedAmount).to.eql(160.48);", "  pm.expect(data.currency).to.eql('INR');", "});"] } }]
+    },
+    {
+      "name": "Reject invalid shipping cost status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipping-cost?md=S&cgm=1500&o_pin=122003&d_pin=136118&ss=Pending&pt=Pre-paid" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Unsupported shipment status is rejected before the provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_SHIPPING_STATUS');", "});"] } }]
+    },
+    {
+      "name": "Surface provider shipping cost rejection",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }], "url": "{{baseUrl}}/api/client/shipping-cost?md=S&cgm=1500&o_pin=999996&d_pin=136118&ss=Delivered&pt=Pre-paid" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200 provider error is surfaced as a rejected quote', () => {", "  pm.response.to.have.status(422);", "  pm.expect(pm.response.json().code).to.eql('DELHIVERY_SHIPPING_COST_REJECTED');", "});"] } }]
+    },
+    {
+      "name": "Admin login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+        "url": "{{baseUrl}}/api/admin/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', () => pm.response.to.have.status(200));", "pm.collectionVariables.set('adminToken', pm.response.json().token);"] } }]
+    },
+    {
+      "name": "Submit admin NDR re-attempt",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{adminNdrWaybill}}\",\n  \"act\": \"RE-ATTEMPT\"\n}" }, "url": "{{baseUrl}}/api/admin/shipments/{{adminNdrShipmentId}}/ndr" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can submit an eligible customer shipment NDR action', () => {", "  pm.response.to.have.status(202);", "  const body = pm.response.json();", "  pm.expect(body.provider.action).to.eql('RE-ATTEMPT');", "  pm.expect(body.data.lastNdrUplId).to.eql(body.provider.uplId);", "  pm.collectionVariables.set('adminNdrUplId', body.provider.uplId);", "});"] } }]
+    },
+    {
+      "name": "Get admin NDR UPL status",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{adminNdrShipmentId}}/ndr/{{adminNdrUplId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can refresh a persisted NDR UPL', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.status).to.eql('Completed');", "  pm.expect(body.data.lastNdrStatus).to.eql('Completed');", "  pm.expect(body.data.ndrActions[0].statusCheckedAt).to.be.a('string');", "});"] } }]
+    },
+    {
+      "name": "Create Delhivery client warehouse",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Kota Test Warehouse\",\n  \"registeredName\": \"Pax Test Client\",\n  \"phone\": \"9999999999\",\n  \"email\": \"warehouse@example.com\",\n  \"address\": \"Industrial Area, Kota\",\n  \"city\": \"Kota\",\n  \"pin\": \"324001\",\n  \"country\": \"India\",\n  \"returnAddress\": \"Industrial Area, Kota\",\n  \"returnCity\": \"Kota\",\n  \"returnPin\": \"324001\",\n  \"returnState\": \"Rajasthan\",\n  \"returnCountry\": \"India\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin registers the exact case-sensitive pickup location', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.name).to.eql('Kota Test Warehouse');", "  pm.expect(data.status).to.eql('Registered');", "  pm.expect(data.provider).to.eql('delhivery');", "  pm.expect(data.pin).to.eql('324001');", "  pm.collectionVariables.set('warehouseId', data.id);", "  pm.collectionVariables.set('warehouseName', data.name);", "});"] } }]
+    },
+    {
+      "name": "List registered Delhivery warehouses",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/warehouses" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can inspect persisted warehouse details', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].name).to.eql(pm.collectionVariables.get('warehouseName'));", "});"] } }]
+    },
+    {
+      "name": "Update Delhivery client warehouse",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"phone\": \"9888888888\",\n  \"address\": \"Updated Industrial Area, Kota\",\n  \"pin\": \"324002\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses/{{warehouseId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin updates only provider-supported warehouse details', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.name).to.eql(pm.collectionVariables.get('warehouseName'));", "  pm.expect(data.phone).to.eql('9888888888');", "  pm.expect(data.address).to.eql('Updated Industrial Area, Kota');", "  pm.expect(data.pin).to.eql('324002');", "  pm.expect(data.updatedAt).to.be.a('string');", "});"] } }]
+    },
+    {
+      "name": "Reject Delhivery warehouse rename",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Renamed Warehouse\",\n  \"pin\": \"324002\"\n}" }, "url": "{{baseUrl}}/api/admin/delhivery/warehouses/{{warehouseId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('The immutable warehouse name cannot be sent as an update', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('UNSUPPORTED_WAREHOUSE_UPDATE_FIELD');", "});"] } }]
+    },
+    {
+      "name": "Reject invalid Delhivery warehouse update PIN",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pin\": \"123\"\n}" }, "url": "{{baseUrl}}/api/admin/delhivery/warehouses/{{warehouseId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid update PIN is rejected before the provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_WAREHOUSE_PINCODE');", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate Delhivery warehouse name",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Kota Test Warehouse\",\n  \"phone\": \"9999999999\",\n  \"pin\": \"324001\",\n  \"returnAddress\": \"Industrial Area, Kota\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Exact duplicate names are rejected before calling Delhivery', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('WAREHOUSE_ALREADY_EXISTS');", "});"] } }]
+    },
+    {
+      "name": "Reject invalid Delhivery warehouse phone",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Invalid Phone Warehouse\",\n  \"phone\": \"123\",\n  \"pin\": \"324001\",\n  \"returnAddress\": \"Industrial Area, Kota\"\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/warehouses"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Invalid warehouse input is rejected locally', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_WAREHOUSE_PHONE');", "});"] } }]
+    },
+    {
+      "name": "Block customer warehouse registration",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Unauthorized Warehouse\",\n  \"phone\": \"9999999999\",\n  \"pin\": \"324001\",\n  \"returnAddress\": \"Industrial Area, Kota\"\n}" }, "url": "{{baseUrl}}/api/admin/delhivery/warehouses" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Warehouse registration is admin-only', () => pm.response.to.have.status(401));"] } }]
+    },
+    {
+      "name": "List admin pickup requests",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can inspect warehouse-level pickup requests', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data).to.have.lengthOf(1);", "  pm.expect(data[0].id).to.eql(pm.collectionVariables.get('pickupRequestId'));", "});"] } }]
+    },
+    {
+      "name": "Reject duplicate admin pickup request",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"16:00:00\",\n  \"expected_package_count\": 1\n}" }, "url": "{{baseUrl}}/api/admin/pickup-requests" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin route enforces the same warehouse duplicate guard', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('PICKUP_REQUEST_ALREADY_EXISTS');", "});"] } }]
+    },
+    {
+      "name": "Complete collected pickup request",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"Completed\"\n}" }, "url": "{{baseUrl}}/api/admin/pickup-requests/{{pickupRequestId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin confirms completion only after warehouse collection', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Completed');", "  pm.expect(data.completedAt).to.be.a('string');", "});"] } }]
+    },
+    {
+      "name": "Generate admin PDF shipping label - A4",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/label?waybill={{editableWaybill}}&pdf=true&pdf_size=A4" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives an A4 label for a persisted shipment', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.format).to.eql('pdf');", "  pm.expect(data.pdfSize).to.eql('A4');", "  pm.expect(data.packagesFound).to.eql(1);", "});"] } }]
+    },
+    {
+      "name": "Download admin EPOD",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/document?waybill={{editableWaybill}}&doc_type=EPOD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can fetch a document for a persisted shipment', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.documentType).to.eql('EPOD');", "});"] } }]
+    },
+    {
+      "name": "Admin updates shipment e-waybill",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{ewaybillWaybill}}\",\n  \"dcn\": \"INV-2026/001-REV2\",\n  \"ewbn\": \"181000000004\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{ewaybillShipmentId}}/ewaybill"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin can update a persisted high-value shipment EWB', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.updated).to.eql(true);", "  pm.expect(body.data.ewbn).to.eql('181000000004');", "  pm.expect(body.data.ewaybillUpdates).to.have.lengthOf(2);", "});"] } }]
+    },
+    {
+      "name": "Admin tracks shipment",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/api/admin/shipments/{{ewaybillShipmentId}}/tracking"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives the same provider-backed tracking contract', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.foundCount).to.eql(1);", "  pm.expect(data.shipments[0].currentStatus.statusType).to.eql('UD');", "});"] } }]
+    },
+    {
+      "name": "Move forward shipment to In Transit",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"In transit\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/status"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Forward shipment reaches In Transit', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.status).to.eql('In transit');", "});"] } }]
+    },
+    {
+      "name": "Cancel In Transit forward shipment",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{editableWaybill}}\",\n  \"cancellation\": \"true\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/cancel"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('In Transit cancellation remains In Transit and becomes RT', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.cancelled).to.eql(true);", "  pm.expect(body.data.status).to.eql('In transit');", "  pm.expect(body.data.statusType).to.eql('RT');", "  pm.expect(body.data.cancellationState).to.eql('Accepted');", "});"] } }]
+    },
+    {
+      "name": "Move editable shipment to terminal status",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"Delivered\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}/status"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Shipment reaches a terminal status', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.status).to.eql('Delivered');", "});"] } }]
+    },
+    {
+      "name": "Reject edit in terminal status",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Must Not Be Updated\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{editableShipmentId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Delivered shipment edit is blocked before provider call', () => {", "  pm.response.to.have.status(409);", "  pm.expect(pm.response.json().code).to.eql('SHIPMENT_EDIT_NOT_ALLOWED');", "});"] } }]
+    },
+    {
+      "name": "Schedule reverse pickup shipment",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"Pickup scheduled\"\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{reverseShipmentId}}/status"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Reverse shipment reaches Scheduled state', () => {", "  pm.response.to.have.status(200);", "  pm.expect(pm.response.json().data.status).to.eql('Pickup scheduled');", "});"] } }]
+    },
+    {
+      "name": "Cancel scheduled reverse pickup",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"waybill\": \"{{reverseWaybill}}\",\n  \"cancellation\": true\n}" },
+        "url": "{{baseUrl}}/api/admin/shipments/{{reverseShipmentId}}/cancel"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Scheduled Pickup cancellation becomes Canceled/CN', () => {", "  pm.response.to.have.status(200);", "  const body = pm.response.json();", "  pm.expect(body.provider.cancelled).to.eql(true);", "  pm.expect(body.data.status).to.eql('Canceled');", "  pm.expect(body.data.statusType).to.eql('CN');", "  pm.expect(body.data.cancellationState).to.eql('Accepted');", "});"] } }]
+    },
+    {
+      "name": "Fetch and store 3 waybills",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"count\": 3\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Waybills are fetched and stored', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.requestedCount).to.eql(3);", "  pm.expect(data.receivedCount).to.eql(3);", "  pm.expect(data.storedCount).to.eql(3);", "  pm.expect(data.duplicateCount).to.eql(0);", "  pm.expect(data.preview).to.have.lengthOf(3);", "});"] } }]
+    },
+    {
+      "name": "List stored waybills",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=stored&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Stored inventory is queryable', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(3);", "  pm.expect(data.summary.stored).to.eql(3);", "  pm.expect(data.items).to.have.lengthOf(3);", "  pm.expect(data.items[0].status).to.eql('stored');", "});"] } }]
+    },
+    {
+      "name": "Fetch duplicate waybill batch",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"count\": 3\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Duplicate waybills are not inserted again', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.storedCount).to.eql(0);", "  pm.expect(data.duplicateCount).to.eql(3);", "  pm.expect(data.summary.total).to.eql(3);", "});"] } }]
+    },
+    {
+      "name": "Reject invalid waybill count",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"count\": 10001\n}" },
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Count over 10,000 is rejected before provider call', () => {", "  pm.response.to.have.status(400);", "  pm.expect(pm.response.json().code).to.eql('INVALID_WAYBILL_COUNT');", "});"] } }]
+    },
+    {
+      "name": "Fetch and store single waybill",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/api/admin/delhivery/waybills/fetch-single"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('One waybill is fetched and stored', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.requestedCount).to.eql(1);", "  pm.expect(data.receivedCount).to.eql(1);", "  pm.expect(data.storedCount).to.eql(1);", "  pm.expect(data.duplicateCount).to.eql(0);", "  pm.expect(data.preview).to.eql(['910000000001']);", "  pm.expect(data.summary.total).to.eql(4);", "});"] } }]
+    },
+    {
+      "name": "List inventory after single waybill",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=stored&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Single and bulk waybills share one inventory', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(4);", "  pm.expect(data.summary.stored).to.eql(4);", "  pm.expect(data.items).to.have.lengthOf(4);", "  pm.expect(data.items.some((item) => item.waybill === '910000000001')).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Create multi-piece shipment with stored waybills",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"Two box delivery address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"Prepaid\",\n  \"amount\": 2400,\n  \"pickupLocation\": \"{{warehouseName}}\",\n  \"masterWaybill\": \"900000000002\",\n  \"pieces\": [\n    { \"waybill\": \"900000000001\", \"weight\": 1, \"productsDescription\": \"Box one\", \"quantity\": \"1\", \"totalAmount\": 1200 },\n    { \"waybill\": \"900000000002\", \"weight\": 1.5, \"productsDescription\": \"Box two\", \"quantity\": \"1\", \"totalAmount\": 1200 }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Every MPS box uses the newly registered warehouse', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.status).to.eql('Manifested');", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.packageCount).to.eql(2);", "  pm.expect(data.masterWaybill).to.eql('900000000002');", "  pm.expect(data.mpsAmount).to.eql(0);", "  pm.expect(data.pickupLocation).to.eql(pm.collectionVariables.get('warehouseName'));", "  pm.expect(data.waybills).to.eql(['900000000001', '900000000002']);", "  pm.collectionVariables.set('mpsShipmentId', data.id);", "});"] } }]
+    },
+    {
+      "name": "Track MPS waybill batch",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }],
+        "url": "{{baseUrl}}/api/client/shipments/{{mpsShipmentId}}/tracking"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('All MPS boxes are tracked in one provider batch', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.requestedCount).to.eql(2);", "  pm.expect(data.foundCount).to.eql(2);", "  pm.expect(data.shipments.map((item) => item.waybill)).to.eql(['900000000001', '900000000002']);", "});"] } }]
+    },
+    {
+      "name": "Schedule pickup from newly registered warehouse",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pickup_date\": \"{{pickupDate}}\",\n  \"pickup_time\": \"15:30:00\",\n  \"pickup_location\": \"{{warehouseName}}\",\n  \"expected_package_count\": 2\n}" },
+        "url": "{{baseUrl}}/api/client/pickup-requests"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Registered warehouse is selectable for warehouse-scoped pickup', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.pickupLocation).to.eql(pm.collectionVariables.get('warehouseName'));", "  pm.expect(data.readyPackageCount).to.eql(2);", "  pm.expect(data.expectedPackageCount).to.eql(2);", "});"] } }]
+    },
+    {
+      "name": "Create COD MPS with aggregate amount",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{clientToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"customer\": \"COD Multi Piece Receiver\",\n  \"phone\": \"9123456789\",\n  \"address\": \"COD two box address\",\n  \"city\": \"Leh\",\n  \"pincode\": \"194103\",\n  \"weight\": 1,\n  \"payment\": \"COD\",\n  \"amount\": 2400,\n  \"masterWaybill\": \"910000000001\",\n  \"pieces\": [\n    { \"waybill\": \"900000000003\", \"weight\": 1, \"productsDescription\": \"COD box one\", \"totalAmount\": 1200 },\n    { \"waybill\": \"910000000001\", \"weight\": 1, \"productsDescription\": \"COD box two\", \"totalAmount\": 1200 }\n  ]\n}" },
+        "url": "{{baseUrl}}/api/client/shipments"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('COD MPS carries total COD amount on every box', () => {", "  pm.response.to.have.status(201);", "  const data = pm.response.json().data;", "  pm.expect(data.shipmentType).to.eql('MPS');", "  pm.expect(data.masterWaybill).to.eql('910000000001');", "  pm.expect(data.mpsAmount).to.eql(2400);", "  pm.expect(data.waybills).to.eql(['900000000003', '910000000001']);", "});"] } }]
+    },
+    {
+      "name": "Verify manifested waybills are used",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/delhivery/waybills?status=used&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('MPS waybills move from stored to used', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.summary.total).to.eql(4);", "  pm.expect(data.summary.stored).to.eql(0);", "  pm.expect(data.summary.used).to.eql(4);", "  pm.expect(data.items).to.have.lengthOf(4);", "});"] } }]
+    },
+    {
+      "name": "Admin serviceability",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/serviceability/500029" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives live normalized coverage', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "  pm.expect(data.cod).to.eql(false);", "});"] } }]
+    },
+    {
+      "name": "Admin Heavy serviceability",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/heavy-serviceability/400086" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives Heavy payment modes', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.productType).to.eql('Heavy');", "  pm.expect(data.serviceable).to.eql(true);", "  pm.expect(data.cod).to.eql(true);", "  pm.expect(data.prepaid).to.eql(true);", "});"] } }]
+    },
+    {
+      "name": "Admin Expected TAT - Express",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/expected-tat?origin_pin=122003&destination_pin=136118&mot=E&pdt=B2C" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives Express TAT', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.modeOfTransport).to.eql('Express');", "  pm.expect(data.tatDays).to.eql(2);", "});"] } }]
+    },
+    {
+      "name": "Admin calculate COD shipping cost - Express",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/api/admin/shipping-cost?md=E&cgm=1000&o_pin=122003&d_pin=136118&ss=Delivered&pt=COD" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin receives account-specific Express COD estimate', () => {", "  pm.response.to.have.status(200);", "  const data = pm.response.json().data;", "  pm.expect(data.modeOfTransport).to.eql('Express');", "  pm.expect(data.paymentType).to.eql('COD');", "  pm.expect(data.estimatedAmount).to.eql(234.82);", "});"] } }]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:3110" },
+    { "key": "adminUsername", "value": "admin" },
+    { "key": "adminPassword", "value": "StrongPass123" },
+    { "key": "clientToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "testEmail", "value": "" },
+    { "key": "testPhone", "value": "" }
+  ]
+}

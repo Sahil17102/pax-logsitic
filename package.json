@@ -11,7 +11,14 @@
     "preview": "vite preview",
     "start": "node server/index.js",
     "start:api": "node server/index.js",
-    "test:api": "node scripts/smoke-api.mjs"
+    "test:api": "node scripts/smoke-api.mjs",
+    "test:delhivery": "node scripts/test-delhivery.mjs",
+    "test:postman": "node scripts/run-postman-delhivery.mjs",
+    "test:seeds": "node scripts/test-seeds.mjs",
+    "seedAdmin": "node scripts/seedAdmin.mjs",
+    "seedBasicPlan": "node scripts/seedBasicPlan.mjs",
+    "assignBasicPlan": "node scripts/assignBasicPlan.mjs",
+    "seedLocations": "node scripts/seedLocations.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",

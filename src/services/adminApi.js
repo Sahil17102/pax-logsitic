@@ -1,16 +1,18 @@
 import { API_BASE_URL } from "../config.js";
-import { normalizeAdminDashboard, normalizeCustomer, normalizeShipment, unwrapApiData } from "./apiData.js";
+import { normalizeAdminDashboard, normalizeCustomer, normalizePickupRequest, normalizeShipment, normalizeWarehouse, unwrapApiData } from "./apiData.js";
 
 const ADMIN_TOKEN_KEY = "pax-admin-token";
 const REQUEST_TIMEOUT = 8000;
+const LONG_PROVIDER_REQUEST_TIMEOUT = 70000;
+const ASYNC_PROVIDER_REQUEST_TIMEOUT = 135000;
 
 function getToken() {
   return sessionStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 }
 
-async function request(path, options = {}) {
+async function request(path, options = {}, timeoutMs = REQUEST_TIMEOUT) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   const token = getToken();
 
   try {
@@ -62,6 +64,119 @@ export function logoutAdmin() {
 
 export async function getAdminDashboard() {
   return normalizeAdminDashboard(await request("/api/admin/dashboard"));
+}
+
+export async function getAdminServiceability(pincode) {
+  return unwrapApiData(await request(`/api/admin/serviceability/${encodeURIComponent(pincode)}`));
+}
+
+export async function getAdminHeavyServiceability(pincode) {
+  return unwrapApiData(await request(`/api/admin/heavy-serviceability/${encodeURIComponent(pincode)}`));
+}
+
+export async function getAdminExpectedTat({ originPin, destinationPin, mot, pdt = "B2C", expectedPickupDate = "" }) {
+  const query = new URLSearchParams({ originPin, destinationPin, mot, pdt });
+  if (expectedPickupDate) query.set("expectedPickupDate", expectedPickupDate);
+  return unwrapApiData(await request(`/api/admin/expected-tat?${query}`));
+}
+
+export async function getAdminShippingCost({ md, cgm, originPin, destinationPin, status = "Delivered", paymentType, length, breadth, height, packageType }) {
+  const query = new URLSearchParams({ md, cgm: String(cgm), o_pin: originPin, d_pin: destinationPin, ss: status, pt: paymentType });
+  if (length !== undefined && length !== "") query.set("l", String(length));
+  if (breadth !== undefined && breadth !== "") query.set("b", String(breadth));
+  if (height !== undefined && height !== "") query.set("h", String(height));
+  if (packageType) query.set("ipkg_type", packageType);
+  return unwrapApiData(await request(`/api/admin/shipping-cost?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function getAdminShippingLabel(shipmentId, { waybill = "", pdf = true, pdfSize = "A4" } = {}) {
+  const query = new URLSearchParams({ pdf: String(pdf), pdf_size: pdfSize });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/label?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function getAdminShipmentDocument(shipmentId, { waybill = "", documentType } = {}) {
+  const query = new URLSearchParams({ doc_type: documentType });
+  if (waybill) query.set("waybill", waybill);
+  return unwrapApiData(await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/document?${query}`, {}, LONG_PROVIDER_REQUEST_TIMEOUT));
+}
+
+export async function submitAdminNdrAction(shipmentId, { waybill = "", action }) {
+  const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/ndr`, {
+    method: "POST",
+    body: JSON.stringify({ ...(waybill ? { waybill } : {}), act: action }),
+  }, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
+}
+
+export async function getAdminNdrStatus(shipmentId, uplId) {
+  const payload = await request(`/api/admin/shipments/${encodeURIComponent(shipmentId)}/ndr/${encodeURIComponent(uplId)}/status`, {}, ASYNC_PROVIDER_REQUEST_TIMEOUT);
+  return { shipment: normalizeShipment(unwrapApiData(payload)), provider: payload.provider };
+}
+
+export async function createAdminPickupRequest({ pickupDate, pickupTime, expectedPackageCount }) {
+  const payload = await request("/api/admin/pickup-requests", {
+    method: "POST",
+    body: JSON.stringify({
+      pickup_date: pickupDate,
+      pickup_time: pickupTime,
+      expected_package_count: Number(expectedPackageCount),
+    }),
+  });
+  return normalizePickupRequest(unwrapApiData(payload));
+}
+
+export async function getAdminPickupRequests() {
+  const data = unwrapApiData(await request("/api/admin/pickup-requests"));
+  return Array.isArray(data) ? data.map(normalizePickupRequest).filter((item) => item.id) : [];
+}
+
+export async function completeAdminPickupRequest(pickupRequestId) {
+  const payload = await request(`/api/admin/pickup-requests/${encodeURIComponent(pickupRequestId)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "Completed" }),
+  });
+  return normalizePickupRequest(unwrapApiData(payload));
+}
+
+export async function createAdminWarehouse(warehouse) {
+  const payload = await request("/api/admin/delhivery/warehouses", {
+    method: "POST",
+    body: JSON.stringify(warehouse),
+  });
+  return normalizeWarehouse(unwrapApiData(payload));
+}
+
+export async function updateAdminWarehouse(warehouseId, updates) {
+  const payload = await request(`/api/admin/delhivery/warehouses/${encodeURIComponent(warehouseId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+  return normalizeWarehouse(unwrapApiData(payload));
+}
+
+export async function getAdminWarehouses() {
+  const data = unwrapApiData(await request("/api/admin/delhivery/warehouses"));
+  return Array.isArray(data) ? data.map(normalizeWarehouse).filter((item) => item.name) : [];
+}
+
+export async function fetchDelhiveryWaybills(count) {
+  return unwrapApiData(await request("/api/admin/delhivery/waybills/fetch", {
+    method: "POST",
+    body: JSON.stringify({ count }),
+  }));
+}
+
+export async function fetchDelhiverySingleWaybill() {
+  return unwrapApiData(await request("/api/admin/delhivery/waybills/fetch-single", {
+    method: "POST",
+  }));
+}
+
+export async function getDelhiveryWaybills({ status = "", limit = 100, offset = 0 } = {}) {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) query.set("status", status);
+  return unwrapApiData(await request(`/api/admin/delhivery/waybills?${query}`));
 }
 
 export async function setShipmentStatus(shipmentId, status) {

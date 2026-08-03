@@ -364,6 +364,7 @@ svg {
 .admin-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: #eef2ff; padding: 6px 8px; color: #4463ca; font-size: .56rem; font-weight: 800; }
 .admin-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .admin-status--delivered, .admin-status--active { background: #eaf0ff; color: #3454d1; }
+.admin-status--manifested { background: #e8f1fa; color: #315f9a; }
 .admin-status--out-for-delivery { background: #edf1ff; color: #4a64c4; }
 .admin-status--pickup-scheduled { background: #f2efff; color: #7654b1; }
 .admin-status--exception, .admin-status--rto, .admin-status--review { background: #fff0e9; color: #c45f36; }
@@ -535,6 +536,25 @@ svg {
 .admin-password-form h2 { margin-bottom: 6px; }
 .admin-password-form > button { justify-self: start; margin-top: 4px; }
 
+.admin-ndr-workspace { display: grid; gap: 16px; }
+.admin-ndr-guidance { display: grid; gap: 5px; }
+.admin-ndr-guidance strong { color: #28302b; font-size: .83rem; }
+.admin-ndr-guidance span { color: #778179; font-size: .64rem; line-height: 1.55; }
+.admin-ndr-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.admin-ndr-card { display: grid; gap: 12px; }
+.admin-ndr-card > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-ndr-card > div:first-child small { color: #7e8982; font-size: .56rem; font-weight: 800; }
+.admin-ndr-card h2, .admin-ndr-card p { margin: 0; }
+.admin-ndr-card h2 { color: #28302b; font-size: .92rem; }
+.admin-ndr-card p { color: #7b847e; font-size: .6rem; }
+.admin-ndr-card dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; margin: 0; border-radius: 9px; background: #f0f4fc; padding: 10px; font-size: .58rem; }
+.admin-ndr-card dt { color: #7b847e; }
+.admin-ndr-card dd { margin: 0; color: #314f92; font-weight: 800; text-align: right; }
+.admin-ndr-card > div:last-child { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.admin-ndr-card > div:last-child button { min-height: 37px; border: 1px solid #d8dfeb; border-radius: 8px; background: #fff; color: #3454d1; cursor: pointer; font-size: .58rem; font-weight: 850; }
+.admin-ndr-card > div:last-child button:disabled { cursor: wait; opacity: .55; }
+.admin-ndr-card > div:last-child .admin-ndr-status-button { grid-column: 1 / -1; background: #eef2ff; }
+
 @media (max-width: 1120px) {
   .admin-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-list-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -542,6 +562,7 @@ svg {
   .admin-health-grid, .admin-insight-grid { grid-template-columns: 1fr; }
   .admin-user > div { display: none; }
   .admin-inline-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-ndr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
@@ -583,6 +604,7 @@ svg {
   .admin-summary-tiles > div:last-child { border-bottom: 0; }
   .admin-settings-card dl > div { grid-template-columns: 1fr; gap: 6px; }
   .admin-finance-legend { flex-direction: column; gap: 9px; }
+  .admin-ndr-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
